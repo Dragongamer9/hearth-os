@@ -86,11 +86,11 @@ pub const WINDOW: hearth_ui::blocks::PageDef = hearth_ui::blocks::PageDef {
     id: "window",
     title: "Settings' window",
     blocks: &[
-        hearth_ui::blocks::bl("brand", "Hearth's flame and Settings", 0, 0, 3, 1),
-        hearth_ui::blocks::bl("search", "Search settings", 0, 1, 3, 1),
-        hearth_ui::blocks::bl("cats", "The categories", 0, 2, 3, 10),
-        hearth_ui::blocks::bl("title", "The page's title", 3, 0, 9, 1),
-        hearth_ui::blocks::bl("page", "The page", 3, 1, 9, 11),
+        hearth_ui::blocks::bl("brand", "Hearth's flame and Settings", 0, 0, 3, 2),
+        hearth_ui::blocks::bl("search", "Search settings", 0, 2, 3, 2),
+        hearth_ui::blocks::bl("cats", "The categories", 0, 4, 3, 8),
+        hearth_ui::blocks::bl("title", "The page's title", 3, 0, 9, 2),
+        hearth_ui::blocks::bl("page", "The page", 3, 2, 9, 10),
     ],
 };
 
@@ -187,7 +187,12 @@ fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
     let flame = container(Space::new()).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).style(ui::boxed(p.accent, 9.0, None));
     let brand: Element<'_, Msg> = row![flame, tb("Settings", 24.0, p.text)].spacing(14.0).align_y(iced::Center).into();
     // its blocks (WINDOW), each a right-click away from Edit layout (that part picked); as it was when nothing is
-    let edit = |id: &'static str, el: Element<'a, Msg>| -> (&'static str, Element<'a, Msg>) { (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id)))) };
+    // while the window is being arranged, each part's own content sits under its block's bar (drawn over its top)
+    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some("window");
+    let edit = |id: &'static str, el: Element<'a, Msg>| -> (&'static str, Element<'a, Msg>) {
+        let el: Element<'a, Msg> = if arranging { container(el).padding(Padding { top: 26.0, right: 0.0, bottom: 0.0, left: 0.0 }).into() } else { el };
+        (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id))))
+    };
     let items = vec![
         edit("brand", brand),
         edit("search", search.into()),

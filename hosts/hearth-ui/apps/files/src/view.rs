@@ -84,10 +84,10 @@ const FILE_BLOCKS: &[hearth_ui::blocks::BlockDef] = &[
 /// The window's bars round the panes (the owner, Nov 24: every part a block): the title bar and tabs, the address bar,
 /// the toolbar, the panes (the "window" page's blocks inside), the status bar.
 const BAR_BLOCKS: &[hearth_ui::blocks::BlockDef] = &[
-    hearth_ui::blocks::bl("tabs", "The title bar and tabs", 0, 0, 12, 1),
-    hearth_ui::blocks::bl("address", "The address bar", 0, 1, 12, 1),
-    hearth_ui::blocks::bl("toolbar", "The toolbar", 0, 2, 12, 1),
-    hearth_ui::blocks::bl("panes", "The panes (navigation, folder, details)", 0, 3, 12, 8),
+    hearth_ui::blocks::bl("tabs", "The title bar and tabs", 0, 0, 12, 2),
+    hearth_ui::blocks::bl("address", "The address bar", 0, 2, 12, 2),
+    hearth_ui::blocks::bl("toolbar", "The toolbar", 0, 4, 12, 2),
+    hearth_ui::blocks::bl("panes", "The panes (navigation, folder, details)", 0, 6, 12, 5),
     hearth_ui::blocks::bl("status", "The status bar", 0, 11, 12, 1),
 ];
 pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[
@@ -96,8 +96,10 @@ pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[
     hearth_ui::blocks::PageDef { id: "bars", title: "Hearth Files", blocks: BAR_BLOCKS },
 ];
 
-/// A bar a right-click edits (Edit layout with it picked).
-fn bar_part<'a>(id: &'static str, el: El<'a>) -> (&'static str, El<'a>) {
+/// A bar a right-click edits (Edit layout with it picked). While the bars are being arranged, the bar's own content
+/// sits under its block's bar (Arrange's bar is drawn over the top of each block), so it stays visible.
+fn bar_part<'a>(a: &App, id: &'static str, el: El<'a>) -> (&'static str, El<'a>) {
+    let el = if a.describe.arr.as_ref().map(|x| x.page) == Some("bars") { container(el).padding(pad(26.0, 0.0, 0.0, 0.0)).into() } else { el };
     (id, hearth_ui::arrange::right_edit(el, Msg::EditAt("bars", Some(id))))
 }
 
@@ -177,16 +179,16 @@ pub fn view(a: &App) -> El<'_> {
         let bar = zone_row(a, "bar");
         let (has_top, has_bar) = (top.is_some(), bar.is_some());
         let show_status = a.describe.knob("status") != "hidden";
-        let mut items: Vec<(&'static str, El)> = vec![bar_part("tabs", tab_strip(a))];
+        let mut items: Vec<(&'static str, El)> = vec![bar_part(a, "tabs", tab_strip(a))];
         if let Some(r) = top {
-            items.push(bar_part("address", r));
+            items.push(bar_part(a, "address", r));
         }
         if let Some(r) = bar {
-            items.push(bar_part("toolbar", r));
+            items.push(bar_part(a, "toolbar", r));
         }
         items.push(("panes", column![hline(p.line), body].into()));
         if show_status {
-            items.push(bar_part("status", status_bar(a)));
+            items.push(bar_part(a, "status", status_bar(a)));
         }
         // what sits between the panes and the status bar: the copy under way, Describe it's box (board 11), the
         // bottom bar; laid out, they stay under the blocks

@@ -293,7 +293,7 @@ fn page_name(pg: &Page, a: &App) -> String {
 /// first in the window so a file kept by 1.18 (the page alone, over the whole window) still opens under the rest.
 use hearth_ui::blocks::{bl, PageDef};
 pub const BLOCKS: &[PageDef] = &[
-    PageDef { id: "window", title: "Hearth Store", blocks: &[bl("page", "The page", 1, 1, 11, 11), bl("title", "The title bar and search", 0, 0, 12, 1), bl("rail", "The rail (Home, Apps, Library…)", 0, 1, 1, 11)] },
+    PageDef { id: "window", title: "Hearth Store", blocks: &[bl("page", "The page", 1, 2, 11, 10), bl("title", "The title bar and search", 0, 0, 12, 2), bl("rail", "The rail (Home, Apps, Library…)", 0, 2, 1, 10)] },
     PageDef { id: "home", title: "Home", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("featured", "The featured app", 0, 1, 9, 7), bl("picks", "Picks on the side", 9, 1, 3, 7), bl("yours", "Your apps", 0, 8, 12, 4)] },
     PageDef { id: "apps", title: "Apps", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("filters", "The categories", 0, 1, 12, 1), bl("banner", "Your AI team", 0, 2, 12, 2), bl("list", "The apps", 0, 4, 12, 7), bl("more", "Looking for other apps?", 0, 11, 12, 1)] },
     PageDef { id: "library", title: "Library", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("updates", "Updates", 0, 1, 12, 4), bl("tabs", "Apps, Hearth parts, Tests", 0, 5, 12, 1), bl("yours", "Your apps", 0, 6, 12, 5), bl("thispc", "This PC", 0, 11, 12, 1)] },
@@ -313,7 +313,15 @@ pub fn page_parts<'a>(a: &'a App, page: &'static str, height: f32, items: Vec<(&
 
 /// [`page_parts`] for the window itself (not in the page's scroll).
 pub fn page_parts_fill<'a>(a: &'a App, page: &'static str, items: Vec<(&'static str, E<'a, Msg>)>, original: impl FnOnce(&mut hearth_ui::arrange::Parts<'a, Msg>) -> E<'a, Msg>) -> E<'a, Msg> {
-    let items = items.into_iter().map(|(id, el)| (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))).collect();
+    // while it's being arranged, the title bar's own content sits under its block's bar (drawn over each block's top)
+    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some(page);
+    let items = items
+        .into_iter()
+        .map(|(id, el)| {
+            let el: E<'a, Msg> = if arranging && id == "title" { container(el).padding(look::pad(26.0, 0.0, 0.0, 0.0)).into() } else { el };
+            (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))
+        })
+        .collect();
     hearth_ui::arrange::parts(&a.describe, &a.p, page, items, original, Msg::Describe)
 }
 

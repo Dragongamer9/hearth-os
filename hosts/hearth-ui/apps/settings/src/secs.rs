@@ -240,6 +240,23 @@ pub fn sync(a: &mut App) {
         a.describe.pages = Box::leak(all.into_boxed_slice());
         // worked out again with what's kept for it
         let _ = a.describe.update(DMsg::Drop);
+        // being arranged: the new sections are blocks there too (the page as it's laid out now while nothing was
+        // moved yet; else each new one at its own place), so the whole page stays on the grid
+        let laid = a.describe.laid(page).cloned();
+        let def_now = a.describe.pages.iter().find(|p| p.id == page).copied();
+        if let (Some(arr), Some(def)) = (a.describe.arr.as_mut(), def_now) {
+            if arr.page == page {
+                if arr.undo.is_empty() {
+                    arr.placed = laid.unwrap_or_else(|| hearth_ui::blocks::defaults(&def));
+                } else {
+                    for b in def.blocks {
+                        if !arr.placed.iter().any(|p| p.id == b.id) {
+                            arr.placed.push(hearth_ui::blocks::Placed::of(b));
+                        }
+                    }
+                }
+            }
+        }
     }
     // CI's pictures: HEARTH_ARRANGE_OPEN=settings:<page> opens Arrange on it once it's drawn
     if !OPENED.load(Ordering::Relaxed) {
