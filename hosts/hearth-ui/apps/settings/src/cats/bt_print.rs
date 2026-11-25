@@ -471,7 +471,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
 
 fn printers_view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     let Some(st) = &s.st else { return c.push(words(&p, "Asking the printing service…")).push(said(&p, &s.say)).into() };
     let cups = kit::bo(st, "cups");
     let can = kit::bo(st, "canAdmin");
@@ -556,7 +556,7 @@ fn kb(n: f64) -> String {
 
 fn queue_view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     let Some(q) = &s.q else { return c.push(words(&p, "Asking the printing service…")).into() };
     let jobs = kit::ar(q, "jobs");
     let printers = kit::ar(q, "printers");
@@ -615,7 +615,7 @@ fn queue_view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
 
 fn scanners_view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     let title = match &s.scanners {
         None => "Looking for scanners…",
         Some(l) if !l.is_empty() => "Scanners found",
@@ -654,7 +654,7 @@ fn mode_word(m: &str) -> String {
 
 fn pdf_view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     let list = s.scanners.as_deref();
     c = c.push(head(&p, match list {
         None => "Looking for scanners…",
@@ -729,7 +729,7 @@ fn ink_colour(p: &Pal, hex: &str) -> Color {
 
 fn ink_view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(head(&p, "Notices"));
     let on = sh.d_bool("inkNotify", true);
     c = c.push(srow(&p, G::Moon, "Tell me when ink or toner runs low", "One notice per cartridge, again only after it's been filled", switch(&p, on, Some(M::InkNotify(!on)))));

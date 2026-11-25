@@ -419,7 +419,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
     let p = sh.p;
     let live = s.kw.live();
     let note = if live { "" } else { ". Needs KWin (KDE Plasma)" };
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     if s.st.is_none() {
         c = c.push(words(&p, "Reading your mouse and touchpad…"));
     }
@@ -493,7 +493,7 @@ fn slider_row<'a>(p: &hearth_ui::Pal, live: bool, title: &'a str, sub: String, v
 
 fn buttons<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(kw::gate(&p, &s.kw, "Mouse button settings", M::Go("your-desktop")));
     let on = s.kw.live();
     let q = if on { p } else { dim(&p) };

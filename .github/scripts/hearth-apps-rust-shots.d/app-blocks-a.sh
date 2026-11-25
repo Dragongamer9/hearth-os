@@ -82,6 +82,13 @@ for page in display sound power notifications datetime languages region accessib
   st "settings-$page" "$BA/empty" --page "$page"
   HEARTH_ARRANGE_OPEN="settings:$page" st "settings-$page-edit" "$BA/empty" --page "$page"
 done
+# The kits' pages (secs.rs Plain / SecVec / Rows: drawn block by block while laid out or arranged), the section front
+# pages and Quick's tiles (parts_dyn), and the AI page: with Edit layout open.
+for page in privacy firewall kde-style gaming steam controller apps autostart services hs-overview hs-shares link updates \
+            sec-system sec-gaming quick keyboard mouse printers bluetooth-devices usb-devices vpn hotspot net-details \
+            kwin-effects desktop-layout sec-ai; do
+  HEARTH_ARRANGE_OPEN="settings:$page" st "settings-$page-edit" "$BA/empty" --page "$page"
+done
 # Laid out: the categories on the right, the title over the whole width; Date & time's Clock section rounded in blue.
 mkdir -p "$BA/settings/nimbus/apps"
 cat > "$BA/settings/nimbus/apps/settings.json" <<'J'

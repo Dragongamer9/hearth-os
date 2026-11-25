@@ -393,7 +393,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         | Msg::Couch(couch::Msg::Arrange(dm))
         | Msg::Pers(pers::Msg::Arrange(dm))
         | Msg::Accounts(accounts::Msg::Arrange(dm))
-        | Msg::A11y(a11y::Msg::Arrange(dm)) => return describe(a, dm),
+        | Msg::A11y(a11y::Msg::Arrange(dm))
+        | Msg::Quick(quick::Msg::Arrange(dm))
+        | Msg::Sections(sections::Msg::Arrange(dm)) => return describe(a, dm),
         m => m,
     };
     let t = match m {

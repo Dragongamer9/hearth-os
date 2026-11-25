@@ -177,7 +177,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let connected = s.connected();
     let installed = kit::at(ts, "installed").as_bool();
     let running = kit::at(ts, "running").as_bool();
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(words(&p, "A private network for your devices only. Reach this PC from work or anywhere, with nothing opened to the internet."));
     if let Some(v) = &s.st {
         let e = kit::st(v, "error");

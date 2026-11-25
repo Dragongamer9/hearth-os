@@ -133,7 +133,10 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
         field_on(&p, "The command, like rclone mount nas: ~/NAS", &st.cmd_line, M::CmdLine, M::AddCmd),
         r(G::Plus, "Add this command", "Runs once each time you sign in").on(M::AddCmd).view(&p),
     ];
-    let mut v = vec![group(&p, "Start when you sign in", g), group(&p, "Add an app", add), group(&p, "Add a command", cmd)];
+    let mut v = crate::secs::SecVec::new();
+    v.push(group(&p, "Start when you sign in", g));
+    v.push(group(&p, "Add an app", add));
+    v.push(group(&p, "Add a command", cmd));
     opt(&mut v, say_view(&p, &st.say));
     v.push(r(G::Gear, "Background services", "Programs that run in the background and Hearth's own parts").chev().on(M::Go("services")).view(&p));
     page(v)

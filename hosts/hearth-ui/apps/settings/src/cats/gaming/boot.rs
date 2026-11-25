@@ -227,7 +227,8 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let movie = go(s, "movie");
     let cur = gs(movie, "current");
     let splashes = ga(go(s, "splash"), "presets");
-    let mut v: Vec<E<M>> = vec![head(&p, if st.saving { "Startup animation (Steam Game Mode) · saving…" } else { "Startup animation (Steam Game Mode)" })];
+    let mut v = crate::secs::SecVec::new();
+    v.push(head(&p, if st.saving { "Startup animation (Steam Game Mode) · saving…" } else { "Startup animation (Steam Game Mode)" }));
     let mut intro = "What Steam Game Mode plays when it starts. Pick one to see it play; it changes only when you choose Use this. Hearth's animations are also in Steam's own Settings › Customization › Startup Movie.".to_string();
     if !movie.is_null() && !gb(movie, "steamReady") {
         intro.push_str(" Steam hasn't been set up yet: your choice is used once it has.");

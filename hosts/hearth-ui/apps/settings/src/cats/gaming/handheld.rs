@@ -216,7 +216,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let h = &st.hh;
     let running = gb(h, "running");
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     if !st.picking.is_empty() {
         let found = ga(h, "sections").iter().flat_map(|s| ga(s, "items").iter()).find(|i| gs(i, "key") == st.picking);
         v.push(r(G::Arrow, "Back", "").on(M::Unpick).view(&p));

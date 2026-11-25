@@ -99,7 +99,7 @@ pub fn frame(a: &App) -> Element<'_, Msg> {
     set_big(a.sh.big);
     set_pal(p);
     nav::begin();
-    crate::secs::begin();
+    crate::secs::begin(a.page);
     let el = if a.sh.big { frame_b(a) } else { frame_a(a) };
     if a.query.is_empty() {
         crate::secs::end(a.page);
@@ -111,7 +111,8 @@ pub fn frame(a: &App) -> Element<'_, Msg> {
 /// The page itself (or the search results, or a category's list), and the lines over it.
 fn page_column(a: &App, search_here: bool) -> Column<'_, Msg> {
     let p = a.sh.p;
-    let body: Element<Msg> = if search_here && !a.query.is_empty() { search_page(a) } else { crate::page_view(a).unwrap_or_else(|| category(a)) };
+    // a kit page laid out or being arranged is drawn block by block (secs.rs split)
+    let body: Element<Msg> = if search_here && !a.query.is_empty() { search_page(a) } else { crate::secs::split(a).or_else(|| crate::page_view(a)).unwrap_or_else(|| category(a)) };
     let mut main = Column::new();
     if !a.sh.error.is_empty() {
         main = main.push(note(&p, a.sh.error.clone(), true));

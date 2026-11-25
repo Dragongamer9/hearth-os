@@ -417,6 +417,7 @@ fn engine_row<'a>(p: &Pal, letter: &str, name: Element<'a, Msg>, line: String, r
 
 /// A card with its heading on the left and a note on the right (ENGINES ON THIS PC · RTX 5070 · 12 GB).
 fn titled<'a>(p: &Pal, head: &str, right: &str, rows: Vec<Element<'a, Msg>>) -> Element<'a, Msg> {
+    crate::secs::heading(head);
     let mut c = Column::new().push(container(row![tb(head.to_uppercase(), 12.5, p.muted), Space::new().width(Length::Fill), tb(right.to_uppercase(), 12.5, p.muted)]).padding(Padding { top: 0.0, right: 6.0, bottom: 8.0, left: 6.0 }));
     for r in rows {
         c = c.push(r);
@@ -639,7 +640,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     }
     let p = a.sh.p;
     let st = &a.ai;
-    let mut c = top(&p, st, &a.sh.info.host);
+    // its parts as blocks (secs.rs Plain): what's on top, then each titled card
+    let mut c = crate::secs::Plain::new(0).spacing(18.0).push(top(&p, st, &a.sh.info.host));
     if !st.msg.is_empty() {
         c = c.push(note(&p, st.msg.clone(), true));
     }

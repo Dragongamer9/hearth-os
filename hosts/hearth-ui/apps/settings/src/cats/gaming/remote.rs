@@ -224,7 +224,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let s = &st.st;
     let rd = &st.rd;
     let on = rd_on(st);
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     if s.is_null() && st.err.is_empty() {
         v.push(words(&p, "Loading…", false));
     }

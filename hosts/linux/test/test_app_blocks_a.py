@@ -120,6 +120,40 @@ class SettingsPagesAreTheirSections(unittest.TestCase):
         self.assertIn('seen.into_iter().take(12)', s)
 
 
+class TheKitPagesAreTheirSectionsToo(unittest.TestCase):
+    """Pages built by the shared kits (no App at hand) are split by the frame, block by block."""
+
+    def test_the_kits_build_with_sections(self):
+        S = APPS / 'settings/src'
+        self.assertIn("pub type Col<'a, M> = crate::secs::Plain<'a, M>;", read(S / 'cats/pers/kit.rs'))
+        self.assertIn('items.into().plain(10.0, Some(Length::Fill)).into()', read(S / 'cats/apps/kit.rs'))
+        self.assertIn('self.v.plain(6.0, None).into()', read(S / 'cats/hs/kit.rs'))
+        frame = read(S / 'frame.rs')
+        self.assertIn('crate::secs::split(a).or_else(|| crate::page_view(a))', frame)
+        self.assertIn('crate::secs::begin(a.page)', frame)
+        nav = read(S / 'nav.rs')
+        self.assertIn('pub fn rewind(m: Mark)', nav, 'drawn block by block, the controller places are counted once')
+
+    def test_every_remaining_page_uses_them(self):
+        S = APPS / 'settings/src'
+        plain = ['bt_devs.rs', 'bt_kbd.rs', 'bt_mouse.rs', 'bt_phone.rs', 'bt_print.rs', 'bt_tablet.rs', 'bt_usb.rs', 'net_details.rs', 'net_more.rs', 'net_ts.rs', 'net_vpn.rs', 'pers/layout.rs', 'ai.rs']
+        for f in plain:
+            self.assertIn('crate::secs::Plain::new(0)', read(S / 'cats' / f), f)
+        for f in sorted((S / 'cats/gaming').glob('*.rs')) + [p for p in sorted((S / 'cats/apps').glob('*.rs')) if p.name not in ('kit.rs', 'defaults.rs', 'filetypes.rs', 'installed.rs')]:
+            src = read(f)
+            if 'page(v)' in src or 'page(out)' in src:
+                self.assertIn('crate::secs::SecVec::new()', src, f.name)
+        self.assertIn('crate::secs::SecVec::new()', read(S / 'cats/kde.rs'))
+        self.assertIn('crate::secs::parts_dyn(a, items', read(S / 'cats/sections.rs'))
+        self.assertIn('crate::secs::parts_dyn(a, items', read(S / 'quick.rs'))
+        for f in ['privacy.rs', 'pers/kwin.rs']:
+            self.assertIn('kit::Col::new(', read(S / 'cats' / f), f + ' builds on kit::Col, now a Plain')
+
+    def test_ai_page_is_only_wrapped(self):
+        ai = read(APPS / 'settings/src/cats/ai.rs')
+        self.assertEqual(ai.count('crate::secs::'), 2, 'one wrap of its column, one heading per titled card')
+
+
 class EditLayoutIsRightThere(unittest.TestCase):
     def test_helpers_are_additive(self):
         a = read(UI / 'src/arrange.rs')

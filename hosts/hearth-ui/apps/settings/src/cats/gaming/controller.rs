@@ -141,7 +141,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let c = &st.ctl;
     let avail = gb(c, "available");
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     opt(&mut v, say_view(&p, &st.say));
     if !st.editing.is_empty() {
         let back = if st.kind.is_empty() { M::Done } else { M::Edit(st.editing.clone(), String::new()) };

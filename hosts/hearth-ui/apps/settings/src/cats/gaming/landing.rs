@@ -187,7 +187,7 @@ fn gm_card<'a>(p: &Pal, st: &St, v: &'static str) -> E<'a, M> {
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let hearth_gm = gs(&st.gm, "choice") == "hearth";
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     // ---- the Game Mode card
     let hero = container(
         row![

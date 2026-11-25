@@ -26,6 +26,13 @@ thread_local! {
     static SEEN: RefCell<Vec<(&'static str, Vec<(String, String)>)>> = const { RefCell::new(Vec::new()) };
     /// The pages whose blocks were drawn in this frame (a page lays its blocks out once).
     static DRAWN: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+    /// The page being drawn (frame.rs), for the pages whose column doesn't know the app (Plain, SecVec: the kits').
+    static CURRENT: std::cell::Cell<&'static str> = const { std::cell::Cell::new("") };
+    /// While the frame draws one block of a Plain page on its own: that block's id, and the page's block ids.
+    static FILTER: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+    static IDS: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+    /// The Plain pages and how many lines each has (for the height of its blocks laid out).
+    static PLAIN: RefCell<Vec<(&'static str, usize)>> = const { RefCell::new(Vec::new()) };
     /// When the last message that wasn't secs' own came (what it did may change a page's sections).
     static LAST: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
 }
@@ -64,8 +71,9 @@ pub fn heading(title: &str) {
     HEAD.with(|h| *h.borrow_mut() = Some(title.to_string()));
 }
 
-/// A new frame is being drawn (frame.rs).
-pub fn begin() {
+/// A new frame is being drawn (frame.rs), of this page.
+pub fn begin(page: &'static str) {
+    CURRENT.with(|c| c.set(page));
     DRAWN.with(|d| d.borrow_mut().clear());
     HEAD.with(|h| h.borrow_mut().take());
 }
@@ -307,6 +315,282 @@ pub fn sync(a: &mut App) {
             }
         }
     }
+}
+
+// ------------------------------------------------------------------ the kits' pages (no App at hand)
+// The pages built by the shared kits (Bluetooth's and the network's sub-pages, Apps, Gaming, Home server, Hearth Link,
+// Updates, Privacy, KDE's, Personalization's KWin pages…) make their column without the app: a Plain (pushed to like
+// a Column), a SecVec (pushed to like a Vec: apps/kit.rs page) or hs/kit.rs Rows. Nothing customised: the same
+// column. Laid out or arranged, the frame (split) draws the page once per block with FILTER set, and each draw keeps
+// only that block's sections (the controller's places are counted once: nav mark / rewind).
+
+/// Which block each section goes in: its own when the page names it, else the one before's.
+fn groups_of(named: &[(String, String)], ids: &[&'static str]) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for (id, _) in named {
+        let own = ids.iter().copied().find(|b| *b == id.as_str() && !out.contains(b));
+        let g = match (own, out.last()) {
+            (Some(b), _) => b,
+            (None, Some(prev)) => *prev,
+            (None, None) => ids.first().copied().unwrap_or("top"),
+        };
+        out.push(g);
+    }
+    out
+}
+
+/// A kit page's column (see above).
+pub struct Plain<'a, M> {
+    spacing: f32,
+    width: Option<iced::Length>,
+    skip: usize,
+    secs: Vec<(String, Vec<Element<'a, M>>)>,
+}
+
+impl<'a, M: 'a> Plain<'a, M> {
+    pub fn new(skip: usize) -> Self {
+        HEAD.with(|h| h.borrow_mut().take());
+        Plain { spacing: 10.0, width: None, skip, secs: Vec::new() }
+    }
+    pub fn spacing(mut self, s: f32) -> Self {
+        self.spacing = s;
+        self
+    }
+    pub fn width(mut self, w: iced::Length) -> Self {
+        self.width = Some(w);
+        self
+    }
+    fn put(&mut self, e: Element<'a, M>, head: Option<String>) {
+        match head {
+            Some(t) => self.secs.push((t, vec![e])),
+            None => match self.secs.last_mut() {
+                Some(s) => s.1.push(e),
+                None => self.secs.push((String::new(), vec![e])),
+            },
+        }
+    }
+    pub fn push(mut self, e: impl Into<Element<'a, M>>) -> Self {
+        let e = e.into();
+        let h = HEAD.with(|h| h.borrow_mut().take());
+        self.put(e, h);
+        self
+    }
+    /// A part that starts a section of its own, named `title` (a column built apart, put in the page).
+    pub fn section(mut self, title: &str, e: impl Into<Element<'a, M>>) -> Self {
+        HEAD.with(|h| h.borrow_mut().take());
+        self.secs.push((title.to_string(), vec![e.into()]));
+        self
+    }
+    /// Another Plain's sections after this one's.
+    pub fn then(mut self, other: Plain<'a, M>) -> Self {
+        self.secs.extend(other.secs);
+        self
+    }
+    fn column(spacing: f32, width: Option<iced::Length>, els: Vec<Element<'a, M>>) -> Element<'a, M> {
+        let c = Column::with_children(els).spacing(spacing);
+        match width {
+            Some(w) => c.width(w).into(),
+            None => c.into(),
+        }
+    }
+}
+
+impl<'a, M: 'a> From<Plain<'a, M>> for Element<'a, M> {
+    fn from(s: Plain<'a, M>) -> Element<'a, M> {
+        let Plain { spacing, width, skip, secs } = s;
+        let page = CURRENT.with(|c| c.get());
+        let flat = move |secs: Vec<(String, Vec<Element<'a, M>>)>| -> Element<'a, M> {
+            let all: Vec<Element<'a, M>> = secs.into_iter().flat_map(|x| x.1).collect();
+            let skip = skip.min(all.len().saturating_sub(1));
+            Plain::column(spacing, width, all.into_iter().skip(skip).collect())
+        };
+        if skip > 0 || page.is_empty() {
+            return flat(secs);
+        }
+        let first = DRAWN.with(|v| {
+            let mut v = v.borrow_mut();
+            if v.contains(&page) {
+                false
+            } else {
+                v.push(page);
+                true
+            }
+        });
+        if !first {
+            return flat(secs);
+        }
+        let titles: Vec<String> = secs.iter().map(|x| x.0.clone()).collect();
+        let named = named(&titles);
+        let n: usize = secs.iter().map(|x| x.1.len()).sum();
+        SEEN.with(|v| {
+            let mut v = v.borrow_mut();
+            v.retain(|x| x.0 != page);
+            v.push((page, named.clone()));
+        });
+        PLAIN.with(|v| {
+            let mut v = v.borrow_mut();
+            v.retain(|x| x.0 != page);
+            v.push((page, n));
+        });
+        let Some(want) = FILTER.with(|f| f.get()) else { return flat(secs) };
+        let ids = IDS.with(|v| v.borrow().clone());
+        let gs = groups_of(&named, &ids);
+        let mine: Vec<Element<'a, M>> = secs.into_iter().zip(gs).filter(|(_, g)| *g == want).flat_map(|(x, _)| x.1).collect();
+        if mine.is_empty() {
+            return iced::widget::Space::new().into();
+        }
+        Plain::column(spacing, width, mine)
+    }
+}
+
+/// A kit page's lines pushed like a Vec (apps/kit.rs page, hs/kit.rs Rows): each heading starts a section.
+pub struct SecVec<'a, M> {
+    pub v: Vec<Element<'a, M>>,
+    marks: Vec<(usize, String)>,
+}
+
+impl<'a, M: 'a> SecVec<'a, M> {
+    pub fn new() -> Self {
+        HEAD.with(|h| h.borrow_mut().take());
+        SecVec { v: Vec::new(), marks: Vec::new() }
+    }
+    pub fn push(&mut self, e: Element<'a, M>) {
+        if let Some(t) = HEAD.with(|h| h.borrow_mut().take()) {
+            self.marks.push((self.v.len(), t));
+        }
+        self.v.push(e);
+    }
+    pub fn extend(&mut self, it: impl IntoIterator<Item = Element<'a, M>>) {
+        for e in it {
+            self.push(e);
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.v.is_empty()
+    }
+    pub fn len(&self) -> usize {
+        self.v.len()
+    }
+    /// As a Plain with this spacing (and width).
+    pub fn plain(self, spacing: f32, width: Option<iced::Length>) -> Plain<'a, M> {
+        let mut p = Plain { spacing, width, skip: 0, secs: Vec::new() };
+        let SecVec { v, marks } = self;
+        for (i, e) in v.into_iter().enumerate() {
+            let h = marks.iter().find(|m| m.0 == i).map(|m| m.1.clone());
+            p.put(e, h);
+        }
+        p
+    }
+}
+
+impl<'a, M: 'a> From<Vec<Element<'a, M>>> for SecVec<'a, M> {
+    fn from(v: Vec<Element<'a, M>>) -> Self {
+        HEAD.with(|h| h.borrow_mut().take());
+        SecVec { v, marks: Vec::new() }
+    }
+}
+
+/// Something lines are pushed to (kit helpers like apps/kit.rs opt take either).
+pub trait PushE<'a, M> {
+    fn push_e(&mut self, e: Element<'a, M>);
+}
+impl<'a, M: 'a> PushE<'a, M> for Vec<Element<'a, M>> {
+    fn push_e(&mut self, e: Element<'a, M>) {
+        self.push(e);
+    }
+}
+impl<'a, M: 'a> PushE<'a, M> for SecVec<'a, M> {
+    fn push_e(&mut self, e: Element<'a, M>) {
+        self.push(e);
+    }
+}
+
+/// The page drawn block by block (laid out or being arranged, for a kit page): None when it's drawn as it always is.
+pub fn split<'a>(a: &'a App) -> Option<Element<'a, crate::Msg>> {
+    let page = a.page;
+    let n = PLAIN.with(|v| v.borrow().iter().find(|x| x.0 == page).map(|x| x.1))?;
+    let def = a.describe.pages.iter().find(|p| p.id == page)?;
+    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some(page);
+    if !arranging && a.describe.laid(page).is_none() {
+        return None;
+    }
+    let ids: Vec<&'static str> = def.blocks.iter().map(|b| b.id).collect();
+    IDS.with(|v| *v.borrow_mut() = ids.clone());
+    let mark = crate::nav::mark();
+    let mut items: Vec<(&'static str, Element<'a, crate::Msg>)> = Vec::with_capacity(ids.len());
+    for id in ids.iter().copied() {
+        // each draw counts the page's controller places afresh (the same ones, in the same order)
+        crate::nav::rewind(mark);
+        DRAWN.with(|d| d.borrow_mut().retain(|x| *x != page));
+        FILTER.with(|f| f.set(Some(id)));
+        let el: Element<'a, crate::Msg> = crate::page_view(a).unwrap_or_else(|| iced::widget::Space::new().into());
+        let el: Element<'a, crate::Msg> = if arranging { iced::widget::container(el).padding(iced::Padding { top: 26.0, right: 0.0, bottom: 0.0, left: 0.0 }).into() } else { el };
+        items.push((id, hearth_ui::arrange::right_edit(el, crate::Msg::Describe(DMsg::Pick(id)))));
+    }
+    FILTER.with(|f| f.set(None));
+    let h = (n as f32 * 56.0).clamp(420.0, 4200.0);
+    Some(hearth_ui::arrange::parts_in(
+        &a.describe,
+        &a.sh.p,
+        page,
+        Some(h),
+        items,
+        move |ps| {
+            let mut c = Column::new().spacing(10.0);
+            for id in ids {
+                c = c.push(ps.take(id));
+            }
+            c.into()
+        },
+        crate::Msg::Describe,
+    ))
+}
+
+/// A page whose parts are cards of a grid (a section's front page, Quick's tiles), each named by its title: laid out
+/// by the page's own `original` (its grid) when nothing is customised, else each in its place.
+pub fn parts_dyn<'a, M: Clone + From<DMsg> + 'a>(a: &'a App, items: Vec<(String, Element<'a, M>)>, original: impl FnOnce(Vec<Element<'a, M>>) -> Element<'a, M> + 'a) -> Element<'a, M> {
+    let page = a.page;
+    let titles: Vec<String> = items.iter().map(|x| x.0.clone()).collect();
+    let named = named(&titles);
+    let els: Vec<Element<'a, M>> = items.into_iter().map(|x| x.1).collect();
+    let first = DRAWN.with(|v| {
+        let mut v = v.borrow_mut();
+        if v.contains(&page) {
+            false
+        } else {
+            v.push(page);
+            true
+        }
+    });
+    if !first {
+        return original(els);
+    }
+    SEEN.with(|v| {
+        let mut v = v.borrow_mut();
+        v.retain(|x| x.0 != page);
+        v.push((page, named.clone()));
+    });
+    let Some(def) = a.describe.pages.iter().find(|p| p.id == page) else { return original(els) };
+    let mut ids: Vec<&'static str> = Vec::with_capacity(named.len());
+    for (id, _) in &named {
+        match def.blocks.iter().find(|b| b.id == id.as_str()) {
+            Some(b) => ids.push(b.id),
+            None => return original(els),
+        }
+    }
+    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some(page);
+    let n = els.len();
+    let items: Vec<(&'static str, Element<'a, M>)> = ids
+        .iter()
+        .copied()
+        .zip(els)
+        .map(|(id, el)| {
+            let el: Element<'a, M> = if arranging { iced::widget::container(el).padding(iced::Padding { top: 26.0, right: 0.0, bottom: 0.0, left: 0.0 }).into() } else { el };
+            (id, hearth_ui::arrange::right_edit(el, M::from(DMsg::Pick(id))))
+        })
+        .collect();
+    let h = (n as f32 * 160.0).clamp(420.0, 4200.0);
+    hearth_ui::arrange::parts_in(&a.describe, &a.sh.p, page, Some(h), items, move |ps| original(ids.iter().map(|id| ps.take(id)).collect()), |dm| M::from(dm))
 }
 
 #[cfg(test)]

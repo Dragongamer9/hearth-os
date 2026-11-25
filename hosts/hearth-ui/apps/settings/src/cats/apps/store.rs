@@ -498,7 +498,7 @@ fn app_line<'a>(p: &hearth_ui::Pal, st: &St, a: &Value) -> E<'a, M> {
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     v.push(field(&p, "Search Flathub (Enter)", &st.query, M::Query).on_submit(M::Search).into());
     let n_up = ga(&st.ups, "flatpaks").len();
     let tab = |label: String, on: bool, m: M| -> E<'a, M> { button(&p, label, on, Some(m)) };

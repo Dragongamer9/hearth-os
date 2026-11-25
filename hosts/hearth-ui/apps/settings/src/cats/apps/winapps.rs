@@ -216,7 +216,7 @@ fn last_result(a: &Value) -> String {
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let s = &st.st;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     let builtin = gs(s, "builtin");
     let sub = if s.is_null() {
         "Checking…".to_string()

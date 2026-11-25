@@ -460,7 +460,8 @@ pub fn page(a: &App) -> E<'_> {
         top = top.push(btn(&p, format!("Back to {}", base_name(st)), ui::Kind::Normal, false, Some(Msg::Lay(LMsg::Use(st.base.clone())))));
     }
     top = top.push(btn(&p, "Save as my own…", ui::Kind::Primary, false, Some(Msg::Lay(LMsg::Naming(true)))));
-    let mut c = Column::new().spacing(14.0).push(top);
+    // its parts (secs.rs Plain): the top, the layouts to pick from, the screen with its bars and the cards beside it
+    let mut c = crate::secs::Plain::new(0).spacing(14.0).push(top);
     if st.naming {
         c = c.push(row![field(&p, "A name for this layout", &st.name, |s| Msg::Lay(LMsg::Name(s))).on_submit(Msg::Lay(LMsg::SaveAs)), btn(&p, "Save", ui::Kind::Primary, false, Some(Msg::Lay(LMsg::SaveAs))), btn(&p, "Cancel", ui::Kind::Normal, false, Some(Msg::Lay(LMsg::Naming(false))))].spacing(10.0));
     }
@@ -479,7 +480,7 @@ pub fn page(a: &App) -> E<'_> {
     }
     let empty = container(t1("+", 30.0, p.muted)).center(Length::Fixed(176.0)).height(Length::Fixed(102.0)).style(ui::boxed(Color::TRANSPARENT, p.r(10.0), Some((p.line, 1.0))));
     g = g.push(mouse_area(column![empty, t("Start from empty", sz(14.0), p.text)].spacing(8.0)).on_press(Msg::Lay(LMsg::Empty)).interaction(mouse::Interaction::Pointer));
-    c = c.push(g.wrap());
+    c = c.section("Layouts to start from", g.wrap());
 
     // the screen with its bars, and the right-hand column
     let title = row![
@@ -490,7 +491,7 @@ pub fn page(a: &App) -> E<'_> {
     .align_y(iced::Center);
     let left = column![title, screen(&p, st, d)].spacing(8.0).width(Length::Fill);
     let right = column![blocks_card(&p, st, d), panel_card(&p, st, d), whole_card(&p, st, d)].spacing(14.0).width(Length::Fixed(430.0));
-    c = c.push(row![left, right].spacing(18.0));
+    c = c.section("The screen and its bars", row![left, right].spacing(18.0));
     // Letting go anywhere on the page drops a dragged block where the lit line is.
     mouse_area(c).on_release(Msg::Lay(LMsg::Drop)).into()
 }

@@ -107,7 +107,7 @@ pub fn update(_sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let s = &st.st;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     v.push(r(G::Pad, "Switch to Steam Game Mode", "Steam's own gamepad screens, like SteamOS: where the device starts. Back here: Steam's Power › Switch to Desktop.").chev().on(M::Switch).view(&p));
     if gb(s, "lastFailure") {
         v.push(t(format!("Steam Game Mode didn't start last time, so Desktop Mode opened instead: {}. Switch to Steam Game Mode tries again.", gs(s, "lastFailure")), sz(12.0), p.danger).into());

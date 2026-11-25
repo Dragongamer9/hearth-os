@@ -119,6 +119,23 @@ pub fn control(kind: Kind, a: Vec<Act>, left: Vec<Act>, right: Vec<Act>, label: 
     slot
 }
 
+/// Where the frame's registration is (secs.rs split draws a page once per block: each draw counts its places afresh).
+#[derive(Debug, Clone, Copy)]
+pub struct Mark(usize, usize, usize);
+
+pub fn mark() -> Mark {
+    let n = nav();
+    Mark(n.items.len(), n.pending.len(), n.slots.len())
+}
+
+/// Back to `m`: what was registered after it goes (it's drawn again, the same).
+pub fn rewind(m: Mark) {
+    let mut n = nav();
+    n.items.truncate(m.0);
+    n.pending.truncate(m.1);
+    n.slots.truncate(m.2);
+}
+
 /// The widget id of a control's own box (its outline when no row took it).
 pub fn slot_id(slot: usize) -> Id {
     Id::from(format!("hs-slot-{slot}"))
