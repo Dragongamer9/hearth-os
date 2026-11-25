@@ -308,6 +308,14 @@ html.muted .player [data-show="loud"]{display:none}html.muted .player [data-show
 .hero2 .wrap.covers{display:block}
 @media (max-width:640px){header .dl{display:none}.player .next{display:none}.player input[type=range]{width:64px}}
 @media (max-width:420px){.brand .bt{display:none}}
+/* The top bar makes room by itself (script below): song name first, then the section links, then Next, then Download, then the volume slider
+   (Mute stays), and last the name beside the logo. */
+header.top.fit1 .player .meta{display:none}
+header.top.fit2 nav{display:none}
+header.top.fit3 .player .next{display:none}header.top.fit3 .player input[type=range]{width:64px}
+header.top.fit4 .dl{display:none}
+header.top.fit5 .player .vol{display:none}
+header.top.fit6 .brand .bt{display:none}
 .brand img{transform:scale(calc(1 + var(--beat,0) * .18))}
 .music-fx{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none}
 html.has-wall.playing section{background:color-mix(in srgb,var(--page) 58%,transparent)}
@@ -975,6 +983,36 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
   }
   function kick(){ if (!raf && !still.matches && !document.hidden) raf = requestAnimationFrame(frame); }
   document.addEventListener('visibilitychange', kick);
+})();
+</script>
+<script>
+/* Keep the whole top bar on screen in every look and theme: when its parts would overlap, run off the edge or cut the
+   name short, it puts away the least needed part first (classes fit1..fit6 above), and tries again on every resize. */
+(function(){
+  var top = document.querySelector('header.top'); if (!top) return;
+  var SEL = 'header.top .brand, header.top nav, header.top .player, header.top .looks, header.top .theme, header.top .dl';
+  function bad(){
+    var els = [].slice.call(document.querySelectorAll(SEL)).filter(function(e){ return e.offsetParent !== null; });
+    var r = els.map(function(e){ return e.getBoundingClientRect(); }), W = document.documentElement.clientWidth;
+    for (var i = 0; i < r.length; i++) {
+      if (r[i].right > W + 0.5 || r[i].left < -0.5) return true;
+      for (var j = i + 1; j < r.length; j++) if (r[i].width && r[j].width && r[i].right > r[j].left + 0.5 && r[j].right > r[i].left + 0.5) return true;
+    }
+    var b = top.querySelector('.brand .bt');
+    return !!(b && b.offsetParent !== null && b.scrollWidth > b.clientWidth + 1) || top.querySelector('.brand').scrollWidth > top.querySelector('.brand').clientWidth + 1;
+  }
+  var busy = false;
+  function fit(){
+    if (busy) return; busy = true;
+    top.classList.remove('fit1', 'fit2', 'fit3', 'fit4', 'fit5', 'fit6');
+    for (var n = 1; n <= 6 && bad(); n++) top.classList.add('fit' + n);
+    busy = false;
+  }
+  fit();
+  addEventListener('resize', fit);
+  addEventListener('load', fit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  new MutationObserver(fit).observe(document.documentElement, { attributes: true, attributeFilter: ['data-look', 'data-theme', 'data-bar', 'class'] });
 })();
 </script>
 </body>
