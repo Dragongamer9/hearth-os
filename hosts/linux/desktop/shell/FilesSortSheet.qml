@@ -136,7 +136,7 @@ Item {
                                             elide: Text.ElideMiddle
                                             readonly property string root: sheet.sd && sheet.sd.plan ? String(sheet.sd.plan.dir).replace(/\/+$/, "") + "/" : ""
                                             text: sheet.sd.app.base(modelData.from) + " → " + (modelData.to.indexOf(root) === 0 ? modelData.to.slice(root.length) : modelData.to)
-                                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12.5
+                                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
                                         }
                                     }
                                 }
