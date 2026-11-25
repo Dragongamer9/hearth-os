@@ -15,6 +15,9 @@ Flickable {
     property var footerLinks: []
     property string footerTitle: ""   // the heading over footerLinks (settings-pages.js MORE); "More in <category>" if ""
     property bool framed: false       // set by the frame on the page it loads
+    // Settings' id for this page (set by the frame): its groups are blocks (AppBlocksFlow.qml), kept as
+    // "mantel-page-<id>" in ~/.config/nimbus/apps/settings.json; nothing kept, the page exactly as it is
+    property string blockPage: ""
     function inPart(p) { return part === "" || part === p; }
     default property alias rows: col.data
     contentHeight: col.implicitHeight + (footer.visible ? footer.implicitHeight + 10 : 0) + 56
@@ -82,7 +85,14 @@ Flickable {
         y: page.framed ? 4 : 24
         spacing: 3
         Item { id: start; implicitHeight: 0 }
-        Text { visible: !page.framed; text: page.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 28; font.weight: Font.DemiBold; Layout.bottomMargin: 10 }
+        Text { id: pageTitleText; visible: !page.framed; text: page.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 28; font.weight: Font.DemiBold; Layout.bottomMargin: 10 }
+    }
+    // The page's groups as blocks: right-click a group to move it, hide it or edit the page (only once it's asked for)
+    Loader {
+        z: 5
+        active: page.framed && page.blockPage !== ""
+        source: "AppBlocksFlow.qml"
+        onLoaded: { item.page = page; item.skip = [start, pageTitleText]; item.blockPage = page.blockPage; item.pageTitle = page.title; item.col = col; }
     }
     // A category's other pages, after the landing page's own cards.
     ColumnLayout {

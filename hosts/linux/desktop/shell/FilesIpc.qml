@@ -14,6 +14,9 @@ Scope {
         // Forwarded to Hearth Files (the shell's Files, or the file chooser's).
         function view(v: string): void { ipc.get().setView(v); }
         function menu(): void { ipc.get().viaPad = false; ipc.get().openMenu(!ipc.get().current, -1, -1); }
+        // View (with LAYOUT: Edit layout, Describe it…) and the empty space's right-click menu (LAYOUT at its bottom)
+        function viewmenu(): void { ipc.get().viewMenu(-1, -1); }
+        function foldermenu(): void { ipc.get().viaPad = false; ipc.get().openMenu(true, -1, -1); }
         function search(q: string): void { ipc.get().runSearch(q); }
         function tab(p: string): void { ipc.get().open(""); ipc.get().newTab(p); }
         function select(name: string): void { const i = ipc.get().entries.findIndex(e => e.name === name); if (i >= 0) ipc.get().cur = i; }

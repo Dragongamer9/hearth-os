@@ -1836,11 +1836,43 @@ Scope {
 
     // ================================================ the actions menu (X)
     function sep() { return { sep: true }; }
+    // A heading in a menu (View › LAYOUT): a line with a name; moved over like a line.
+    function heading(t) { return { sep: true, head: t }; }
+    // Files made of blocks (AppBlocks.qml, in the window): its LAYOUT items, and the menus as Edit layout › Menus… left them
+    property var blocks: null
+    readonly property var blockPages: {
+        const own = [
+            { id: "tabs", title: "The tabs", x: 0, y: 0, w: 24, h: 2 },
+            { id: "address", title: "The address bar", x: 0, y: 2, w: 24, h: 2 },
+            { id: "toolbar", title: "The command bar", x: 0, y: 4, w: 24, h: 2 },
+            { id: "sidebar", title: "The navigation pane", x: 0, y: 6, w: 4, h: 18 },
+            { id: "folder", title: "The folder", x: 4, y: 6, w: 10, h: 16 },
+            { id: "status", title: "The status bar", x: 4, y: 22, w: 10, h: 2 },
+            { id: "split", title: "Split view", x: 14, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 },
+            { id: "preview", title: "The details pane", x: 19, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 }
+        ];
+        return [{ id: "window", title: "Hearth Files", blocks: own }, { id: "chooser", title: "The file chooser", blocks: own.filter(b => b.id !== "tabs" && b.id !== "split") }];
+    }
+    property string menuKind: ""               // which menu showMenu is showing (Edit layout › Menus… puts its items in order)
+    property var dryItems: null                // a menu's items, made without opening it (Edit layout › Menus…)
+    function dryMenu(fn) {
+        dryItems = [];
+        const keep = { overlay: overlay, title: menuTitle, items: menuItems, onFolder: menuOnFolder };
+        try { fn(); } catch (e) { console.warn("Files: " + e); }
+        const out = dryItems || [];
+        dryItems = null;
+        overlay = keep.overlay; menuOnFolder = keep.onFolder;
+        return out;
+    }
     function showMenu(title, items, x, y) {
-        // No separator first, last or twice in a row.
+        if (menuKind !== "" && blocks) items = blocks.arrange(menuKind, items);
+        menuKind = "";
+        if (dryItems !== null) { dryItems = items.filter(i => !i.sep); return; }
+        // No separator first, last or twice in a row (a heading takes the place of a line before it).
         const out = [];
         for (const it of items) {
-            if (it.sep && (!out.length || out[out.length - 1].sep)) continue;
+            if (it.head && out.length && out[out.length - 1].sep && !out[out.length - 1].head) out.pop();
+            if (it.sep && !it.head && (!out.length || out[out.length - 1].sep)) continue;
             out.push(it);
         }
         while (out.length && out[out.length - 1].sep) out.pop();
@@ -1946,6 +1978,7 @@ Scope {
             for (const it of extras.menuItems(e, n, t)) q.push(it);
             q.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" }, { id: "more", label: "Show more options", icon: "menu" });
             lastMenuX = x === undefined ? -1 : x; lastMenuY = y === undefined ? -1 : y;
+            menuKind = "context";
             return showMenu(n > 1 ? plural(n, "item") + " selected" : e.name, q, lastMenuX, lastMenuY);
         }
         menuFull = false;
@@ -2007,7 +2040,11 @@ Scope {
                                            { id: "splitview", label: splitView ? "Close split view" : "Split view", key: "F9", icon: "grid", group: "View" });
             if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
+        // Describe it and Edit layout are here too (at the bottom of empty space's menu), so a Files whose View button
+        // was moved away or hidden can always be changed back
+        if (!e && !picking) for (const it of layoutItems()) items.push(it);
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
+        menuKind = "context";
         showMenu(title, items.filter(i => !i.off), x === undefined ? -1 : x, y === undefined ? -1 : y);
     }
     // ================================================ This PC and Installed apps: their menus
@@ -2346,18 +2383,21 @@ Scope {
                                { id: "cset:copyPath=linux", label: ck(cCopyLinux) + "Copy path: Linux path" });
         return out;
     }
+    // LAYOUT (Edit layout, Describe it…, Back to the original once something's kept): AppBlocks.qml's
+    function layoutItems() { return blocks ? [heading("LAYOUT")].concat(blocks.menuItems()) : []; }
     function viewMenu(mx, my) {
+        menuKind = "view";
         const ck = on => on ? "✓  " : "     ";
         // Where Files opens, like File Explorer's "Open File Explorer to" (kept only when you pick one).
         const start = picking ? [] : [sep(), { id: "tp-start:home", label: ck(startPage === homePage) + "Open Files to: Home" },
                                       { id: "tp-start:thispc", label: ck(startPage === thisPcPage) + "Open Files to: This PC" }].concat(cViewItems());
-        if (onCView) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
+        if (onCView) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start, layoutItems()), mx, my);
         if (onThisPc) return showMenu("View", [
             { id: "tp-view:grid", label: ck(pcView === "grid") + "Tiles", key: "Ctrl+1" },
             { id: "tp-view:details", label: ck(pcView === "details") + "Details", key: "Ctrl+3" },
             sep(), { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }
-        ].concat(start), mx, my);
-        if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
+        ].concat(start, layoutItems()), mx, my);
+        if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start, layoutItems()), mx, my);
         showMenu("View", [
             { id: "view:xlarge", label: ck(view === "xlarge") + "Extra large icons", key: "Ctrl+7" },
             { id: "view:large", label: ck(view === "large") + "Large icons", key: "Ctrl+4" },
@@ -2371,12 +2411,13 @@ Scope {
             { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" },
             { id: "exts", label: ck(showExt) + "File name extensions" },
             { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" }
-        ].concat(start), mx, my);
+        ].concat(layoutItems(), start), mx, my);
     }
     function runMenu(id) {
         const it = menuItems.find(i => i.id === id);
         if (it && it.sep) return;
         overlay = "";
+        if (id.startsWith("ab-")) { if (blocks) blocks.runMenu(id); return; }
         const onFolder = menuOnFolder;
         menuOnFolder = false;
         const t = onFolder ? [] : targets();
@@ -3650,6 +3691,7 @@ Scope {
                 spacing: 0
                 // Tabs, along the top like a title bar (always there; + or Ctrl+T opens one, middle-click closes one).
                 Rectangle {
+                    id: tabsBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: app.picking ? 0 : 46
                     visible: !app.picking
@@ -3757,10 +3799,14 @@ Scope {
                 }
 
                 // Back, forward, up, the path (click the empty part, Ctrl+L or / to type one), search, view, sort, hidden.
-                RowLayout {
+                // (in an Item of its own, the same size it always had, so it can be a block: AppBlocks, "address")
+                Item {
+                    id: addressBar
                     Layout.fillWidth: true
-                    Layout.margins: 14
-                    Layout.bottomMargin: 8
+                    implicitHeight: addrRow.implicitHeight + 22
+                RowLayout {
+                    id: addrRow
+                    anchors { fill: parent; leftMargin: 14; rightMargin: 14; topMargin: 14; bottomMargin: 8 }
                     spacing: 6
                     Chip { icon: "back"; label: ""; flat: true; dim: !app.back.length; focused: app.toolLit("back"); onClicked: { keys.forceActiveFocus(); app.goBack(); } }
                     Chip { icon: "forward"; label: ""; flat: true; dim: !app.fwd.length; focused: app.toolLit("forward"); onClicked: { keys.forceActiveFocus(); app.goForward(); } }
@@ -3911,10 +3957,12 @@ Scope {
                         }
                     }
                 }
+                }
 
                 // ------------------------------------------------ the command bar: New, Cut, Copy, Paste, Rename, Copy path,
                 // Delete | Sort, View, Show | Undo, Redo, Details. Up from the files reaches it with the controller.
                 Rectangle {
+                    id: cmdBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: 52
                     color: Theme.bg
@@ -4165,6 +4213,7 @@ Scope {
 
                     // ------------------------------------------------ folder
                     ColumnLayout {
+                        id: folderCol
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         spacing: 0
@@ -4827,6 +4876,7 @@ Scope {
                         // ------------------------------------------------ bottom bar: status, search, or progress
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
                         Rectangle {
+                            id: statusBar
                             Layout.fillWidth: true
                             Layout.preferredHeight: app.job ? 66 : 44
                             color: Theme.panel
@@ -5214,6 +5264,25 @@ Scope {
                 if (last >= 0) app.cur = last;
             }
 
+            // ------------------------------------------------ Files made of blocks (AppBlocks.qml): right-click a part, or
+            // View › Edit layout, to move, size, hide and restyle its parts; Describe it beside it. Nothing kept: Files
+            // exactly as it is. Under the menus and dialogs, so they stay on top.
+            AppBlocks {
+                id: blocks
+                anchors.fill: parent
+                app: "files"
+                appName: "Hearth Files"
+                page: app.picking ? "chooser" : "window"
+                background: Theme.bg
+                focusBack: keys
+                pages: app.blockPages
+                parts: ({ tabs: tabsBar, address: addressBar, toolbar: cmdBar, sidebar: navPane, folder: folderCol, status: statusBar, split: splitPane, preview: detailsBox })
+                menus: [{ id: "view", title: "View", items: () => app.dryMenu(() => app.viewMenu(-1, -1)) },
+                        { id: "context", title: "Right-click (empty space)", items: () => app.dryMenu(() => app.openMenu(true, -1, -1)) }]
+                Component.onCompleted: app.blocks = blocks
+                Component.onDestruction: if (app.blocks === blocks) app.blocks = null
+            }
+
             // ------------------------------------------------ overlays: actions menu and dialogs
             Rectangle {
                 anchors.fill: parent
@@ -5308,12 +5377,18 @@ Scope {
                             required property int index
                             readonly property bool lit: app.menuIndex === index && !modelData.sep
                             width: ListView.view.width
-                            height: modelData.sep ? 11 : modelData.sub ? 52 : 40
+                            height: modelData.head ? 30 : modelData.sep ? 11 : modelData.sub ? 52 : 40
                             Rectangle {
-                                visible: !!mi.modelData.sep
+                                visible: !!mi.modelData.sep && !mi.modelData.head
                                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 10; rightMargin: 10 }
                                 height: 1
                                 color: Theme.line
+                            }
+                            Text {
+                                visible: !!mi.modelData.head
+                                anchors { left: parent.left; leftMargin: 14; bottom: parent.bottom; bottomMargin: 4 }
+                                text: mi.modelData.head || ""
+                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.2
                             }
                             Rectangle {
                                 visible: !mi.modelData.sep

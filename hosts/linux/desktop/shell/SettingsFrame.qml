@@ -172,6 +172,8 @@ Item {
                         spacing: 10
                         Image { source: Qt.resolvedUrl("images/hearth-logo.png"); Layout.preferredWidth: 28; Layout.preferredHeight: 28; fillMode: Image.PreserveAspectFit; smooth: true }
                         Text { text: "Settings"; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
+                        Item { Layout.fillWidth: true }
+                        EditLayoutButton { blocks: frameBlocks }
                     }
                     // Your account (opens Accounts)
                     Rectangle {
@@ -337,6 +339,8 @@ Item {
                     onStatusChanged: {
                         if (status === Loader.Error) { failed = true; console.warn("Hearth Settings: couldn't load", source); }
                         if (status === Loader.Ready && frame.pendingFocus !== "" && !nav.activeFocus) enterLater.restart();
+                        // its groups as blocks (SetPage.qml, AppBlocksFlow.qml)
+                        if (status === Loader.Ready && item && item.blockPage !== undefined) item.blockPage = frame.entry.id;
                     }
                 }
                 // A page that couldn't load: say so (the rest of Settings keeps working).
@@ -358,6 +362,7 @@ Item {
 
         // ---------------------------------------------------------------- what the buttons do
         Rectangle {
+            id: hints
             Layout.fillWidth: true
             implicitHeight: 44
             color: SetStyle.nav
@@ -374,6 +379,23 @@ Item {
                 Hint { keys: ["☰"]; square: true; label: "Close" }
             }
         }
+    }
+
+    // ---------------------------------------------------------------- Settings made of blocks (AppBlocks.qml): the list,
+    // the page and the buttons' strip; each page's groups are its own (AppBlocksFlow.qml). Nothing kept: as it is.
+    AppBlocks {
+        id: frameBlocks
+        anchors.fill: parent
+        app: "settings"
+        appName: "Hearth Settings"
+        page: "window"
+        background: Theme.bg
+        focusBack: nav
+        pages: [{ id: "window", title: "Hearth Settings", blocks: [
+            { id: "side", title: "The list of categories", x: 0, y: 0, w: 5, h: 23, bg: SetStyle.nav },
+            { id: "page", title: "The page", x: 5, y: 0, w: 19, h: 23 },
+            { id: "hints", title: "What the buttons do", x: 0, y: 23, w: 24, h: 1, bg: SetStyle.nav }] }]
+        parts: ({ side: side, page: main, hints: hints })
     }
 
     // ---------------------------------------------------------------- search results, over the page

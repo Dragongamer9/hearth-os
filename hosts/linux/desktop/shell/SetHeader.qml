@@ -4,6 +4,8 @@ import QtQuick
 import QtQuick.Layouts
 
 Text {
+    // (a page's groups start here: AppBlocksFlow.qml makes each group a block)
+    readonly property bool isSetHeader: true
     Layout.fillWidth: true
     Layout.topMargin: 19
     Layout.bottomMargin: 6

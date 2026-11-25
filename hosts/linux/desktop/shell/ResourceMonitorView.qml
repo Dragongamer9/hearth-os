@@ -589,10 +589,14 @@ FocusScope {
         spacing: 0
         // ---- the title row (1.12, mockups resmon-1 … -6): Live · every second, Pause and Open Task Manager
         Rectangle {
+            id: rmTitle
             Layout.fillWidth: true
             Layout.preferredHeight: 34
             color: v.c.bar
+            // Edit layout (AppBlocks.qml), always here
+            EditLayoutButton { anchors { left: rmTitleRow.right; leftMargin: 14; verticalCenter: parent.verticalCenter } height: 26; blocks: rmBlocks }
             Row {
+                id: rmTitleRow
                 anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
                 spacing: 14
                 Text { text: "🔥 Resource Monitor"; color: v.c.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
@@ -614,6 +618,7 @@ FocusScope {
         }
         // ---- the tabs
         Rectangle {
+            id: rmTabs
             Layout.fillWidth: true
             Layout.preferredHeight: 42
             color: v.c.bar
@@ -640,6 +645,7 @@ FocusScope {
 
         // ---- the page
         Item {
+            id: rmPage
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -1132,6 +1138,7 @@ FocusScope {
 
         // ---- the hint bar
         Rectangle {
+            id: rmHint
             Layout.fillWidth: true
             Layout.preferredHeight: 28
             color: v.c.bar
@@ -1147,6 +1154,25 @@ FocusScope {
                 color: v.c.muted; font.family: Theme.font; font.pixelSize: 12
             }
         }
+    }
+
+
+    // ---- made of blocks (AppBlocks.qml): right-click a part, or the Edit layout button in the title bar. Nothing
+    // kept: as it is.
+    AppBlocks {
+        id: rmBlocks
+        anchors.fill: parent
+        app: "resmon"
+        appName: "Resource Monitor"
+        page: "window"
+        background: v.c.bg
+        focusBack: v
+        pages: [{ id: "window", title: "Resource Monitor", blocks: [
+            { id: "title", title: "The title row", x: 0, y: 0, w: 24, h: 1 },
+            { id: "tabs", title: "The tabs", x: 0, y: 1, w: 24, h: 2 },
+            { id: "page", title: "The page", x: 0, y: 3, w: 24, h: 20 },
+            { id: "hints", title: "The hint bar", x: 0, y: 23, w: 24, h: 1 }] }]
+        parts: ({ title: rmTitle, tabs: rmTabs, page: rmPage, hints: rmHint })
     }
 
     // ---- the actions menu

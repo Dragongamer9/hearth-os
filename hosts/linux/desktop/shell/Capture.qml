@@ -488,7 +488,10 @@ Scope {
                     CaptureBtn { anchors.verticalCenter: parent.verticalCenter; text: "Edit"; visible: cap.shot !== ""; selected: cap.page === "edit"; onActivated: cap.page = "edit" }
                     CaptureBtn { id: tabRecent; anchors.verticalCenter: parent.verticalCenter; text: "Recent" + (cap.recent.length ? "  " + cap.recent.length : ""); selected: cap.page === "recent"; onActivated: { cap.page = "recent"; cap.loadRecent(); } }
                 }
+                // Edit layout (AppBlocks.qml), always here
+                EditLayoutButton { id: capEdit; anchors { right: capHint.left; rightMargin: 14; verticalCenter: parent.verticalCenter } blocks: capBlocks }
                 Text {
+                    id: capHint
                     anchors { right: parent.right; rightMargin: 22; verticalCenter: parent.verticalCenter }
                     text: cap.page === "edit" ? "Ctrl+Z undo  ·  Ctrl+C copy  ·  Ctrl+S save" : "A choose  ·  B close"
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
@@ -496,7 +499,8 @@ Scope {
             }
 
             Item {
-                anchors { left: parent.left; right: parent.right; top: head.bottom; bottom: parent.bottom }
+                // (64: the header's height; not anchored to it, so the header can be a block of its own)
+                anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 64; bottom: parent.bottom }
                 Keys.onPressed: e => { if (e.key === Qt.Key_Escape && cap.page !== "edit") { cap.close(); e.accepted = true; } }
 
                 // ---------------- Take
@@ -509,6 +513,7 @@ Scope {
                         anchors { fill: parent; margins: 26 }
                         spacing: 26
                         ColumnLayout {
+                            id: takeOptions
                             Layout.fillHeight: true
                             Layout.preferredWidth: 560
                             Layout.maximumWidth: 560
@@ -607,6 +612,7 @@ Scope {
                         }
                         // Recent, at a glance.
                         Rectangle {
+                            id: takeRecent
                             Layout.fillWidth: true; Layout.fillHeight: true
                             radius: Math.max(8, Theme.r(16)); color: Theme.panel; border.color: Theme.line
                             ColumnLayout {
@@ -644,6 +650,7 @@ Scope {
 
                 // ---------------- Edit
                 Loader {
+                    id: editorLoader
                     anchors.fill: parent
                     active: cap.shot !== ""
                     visible: cap.page === "edit"
@@ -655,6 +662,7 @@ Scope {
 
                 // ---------------- Recent
                 Item {
+                    id: recentPage
                     anchors.fill: parent
                     visible: cap.page === "recent"
                     Text {
@@ -696,6 +704,32 @@ Scope {
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
                     }
                 }
+            }
+
+            // Capture made of blocks (AppBlocks.qml): the header and each page's parts (Take: what to capture and
+            // Recent at a glance; Edit: the editor; Recent: the pictures). Nothing kept: as it is.
+            AppBlocks {
+                id: capBlocks
+                anchors.fill: parent
+                app: "capture"
+                appName: "Capture"
+                page: cap.page === "edit" || cap.page === "recent" ? cap.page : "take"
+                background: Theme.bg
+                focusBack: cap.page === "take" ? takeBtn : null
+                pages: [
+                    { id: "take", title: "Take", blocks: [
+                        { id: "head", title: "The header", x: 0, y: 0, w: 24, h: 2 },
+                        { id: "options", title: "What to capture", x: 0, y: 2, w: 12, h: 22 },
+                        { id: "recent", title: "Recent, at a glance", x: 12, y: 2, w: 12, h: 22 }] },
+                    { id: "edit", title: "Edit", blocks: [
+                        { id: "head", title: "The header", x: 0, y: 0, w: 24, h: 2 },
+                        { id: "editor", title: "The editor", x: 0, y: 2, w: 24, h: 22 }] },
+                    { id: "recent", title: "Recent", blocks: [
+                        { id: "head", title: "The header", x: 0, y: 0, w: 24, h: 2 },
+                        { id: "list", title: "The pictures", x: 0, y: 2, w: 24, h: 22 }] }]
+                parts: cap.page === "edit" ? { head: head, editor: editorLoader }
+                     : cap.page === "recent" ? { head: head, list: recentPage }
+                     : { head: head, options: takeOptions, recent: takeRecent }
             }
         }
     }

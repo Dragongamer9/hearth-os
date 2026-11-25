@@ -947,8 +947,11 @@ FocusScope {
 
         // ------------------------------------------------ title bar: the Hearth mark, the name, search
         Item {
+            id: titleBar
             Layout.fillWidth: true
             Layout.preferredHeight: 46
+            // Edit layout (AppBlocks.qml), always here
+            EditLayoutButton { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter } blocks: tmBlocks }
             RowLayout {
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 14 }
                 spacing: 10
@@ -1071,6 +1074,7 @@ FocusScope {
 
             // ------------------------------------------------ the page, on a softer layer with a rounded corner
             Item {
+                id: pageArea
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -1095,6 +1099,36 @@ FocusScope {
             }
         }
     }
+    // ================================================ Task Manager made of blocks (AppBlocks.qml): the title bar, the rail
+    // of pages and, for each page, its title and buttons and its panels (Performance: the list and the device). Each
+    // page keeps its own layout. Nothing kept: as it is. Under the menus and sheets (they come later in this file).
+    readonly property var tmBlocksFor: ["processes", "performance", "history", "startup", "details", "services", "tasks", "users", "settings"]
+    readonly property var tmPageTitles: ({ processes: "Processes", performance: "Performance", history: "App history", startup: "Startup apps",
+                                           details: "Details", services: "Services", tasks: "Scheduled tasks", users: "Users", settings: "Settings" })
+    AppBlocks {
+        id: tmBlocks
+        anchors.fill: parent
+        app: "task-manager"
+        appName: "Task Manager"
+        page: v.tmBlocksFor.indexOf(tm.page) >= 0 ? tm.page : "processes"
+        background: Theme.panel
+        focusBack: rail
+        pages: v.tmBlocksFor.map(id => ({ id: id, title: v.tmPageTitles[id], blocks: [
+            { id: "titlebar", title: "The title bar", x: 0, y: 0, w: 24, h: 1 },
+            { id: "rail", title: "The pages down the side", x: 0, y: 1, w: 5, h: 23 },
+            { id: "head", title: "The page's title and buttons", x: 5, y: 1, w: 19, h: 2, bg: Theme.bg2 }
+        ].concat(id === "performance" ? [
+            { id: "tiles", title: "The list of devices", x: 5, y: 3, w: 6, h: 21, bg: Theme.bg2 },
+            { id: "detail", title: "The device", x: 11, y: 3, w: 13, h: 21, bg: Theme.bg2 }
+        ] : [{ id: "body", title: v.tmPageTitles[id], x: 5, y: 3, w: 19, h: 21, bg: Theme.bg2 }]) }))
+        parts: {
+            const o = { titlebar: titleBar, rail: rail };
+            const it = pageLoader.item;
+            if (it && it.headItem) { o.head = it.headItem; Object.assign(o, it.blockParts || { body: it.bodyItem }); }
+            return o;
+        }
+    }
+
     // For checks (TaskManager.qml menu / search): the first row's menu on the page shown, or a search.
     function ipcMenu() {
         focusPage();
@@ -1250,6 +1284,7 @@ FocusScope {
             function pick(i) { if (devices[i]) { tm.perfDevice = devices[i].key; tm.setPref("perfDevice", devices[i].key); } }
             Component.onCompleted: { const p = tm.pref("perfDevice", ""); if (p !== "" && tm.perfDevice === "cpu") tm.perfDevice = p; }
             function focusFirst() { tiles.forceActiveFocus(); }
+            blockParts: ({ tiles: tiles, detail: detail })
 
             RowLayout {
                 Layout.fillWidth: true
@@ -2160,6 +2195,10 @@ FocusScope {
         property int barIndex: 0
         default property alias content: body.data
         signal button(string which, real x, real y)
+        // its blocks (AppBlocks.qml): the title and buttons, and the page (or its own panels: Performance)
+        readonly property Item headItem: headBox
+        readonly property Item bodyItem: body
+        property var blockParts: null
         signal leave()          // Left / B out of the page: back to the rail
         signal upOut()          // Up from the command bar: the search box
         function toBar() {
@@ -2178,10 +2217,13 @@ FocusScope {
         ColumnLayout {
             anchors.fill: parent
             spacing: 0
-            RowLayout {
+            // (in an Item of its own, the same size, so it can be a block)
+            Item {
+                id: headBox
                 Layout.fillWidth: true
                 Layout.preferredHeight: 56
-                Layout.leftMargin: 20; Layout.rightMargin: 14
+            RowLayout {
+                anchors { fill: parent; leftMargin: 20; rightMargin: 14 }
                 spacing: 18
                 Text { text: pfr.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
                 Row {
@@ -2259,6 +2301,7 @@ FocusScope {
                         }
                     }
                 }
+            }
             }
             ColumnLayout {
                 id: body

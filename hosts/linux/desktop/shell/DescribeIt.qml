@@ -7,6 +7,9 @@
 // what Hearth can't do yet shows Why, the closest it can make (Add this instead) and exactly what an idea sends, sent
 // only with Send this idea to Hearth. Opened from the bar's right-click menu, Settings › Desktop layout, or
 // `quickshell ipc -p <shell> call describe open <part>`. Nothing runs by itself: the AI is asked only on Make it.
+// For one of Mantel's apps (Files, Settings, Task Manager, Capture…; AppBlocks.qml opens it with openApp): "Editing
+// <app>", your words go to `hearth-layout describe-app <app>` with the app's blocks (HEARTH_APP_BLOCKS), what it would
+// change shows as its chips, and Keep this keeps it with `hearth-layout app-keep` (Undo: app-undo); the app follows.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -28,6 +31,11 @@ PanelWindow {
     property bool tellMe: true
     property string sent: ""
     property var now: null              // today's layout (for NOW)
+    // one of Mantel's apps (AppBlocks.qml): its id, its name and its blocks (hearth-layout's HEARTH_APP_BLOCKS)
+    property bool appMode: false
+    property string appId: ""
+    property string appName: ""
+    property string appCatalog: ""
     visible: shown
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
@@ -41,13 +49,21 @@ PanelWindow {
     readonly property bool isLayout: !!result && result.kind === "layout"
     readonly property bool isFeature: !!result && result.kind === "feature"
     readonly property bool isNeeds: !!result && result.kind === "needs"
+    readonly property bool isApp: !!result && result.kind === "app"
 
     function open(p) {
+        appMode = false;
         part = p || "bar"; result = null; error = ""; kept = false; sent = ""; sharing = false;
         shown = true; input.forceActiveFocus();
         run(["hearth-layout", "now"], o => { try { dz.now = JSON.parse(o); } catch (e) { dz.now = null; } });
     }
     function close() { shown = false; drawing = false; }
+    function openApp(a, n, c) {
+        appMode = true; appId = a; appName = n || a; appCatalog = c || "";
+        part = "app:" + a; result = null; error = ""; kept = false; sent = ""; sharing = false;
+        shown = true; input.forceActiveFocus();
+    }
+    readonly property var appEnv: ({ HEARTH_DESCRIBE_APP: appName, HEARTH_APP_BLOCKS: appCatalog })
 
     Component {
         id: runComp
@@ -74,6 +90,13 @@ PanelWindow {
     function make() {
         if (busy || (text.trim() === "" && sketch === "")) return;
         busy = true; error = ""; result = null; kept = false; sent = ""; sharing = false;
+        if (appMode) return run(["hearth-layout", "describe-app", appId, text, sketch], (out, err, code) => {
+            dz.busy = false;
+            let r = null;
+            try { r = JSON.parse(out.trim().split("\n").pop() || "{}"); } catch (e) { r = null; }
+            if (!r || r.ok !== true) { dz.error = (r && r.error) || err.trim() || "Your AI didn't answer."; return; }
+            dz.result = r;
+        }, appEnv);
         run(["hearth-layout", "describe", part, text, sketch], (out, err, code) => {
             dz.busy = false;
             let r = null;
@@ -83,11 +106,14 @@ PanelWindow {
         }, { HEARTH_DESCRIBE_APP: "Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "") });
     }
     function keep() {
+        if (isApp) return run(["hearth-layout", "app-keep", appId, JSON.stringify({ layout: result.layout || {}, features: result.features || [] })],
+                              (o, e, c) => { if (c === 0) { dz.kept = true; AppBlocksHub.changed(dz.appId); } else dz.error = (e || o).trim(); }, appEnv);
         if (isLayout) run(["hearth-layout", "apply-json", JSON.stringify(result.layout)], (o, e, c) => { if (c === 0) dz.kept = true; else dz.error = (e || o).trim(); });
         else if (isFeature) run(["hearth-layout", "keep-feature", JSON.stringify(result.feature)], (o, e, c) => { if (c === 0) { dz.kept = true; Features.reload(); } else dz.error = (e || o).trim(); });
     }
     function undo() {
         if (!kept) { result = null; return; }
+        if (isApp) return run(["hearth-layout", "app-undo", appId], () => { dz.kept = false; dz.result = null; AppBlocksHub.changed(dz.appId); });
         if (isLayout) run(["hearth-layout", "undo"], () => { dz.kept = false; dz.result = null; });
         else if (isFeature) run(["hearth-layout", "feature-on", result.feature.id, "false"], () => { dz.kept = false; dz.result = null; Features.reload(); });
     }
@@ -119,16 +145,17 @@ PanelWindow {
             anchors { fill: parent; leftMargin: 24; rightMargin: 24 }
             spacing: 12
             Icon { name: "sun"; size: 20; color: Theme.accent }
-            Text { text: "Editing your desktop"; color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
-            Text { text: "· " + dz.partName(dz.part) + (dz.isFeature || dz.isNeeds ? " · a new feature" : ""); color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
+            Text { text: dz.appMode ? "Editing " + dz.appName : "Editing your desktop"; color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold }
+            Text { visible: !dz.appMode; text: "· " + dz.partName(dz.part) + (dz.isFeature || dz.isNeeds ? " · a new feature" : ""); color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
             Item { Layout.fillWidth: true }
-            Text { visible: !dz.result; text: "Click any part of the desktop to change it: a bar, the dock, the clock's calendar, Quick Access, the app menu"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+            Text { visible: !dz.result && !dz.appMode; text: "Click any part of the desktop to change it: a bar, the dock, the clock's calendar, Quick Access, the app menu"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+            Text { visible: !dz.result && dz.appMode; text: "Say how you'd like it. To move parts by hand: right-click any part › Edit layout"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
             Btn { label: "Done"; onClicked: dz.close() }
         }
     }
     // the parts, to pick one
     Row {
-        visible: !dz.result && !dz.busy
+        visible: !dz.result && !dz.busy && !dz.appMode
         anchors { top: strip.bottom; topMargin: 30; horizontalCenter: parent.horizontalCenter }
         spacing: 10
         Repeater {
@@ -176,6 +203,37 @@ PanelWindow {
                 Btn { label: "Try again"; onClicked: dz.make() }
                 Btn { label: "Undo"; onClicked: dz.undo() } }
         }
+    }
+
+    // ---- one of Mantel's apps: what it would change (the chips) and what your AI said, Keep this / Try again / Undo
+    Column {
+        visible: dz.isApp
+        anchors { top: strip.bottom; topMargin: 56; horizontalCenter: parent.horizontalCenter }
+        width: Math.min(900, dz.width - 200)
+        spacing: 14
+        Cap { text: "WHAT IT CHANGES IN " + dz.appName.toUpperCase() + " · NOTHING IS KEPT YET"; color: Theme.accent }
+        Flow {
+            width: parent.width; spacing: 8
+            Repeater {
+                model: dz.isApp ? (dz.result.chips || []) : []
+                Rectangle { required property var modelData; width: chipT.implicitWidth + 24; height: 32; radius: 16; color: "transparent"; border.color: Theme.accent
+                    Text { id: chipT; anchors.centerIn: parent; text: parent.modelData.text || ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 13 } }
+            }
+        }
+        Rectangle {
+            width: parent.width; height: appChg.implicitHeight + 36; radius: Theme.r(12); color: Theme.panel; border.color: Theme.line
+            visible: dz.isApp && (dz.result.changes || []).length > 0
+            Column { id: appChg; x: 20; y: 18; width: parent.width - 40; spacing: 6
+                Repeater { model: dz.isApp ? (dz.result.changes || []) : []
+                    Text { required property string modelData; width: appChg.width; text: "• " + modelData; wrapMode: Text.WordWrap; color: Theme.text; font.family: Theme.font; font.pixelSize: 14 } } }
+        }
+        MadeBy {}
+        Text { width: parent.width; wrapMode: Text.WordWrap; text: "It only moves, sizes, hides and restyles " + dz.appName + "'s own parts and menus, so nothing it does changes. Undo is always here, and right-click › Back to the original in the app."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+        Row { spacing: 10
+            Btn { label: dz.kept ? "Kept" : "Keep this"; primary: !dz.kept; onClicked: if (!dz.kept) dz.keep() }
+            Btn { label: "Try again"; onClicked: dz.make() }
+            Btn { label: "Undo"; onClicked: dz.undo() }
+            Btn { label: "Done"; onClicked: dz.close() } }
     }
 
     // ---- a new feature (board 8): your bar as it'll be, the new feature lit in its place (nothing kept yet)
@@ -358,7 +416,7 @@ PanelWindow {
                 wrapMode: TextInput.Wrap
                 onAccepted: dz.make()
                 Keys.onEscapePressed: dz.close()
-                Text { visible: input.text === ""; text: "Say how you'd like " + dz.partName(dz.part).toLowerCase() + "…"; color: Theme.muted; font: input.font }
+                Text { visible: input.text === ""; text: "Say how you'd like " + (dz.appMode ? dz.appName : dz.partName(dz.part).toLowerCase()) + "…"; color: Theme.muted; font: input.font }
             }
         }
         RowLayout {
@@ -367,7 +425,8 @@ PanelWindow {
             Btn { icon: "image"; label: "Add a sketch or a picture"; onClicked: pick.running = true }
             Btn { label: "Draw it here"; onClicked: dz.drawing = true }
             Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
-                text: "Try: \"make the calendar show the whole month and my next three events\" · \"a dock on the left, icons only\"" }
+                text: dz.appMode ? "Try: \"the preview on the left, a bigger folder and no status bar\" · \"put the toolbar at the bottom\""
+                                 : "Try: \"make the calendar show the whole month and my next three events\" · \"a dock on the left, icons only\"" }
             Btn { primary: true; label: dz.busy ? "Making it…" : "Make it"; onClicked: dz.make() }
         }
     }
