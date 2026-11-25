@@ -11,6 +11,8 @@
   hearth-files cdrive                   Hearth (C:) with Windows folder names: where its folders really are (Users,
                                         Hearth's own apps, Steam, the Flatpak folders, the real top-level folders).
                                         Reads only; the view itself is drive-paths.js (nothing on disk moves)
+  hearth-files sort-state|sort-plan DIR · sort-ai|sort-apply PLAN · sort-undo|sort-redo MOVES
+                                        Sort my Downloads (hearth_files_sortdl.py): only moves, one Undo puts it back
   hearth-files mkdir PATH               a new folder
   hearth-files rename PATH NEWNAME      rename in place
   hearth-files trash PATH...            move to the Trash (gio trash, or the freedesktop Trash spec)
@@ -4439,6 +4441,12 @@ def cmd(argv):
         WATCH_ONCE = True
         watch(rest[1])
         return
+    if c.startswith('sort-'):
+        # Sort my Downloads (hearth_files_sortdl.py; the Rust Files' sortdl.rs rules)
+        import hearth_files_sortdl as sd
+        if c in sd.COMMANDS:
+            print(json.dumps(sd.run(sys.modules[__name__], c, rest)), flush=True)
+            return
     if c in EXTRA_COMMANDS:
         import hearth_files_extras as hx
         print(json.dumps(hx.run(sys.modules[__name__], c, rest)), flush=True)

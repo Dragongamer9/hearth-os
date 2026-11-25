@@ -61,6 +61,9 @@ Scope {
     // 1.14's extras (Dolphin's): tags, git badges, Act as administrator, disc images, phones and cameras, apps'
     // right-click actions, sharing a folder (FilesExtras.qml, hearth_files_extras.py).
     FilesExtras { id: extras; app: filesApp }
+    // Sort my Downloads (FilesSortDownloads.qml, hearth_files_sortdl.py; its sheet and note: FilesSortSheet.qml)
+    FilesSortDownloads { id: sortDl; app: filesApp }
+    readonly property var sdl: sortDl
     readonly property var fx: extras
     function propsAt(paths, tab) { properties(paths); if (tab) propsWin.tab = tab; }
 
@@ -1305,6 +1308,7 @@ Scope {
         if (!picking) for (const c of ["new", "cut", "copy", "paste", "rename", "copypath", "delete"]) t.push({ t: c });
         t.push({ t: "sort" }, { t: "view" }, { t: "hidden" });
         if (!picking) for (const c of ["bc-update-all", "bc-unlock", "bc-lock", "bc-customize"]) if (briefcase.toolShown(c)) t.push({ t: c });
+        if (!picking && sortDl.here) t.push({ t: "sortdl" });
         if (!picking) t.push({ t: "undo" }, { t: "redo" }, { t: "details" });
         return t;
     }
@@ -1656,6 +1660,7 @@ Scope {
         if (t.startsWith("bc-")) return briefcase.command(t, x, y);
         switch (t) {
         case "refresh": reload(); refreshPlaces(); break;
+        case "sortdl": sortDl.openSheet(); break;
         case "new":
             if (!writable) return say("You can't make anything here");
             menuOnFolder = true;
@@ -1710,7 +1715,7 @@ Scope {
     function opName(op) {
         const n = op.items || op.paths || [op.path || op.to];
         const what = n.length === 1 ? "“" + base(n[0]) + "”" : n.length + " items";
-        return ({ rename: "Rename", create: "New " + what, trash: "Trash " + what, copy: "Copy " + what, move: "Move " + what, link: "Link " + what })[op.kind] || "";
+        return ({ rename: "Rename", create: "New " + what, trash: "Trash " + what, copy: "Copy " + what, move: "Move " + what, link: "Link " + what, sortdl: "Sort my Downloads" })[op.kind] || "";
     }
     function undo() { runUndo(true); }
     function redo() { runUndo(false); }
@@ -1736,6 +1741,10 @@ Scope {
         } else if (k === "create" || k === "copy" || k === "link") {
             const list = op.items || [op.path];
             call([isUndo ? "trash" : "untrash"].concat(list), (r, err) => err ? failed(err) : done());
+        } else if (k === "sortdl") {
+            // Sort my Downloads: everything back where it was (only where nothing of that name is now)
+            call([isUndo ? "sort-undo" : "sort-redo", JSON.stringify(op.moves)], (r, err) => err ? failed(err)
+                : done(null, "Sort my Downloads (" + plural(r && r.moved !== undefined ? r.moved : op.moves.length, "item", "items") + ")"));
         } else if (k === "move") {
             if (isUndo) startJob({ verb: "move", paths: op.items, dest: op.back, decide: {}, undoOp: op, undoMode: "undo" });
             else startJob({ verb: "move", paths: op.srcs, dest: op.dest, decide: {}, undoOp: op, undoMode: "redo" });
@@ -3984,6 +3993,8 @@ Scope {
                                 { t: "bc-update-all", icon: "sync", label: "Update All", bc: true }, { t: "bc-unlock", icon: "lock", label: "Unlock", bc: true },
                                 { t: "bc-lock", icon: "lock", label: "Lock", bc: true }, { t: "bc-customize", icon: "bc-briefcase", label: "Customize", bc: true },
                                 { fill: true },
+                                // Sort my Downloads (only in Downloads; accent while anything is loose)
+                                { t: "sortdl", icon: "", label: "✦  Sort my Downloads" }, { sep: true, sortdl: true },
                                 { t: "undo", icon: "undo", label: "Undo" }, { t: "redo", icon: "", label: "Redo" },
                                 { sep: true }, { t: "details", icon: "info", label: "Details" }
                             ]
@@ -4002,6 +4013,7 @@ Scope {
                                 // Choosing a file for an app: only Sort, View and Show.
                                 visible: (!app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0)
                                     && (!modelData.bc || (modelData.t ? briefcase.toolShown(modelData.t) : briefcase.inBriefcase))
+                                    && ((modelData.t !== "sortdl" && !modelData.sortdl) || sortDl.here)
                                 Layout.fillWidth: !!modelData.fill
                                 implicitWidth: modelData.sep ? 13 : modelData.fill ? 0 : cmdChip.implicitWidth
                                 implicitHeight: 40
@@ -4019,6 +4031,8 @@ Scope {
                                     icon: cmd.modelData.icon || ""
                                     label: cmdRow.narrow && cmd.modelData.icon ? "" : (cmd.modelData.label || "") + (cmd.modelData.more && !cmdRow.narrow ? "  ⌄" : "")
                                     dim: !cmd.on
+                                    primary: cmd.modelData.t === "sortdl" && sortDl.loose > 0
+                                    strong: cmd.modelData.t === "sortdl" && sortDl.loose > 0
                                     dot: (cmd.modelData.t === "details" && app.detailsPane) || (cmd.modelData.t === "hidden" && app.hidden)
                                     focused: !!cmd.modelData.t && app.toolLit(cmd.modelData.t)
                                     onClicked: {
@@ -4416,6 +4430,7 @@ Scope {
                                             link: cell.modelData.isLink
                                             bc: cell.modelData.briefcase || null
                                             bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                            tint: sortDl.colourOf(cell.modelData)
                                             badge: briefcase.badgeFor(cell.modelData)
                                             size: app.view === "xlarge" ? 180 : app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
@@ -4470,6 +4485,7 @@ Scope {
                                                 link: cell.modelData.isLink
                                                 bc: cell.modelData.briefcase || null
                                                 bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                                tint: sortDl.colourOf(cell.modelData)
                                                 badge: briefcase.badgeFor(cell.modelData)
                                                 size: cell.tiles ? 48 : 24
                                             }
@@ -4612,6 +4628,7 @@ Scope {
                                                     link: rowItem.modelData.isLink
                                                     bc: rowItem.modelData.briefcase || null
                                                     bcColor: briefcase.colorOf(rowItem.modelData.briefcase)
+                                                    tint: sortDl.colourOf(rowItem.modelData)
                                                     size: 28
                                                 }
                                                 Image {
@@ -4655,7 +4672,7 @@ Scope {
                                             Text {
                                                 Layout.preferredWidth: 100
                                                 horizontalAlignment: Text.AlignRight
-                                                text: rowItem.modelData.dir ? "" : app.fmtSize(rowItem.modelData.size)
+                                                text: rowItem.modelData.dir ? (sortDl.countOf(rowItem.modelData) >= 0 ? app.plural(sortDl.countOf(rowItem.modelData), "item", "items") : "") : app.fmtSize(rowItem.modelData.size)
                                                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                                             }
                                             Text {
@@ -4889,6 +4906,10 @@ Scope {
                                     Layout.fillWidth: true
                                     text: {
                                         if (app.note !== "") return app.note;
+                                        // Downloads (Sort my Downloads' mockups): what's loose, or the folders and "nothing loose"
+                                        if (sortDl.here && !app.markCount && app.found === null)
+                                            return sortDl.loose > 0 ? app.plural(sortDl.loose, "item", "items") + " loose in Downloads"
+                                                                    : app.plural(app.entries.length, "folder", "folders") + " · nothing loose";
                                         let s = app.found !== null ? (app.searching ? "Searching… " : "") + app.plural(app.entries.length, "match", "matches") + " for “" + app.foundQuery + "”"
                                             : app.plural(app.entries.length, app.onApps ? "app" : "item");
                                         if (app.markCount) {
@@ -5756,6 +5777,9 @@ Scope {
                     }
                 }
             }
+
+            // ------------------------------------------------ Sort my Downloads' sheet and note (over everything)
+            FilesSortSheet { sd: sortDl; z: 60 }
         }
     }
 
@@ -5848,6 +5872,8 @@ Scope {
         property var bc: null                   // a Briefcase folder: {icon, color, badge, locked} (hearth-files list)
         property var badge: null                // an item in a Briefcase: its status {color, glyph}
         property color bcColor: Theme.accent
+        property string tint: ""                // Sort my Downloads' five folders, each in its colour
+        readonly property color folderColor: tint !== "" ? tint : Theme.accent
         readonly property bool isBc: !!bc
         readonly property color band: ({ image: "#5fb98f", video: "#b36ad9", audio: "#4f9dde", archive: "#b98a5a", disc: "#8c7ae6",
             app: Theme.ember, doc: "#e06666", text: "#a69484", file: "#7d6a5c" })[kind] || "#7d6a5c"
@@ -5875,19 +5901,19 @@ Scope {
             x: g.size * 0.06; y: g.size * 0.14
             width: g.size * 0.42; height: g.size * 0.2
             radius: g.size * 0.06
-            color: Qt.darker(Theme.accent, 1.35)
+            color: Qt.darker(g.folderColor, 1.35)
         }
         Rectangle {
             visible: g.kind === "folder" && !g.isBc
             x: g.size * 0.06; y: g.size * 0.24
             width: g.size * 0.88; height: g.size * 0.62
             radius: g.size * 0.08
-            color: Theme.accent
+            color: g.folderColor
             Rectangle {
                 anchors { left: parent.left; right: parent.right; top: parent.top }
                 height: Math.max(1, g.size * 0.03)
                 radius: height / 2
-                color: Qt.lighter(Theme.accent, 1.18)
+                color: Qt.lighter(g.folderColor, 1.18)
             }
         }
         // File: a card with a folded corner and the kind's band.

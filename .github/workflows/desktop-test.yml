@@ -2689,7 +2689,7 @@ jobs:
           exec > >(tee $o/step.log) 2>&1
           say() { echo "::notice title=App blocks::$*"; }
           bad() { echo "::error title=App blocks::$*"; touch shots/FAILED; }
-          python3 -m unittest discover -s hosts/linux/test -p 'test_app_blocks.py' -v > $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -5 | tr '\n' ' ')"
+          python3 -m unittest discover -s hosts/linux/test -p 'test_app_blocks.py' -v > $o/unit.log 2>&1 && python3 -m unittest discover -s hosts/linux/test -p 'test_files_sort_downloads.py' -v >> $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -5 | tr '\n' ' ')"
           set -x
           pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
@@ -2776,8 +2776,39 @@ jobs:
           ipc reliability close; sleep 2
           shoot system-restore system-restore ipc restore open
           ipc restore close; sleep 2
+          # Sort my Downloads in Mantel's Files (FilesSortDownloads.qml, FilesSortSheet.qml, hearth_files_sortdl.py; mockups
+          # docs/mockups/1.17-sort-downloads): the button in Downloads (accent while anything is loose), the preview,
+          # Show every file, sorted (the note with Undo, the five folders in their colours), and Undo putting it all back.
+          # Its AI is a stand-in hearth-layout here (sort-ask only: names in, a place out), made just for this part.
+          printf '%s\n' '#!/bin/sh' 'case "$1" in sort-ask) echo "{\"ok\":true,\"places\":{\"mystery-tool.qqq\":\"Installers\"}}" ;; *) echo "{\"ok\":false}"; exit 1 ;; esac' > /tmp/fakebin/hearth-layout
+          chmod +x /tmp/fakebin/hearth-layout
+          DL=$(HOME=$HOME python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import hearth_files_sortdl as s; print(s.downloads())' "$SH")
+          mkdir -p "$DL"
+          ( cd "$DL" && for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage \
+              steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh \
+              mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso screenshot.jpg; do printf 'same\n' > "$f"; done; mkdir -p "Old project" )
+          sstate() { ipc filemanager sortstate; }
+          ipc files open "$DL"; sleep 5
+          grim $o/files-sort-1-button.png || true
+          s1=$(sstate); case "$s1" in *'"here":true'*'"loose":19'*) say "Sort my Downloads: the button in Downloads, 19 loose ($(echo "$s1" | cut -c1-200))" ;; *) bad "Sort my Downloads in Downloads: $s1" ;; esac
+          ipc filemanager sortdl; sleep 4
+          grim $o/files-sort-2-preview.png || true
+          s2=$(sstate); case "$s2" in *'"open":true'*'"counts":[3,6,4,4,2]'*) say "Sort my Downloads' preview, the AI placed the unknown one: $(echo "$s2" | cut -c1-260)" ;; *) bad "Sort my Downloads' preview: $s2" ;; esac
+          ipc filemanager sortevery; sleep 2
+          grim $o/files-sort-3-every-file.png || true
+          ipc filemanager sortevery; ipc filemanager sortgo; sleep 4
+          grim $o/files-sort-4-sorted.png || true
+          s4=$(sstate); left=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
+          case "$s4" in *'"loose":0'*'Sorted 19 items into 5 folders'*) [ "$left" = 0 ] && say "sorted: $(echo "$s4" | cut -c1-260)" || bad "sorted, but $left things are still loose" ;; *) bad "Sort my Downloads didn't sort: $s4" ;; esac
+          [ -f "$DL/_to_delete/Old copies/wallpaper (1).png" ] && [ -f "$DL/Installers/mystery-tool.qqq" ] && [ -f "$DL/Hearth/Hearth OS/hearth-os-1.18-x86_64.iso" ] && say "each in its place (copies in _to_delete, the AI's pick, Hearth OS)" || bad "not where they go: $(cd "$DL" && find . -type f | sort | tr '\n' ' ')"
+          ipc filemanager sortundo; sleep 4
+          grim $o/files-sort-5-undone.png || true
+          back=$(find "$DL" -mindepth 1 -maxdepth 1 -type f | wc -l)
+          [ "$back" = 18 ] && [ -d "$DL/Old project" ] && say "Undo put all 19 back" || bad "Undo left $back at the top of Downloads (wanted 18): $(cd "$DL" && find . | sort | tr '\n' ' ')"
+          ipc files close; sleep 2
+          rm -f /tmp/fakebin/hearth-layout
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
-          xbad=$(grep -E "(AppBlocks|AppBlocksFlow|AppBlocksHub|EditLayoutButton|DescribeIt|FileManager|FilesIpc|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)" "$LOG" 2>/dev/null | sort -u | head -12)
+          xbad=$(grep -E "(AppBlocks|AppBlocksFlow|AppBlocksHub|EditLayoutButton|DescribeIt|FileManager|FilesIpc|FilesSortDownloads|FilesSortSheet|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)" "$LOG" 2>/dev/null | sort -u | head -12 || true)
           [ -z "$xbad" ] && say "no QML errors from the apps made of blocks" || bad "$(echo "$xbad" | cut -c1-300 | tr '\n' ' ')"
           ls -la $o
           pkill -x labwc || true; pkill -f quickshell || true
