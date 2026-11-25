@@ -2786,25 +2786,30 @@ jobs:
           mkdir -p "$DL"
           ( cd "$DL" && for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage \
               steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh \
-              mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso screenshot.jpg; do printf 'same\n' > "$f"; done; mkdir -p "Old project" )
+              mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso; do printf 'same\n' > "$f"; done; mkdir -p "Old project" )
+          # real (tiny) pictures, so Files' thumbnails read them; the copy is the same size as the first
+          python3 -c 'import sys,zlib,struct; c=lambda t,d: struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)); open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+c(b"IHDR",struct.pack(">IIBBBBB",1,1,8,2,0,0,0))+c(b"IDAT",zlib.compress(b"\x00\xe9\xa4\x3d"))+c(b"IEND",b""))' "$DL/wallpaper.png"
+          cp "$DL/wallpaper.png" "$DL/wallpaper (1).png"; cp "$DL/wallpaper.png" "$DL/screenshot.png"
+          # what was already loose in Downloads (earlier steps' downloads) is sorted too
+          top0=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
           sstate() { ipc filemanager sortstate; }
           ipc files open "$DL"; sleep 5
           grim $o/files-sort-1-button.png || true
-          s1=$(sstate); case "$s1" in *'"here":true'*'"loose":19'*) say "Sort my Downloads: the button in Downloads, 19 loose ($(echo "$s1" | cut -c1-200))" ;; *) bad "Sort my Downloads in Downloads: $s1" ;; esac
+          s1=$(sstate); case "$s1" in *'"here":true'*"\"loose\":$top0,"*) say "Sort my Downloads: the button in Downloads, $top0 loose ($(echo "$s1" | cut -c1-200))" ;; *) bad "Sort my Downloads in Downloads: $s1" ;; esac
           ipc filemanager sortdl; sleep 4
           grim $o/files-sort-2-preview.png || true
-          s2=$(sstate); case "$s2" in *'"open":true'*'"counts":[3,6,4,4,2]'*) say "Sort my Downloads' preview, the AI placed the unknown one: $(echo "$s2" | cut -c1-260)" ;; *) bad "Sort my Downloads' preview: $s2" ;; esac
+          s2=$(sstate); case "$s2" in *'"open":true'*'"counts":['*) n2=$(echo "$s2" | python3 -c 'import json,sys; c=json.load(sys.stdin)["counts"]; print(sum(c), c[4] >= 2)'); [ "$n2" = "$top0 True" ] && say "Sort my Downloads' preview, every loose thing in a group, the copies to delete: $(echo "$s2" | cut -c1-260)" || bad "Sort my Downloads' preview counts ($n2, wanted $top0 True): $s2" ;; *) bad "Sort my Downloads' preview: $s2" ;; esac
           ipc filemanager sortevery; sleep 2
           grim $o/files-sort-3-every-file.png || true
           ipc filemanager sortevery; ipc filemanager sortgo; sleep 4
           grim $o/files-sort-4-sorted.png || true
           s4=$(sstate); left=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
-          case "$s4" in *'"loose":0'*'Sorted 19 items into 5 folders'*) [ "$left" = 0 ] && say "sorted: $(echo "$s4" | cut -c1-260)" || bad "sorted, but $left things are still loose" ;; *) bad "Sort my Downloads didn't sort: $s4" ;; esac
+          case "$s4" in *'"loose":0'*"Sorted $top0 items into 5 folders"*) [ "$left" = 0 ] && say "sorted: $(echo "$s4" | cut -c1-260)" || bad "sorted, but $left things are still loose" ;; *) bad "Sort my Downloads didn't sort: $s4" ;; esac
           [ -f "$DL/_to_delete/Old copies/wallpaper (1).png" ] && [ -f "$DL/Installers/mystery-tool.qqq" ] && [ -f "$DL/Hearth/Hearth OS/hearth-os-1.18-x86_64.iso" ] && say "each in its place (copies in _to_delete, the AI's pick, Hearth OS)" || bad "not where they go: $(cd "$DL" && find . -type f | sort | tr '\n' ' ')"
           ipc filemanager sortundo; sleep 4
           grim $o/files-sort-5-undone.png || true
-          back=$(find "$DL" -mindepth 1 -maxdepth 1 -type f | wc -l)
-          [ "$back" = 18 ] && [ -d "$DL/Old project" ] && say "Undo put all 19 back" || bad "Undo left $back at the top of Downloads (wanted 18): $(cd "$DL" && find . | sort | tr '\n' ' ')"
+          back=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
+          [ "$back" = "$top0" ] && [ -d "$DL/Old project" ] && say "Undo put all $top0 back" || bad "Undo put $back of $top0 back at the top of Downloads: $(cd "$DL" && find . | sort | tr '\n' ' ')"
           ipc files close; sleep 2
           rm -f /tmp/fakebin/hearth-layout
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
