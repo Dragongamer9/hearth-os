@@ -125,6 +125,8 @@ macro_rules! define {
             Pointer,
             /// Your account picture was read (or read again): drawn in the corner.
             Face,
+            /// The page's sections looked at again (secs.rs: its blocks follow what it shows)
+            Blocks,
             Tab(usize),
             X,
             Find(bool),
@@ -378,6 +380,9 @@ fn describe(a: &mut App, dm: hearth_ui::describe::DMsg) -> Task<Msg> {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     // the page's sections as its blocks, from when it was last drawn (secs.rs; once per new section)
+    if !matches!(m, Msg::Blocks) {
+        secs::touched();
+    }
     secs::sync(a);
     let m = match m {
         Msg::Describe(dm)
@@ -431,6 +436,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             Task::none()
         }
         Msg::Face => Task::none(),
+        Msg::Blocks => Task::none(),
         Msg::Pointer => {
             if a.sh.big && a.fixed.is_none() && look::auto() && nav::look_age() > 4000 && crate::pad::desk_in_use() {
                 set_layout(a, false);
@@ -799,6 +805,10 @@ fn subscription(a: &App) -> Subscription<Msg> {
         iced::event::listen_with(window_focus),
     ];
     s.extend(cat_subs(a));
+    // a page's sections still to become its blocks: looked at again a few times a second (never at rest)
+    if secs::pending(a) {
+        s.push(iced::time::every(std::time::Duration::from_millis(250)).map(|_| Msg::Blocks));
+    }
     Subscription::batch(s)
 }
 

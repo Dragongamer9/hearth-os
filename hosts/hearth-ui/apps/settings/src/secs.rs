@@ -26,6 +26,37 @@ thread_local! {
     static SEEN: RefCell<Vec<(&'static str, Vec<(String, String)>)>> = const { RefCell::new(Vec::new()) };
     /// The pages whose blocks were drawn in this frame (a page lays its blocks out once).
     static DRAWN: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+    /// When the last message that wasn't secs' own came (what it did may change a page's sections).
+    static LAST: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// A message came (not secs' own): a page's sections may change in the next moments.
+pub fn touched() {
+    LAST.with(|l| l.set(Some(std::time::Instant::now())));
+}
+
+/// The frame was drawn: a page with no sections of its own (no Secs) is noted as such, so nothing waits for it.
+pub fn end(page: &'static str) {
+    if !DRAWN.with(|d| d.borrow().contains(&page)) {
+        SEEN.with(|v| {
+            let mut v = v.borrow_mut();
+            v.retain(|x| x.0 != page);
+            v.push((page, Vec::new()));
+        });
+    }
+}
+
+/// Is the page's set of blocks still to be worked out from what it shows (main.rs then sends itself a message a few
+/// times a second, for at most 2 s after anything happened, and never at rest)?
+pub fn pending(a: &App) -> bool {
+    let page = a.page;
+    if crate::STATIC_BLOCKS.iter().any(|p| p.id == page) {
+        return false;
+    }
+    let Some(seen) = SEEN.with(|v| v.borrow().iter().find(|x| x.0 == page).map(|x| x.1.iter().take(12).map(|y| y.0.clone()).collect::<Vec<String>>())) else { return true };
+    let have: Vec<&str> = a.describe.pages.iter().find(|p| p.id == page).map(|p| p.blocks.iter().map(|b| b.id).collect()).unwrap_or_default();
+    let recent = LAST.with(|l| l.get().map(|t| t.elapsed().as_millis() < 2000).unwrap_or(false));
+    recent || seen.len() != have.len() || seen.iter().zip(&have).any(|(x, h)| x != h)
 }
 
 /// A heading was made (widgets::head): the next part pushed to a page starts a section.

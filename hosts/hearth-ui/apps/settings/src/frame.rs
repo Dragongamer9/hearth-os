@@ -101,6 +101,9 @@ pub fn frame(a: &App) -> Element<'_, Msg> {
     nav::begin();
     crate::secs::begin();
     let el = if a.sh.big { frame_b(a) } else { frame_a(a) };
+    if a.query.is_empty() {
+        crate::secs::end(a.page);
+    }
     nav::end();
     nav::Gate::new(el, Msg::Pointer).into()
 }
