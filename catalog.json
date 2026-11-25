@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 29,
+  "serial": 30,
   "apps": [
     {
       "id": "command-center",
@@ -474,17 +474,15 @@
       "kind": "builtin",
       "part": {
         "id": "hearth-store-app",
-        "version": "1.17.2",
-        "os": "1.17",
+        "version": "1.18.1",
+        "os": "1.18",
         "path": "hearth-store-app",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-store-app-1.17.2/hearth-store-app-1.17.2.tar.gz",
-        "sha256": "6274e4d239b3b8b032b11a74f9572b723c46b91d5a38a3f6967270c5f3bf59c9",
-        "size": 7261867,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-store-app-1.18.1/hearth-store-app-1.18.1.tar.gz",
+        "sha256": "5e261dfcad032aa3a373bbb1e2d5408ac1e3fd472af70e3558b10e490d271237",
+        "size": 7454226,
         "notes": [
-          "The Hearth Store looks like the Windows 11 Store: search across the top, Home, Apps, Hearth parts, Tests, Library and Settings down the side",
-          "An app's own page with its pictures, what's new and everything about it",
-          "Test versions get their own page: what's in them and what isn't yet",
-          "Settings: install updates by themselves (off unless you turn it on, never while you play) and move your apps to another folder"
+          "Edit layout: move, resize or hide any part of the app, right on it",
+          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
         ]
       },
       "open": "hearth-store-app"
