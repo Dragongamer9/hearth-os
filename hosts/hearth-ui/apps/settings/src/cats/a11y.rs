@@ -33,6 +33,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Go(&'static str),
     Status(run::Output),
     Change(Value, bool),
@@ -45,6 +47,12 @@ pub enum Msg {
     Emoji,
     /// Settings' own look: "auto", "always", "never" (look.rs).
     Look(&'static str),
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 pub fn open(sh: &mut Shared, st: &mut State, _page: &'static str) -> Task<Msg> {
@@ -62,6 +70,7 @@ fn av(st: &State) -> Value {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Go(id) => sh.go(id),
         Msg::Status(o) => match kit::answer(&o) {
             Ok(v) if v.is_object() => st.st = Some(v),
@@ -197,7 +206,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     let ver = kw.ver();
     let needs = |v: u32| -> String { if live && ver > 0 && ver < v { format!(". Needs KWin {}.{} (this is {})", v / 100, v % 100, kw.version()) } else { note.clone() } };
     let can = |v: u32| live && (ver == 0 || ver >= v);
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
 
     // ------------------------------------------------ magnifier
     c = c.push(head(&p, if st.saving { "Magnifier · saving…" } else { "Magnifier" }));

@@ -111,7 +111,7 @@ fn b(st: &St, file: &str, group: &str, key: &str, d: bool) -> bool {
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     if st.status.is_null() {
         v.push(words(&p, "Asking KWin…", false));
     } else if !gb(&st.status, "running") && !gb(&st.status, "live") {

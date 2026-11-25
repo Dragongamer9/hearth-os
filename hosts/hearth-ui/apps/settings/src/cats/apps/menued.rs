@@ -139,7 +139,7 @@ pub fn update(_sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     if let Some(a) = cur(st) {
         let yours = gb(a, "yours");
         let mut top = row![icon_box(&p, G::Store), column![tb(gs(a, "name"), sz(19.0), p.text), t(if gs(a, "comment").is_empty() { gs(a, "id") } else { gs(a, "comment") }, sz(13.0), p.muted)].spacing(2.0).width(Length::Fill)].spacing(18.0).align_y(iced::Center);

@@ -112,7 +112,8 @@ fn load_vals() -> Task<Msg> {
 }
 
 /// Home's blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is.
-pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[PAGE];
+pub const PAGE: hearth_ui::blocks::PageDef = hearth_ui::blocks::PageDef {
     id: "home",
     title: "Home",
     blocks: &[
@@ -122,7 +123,7 @@ pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
         hearth_ui::blocks::bls("most", "You use these most", 4, 4, 4, 8),
         hearth_ui::blocks::bls("pc", "This PC", 8, 4, 4, 8),
     ],
-}];
+};
 
 pub const TILES: [&str; 10] = ["lightmode", "wifi", "bt", "brightness", "volume", "startin", "updates", "power", "night", "dnd"];
 fn tile_name(id: &str) -> &'static str {
@@ -487,7 +488,11 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         &p,
         "home",
         Some(680.0),
-        vec![("needs", banner), ("tiles", tiles.into()), ("quick", scard(&p, "Quick", quick)), ("most", scard(&p, "You use these most", most)), ("pc", scard(&p, "This PC", pc))],
+        // each a right-click away from Edit layout (that part picked)
+        vec![("needs", banner), ("tiles", tiles.into()), ("quick", scard(&p, "Quick", quick)), ("most", scard(&p, "You use these most", most)), ("pc", scard(&p, "This PC", pc))]
+            .into_iter()
+            .map(|(id, el)| (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id)))))
+            .collect(),
         |ps| {
             let cards = row![
                 container(ps.take("quick")).width(Length::FillPortion(1)),

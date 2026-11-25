@@ -70,6 +70,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (secs.rs parts_dyn; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Got(Src, run::Output),
     Did(&'static str, Option<Src>, run::Output),
     Light,
@@ -83,6 +85,12 @@ pub enum Msg {
     Pin(&'static str),
     Picking,
     Go(&'static str),
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 /// A program with a time limit (red flag: nothing waits forever).
@@ -132,6 +140,7 @@ pub fn open(sh: &mut Shared, st: &mut State, _page: &'static str) -> Task<Msg> {
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     let run_it = |cmd: Vec<String>, what: &'static str, again: Option<Src>| Task::perform(run::spawn(limited(20, cmd)), move |o| Msg::Did(what, again, o));
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Got(s, o) => match s {
             Src::Wifi => st.wifi = Some(data::wifi(&o.out)),
             Src::Bt => st.bt = Some(data::bt(&o.out)),
@@ -273,7 +282,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     }
     let icon = |g: G| glyph(g, p.accent, if b { 26.0 } else { 24.0 }, 2.2);
     let words = |title: &str, sub: String| -> Element<'a, Msg> { column![tb(title.to_string(), if b { 17.0 } else { 16.0 }, p.text), t1(sub, 13.0, p.muted)].spacing(2.0).into() };
-    let mut tiles: Vec<(u16, Element<'a, Msg>)> = Vec::new();
+    let mut tiles: Vec<(u16, &'static str, Element<'a, Msg>)> = Vec::new();
     for (id, name, span) in TILES {
         if !pinned(id) {
             continue;
@@ -370,10 +379,18 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
             }
         };
         if let Some(e) = el {
-            tiles.push((*span, e));
+            tiles.push((*span, *name, e));
         }
     }
-    // Four columns; a wide tile takes two, and moves to the next line when it doesn't fit.
+    // Each tile a block (secs.rs parts_dyn); as it always was when nothing is customised:
+    let empty = st.pinned.as_ref().map(|v| v.is_empty()).unwrap_or(false);
+    let spans: Vec<u16> = tiles.iter().map(|x| x.0).collect();
+    let items: Vec<(String, Element<'a, Msg>)> = tiles.into_iter().map(|(_, n, e)| (n.to_string(), e)).collect();
+    Some(crate::secs::parts_dyn(a, items, move |els| tile_grid(p, b, spans.into_iter().zip(els).collect(), empty)))
+}
+
+/// Four columns; a wide tile takes two, and moves to the next line when it doesn't fit.
+fn tile_grid<'a>(p: hearth_ui::Pal, b: bool, tiles: Vec<(u16, Element<'a, Msg>)>, empty: bool) -> Element<'a, Msg> {
     let mut grid = Column::new().spacing(if b { 16.0 } else { 14.0 });
     let mut line = Row::new().spacing(if b { 16.0 } else { 14.0 });
     let mut used = 0u16;
@@ -396,10 +413,10 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         }
         grid = grid.push(line);
     }
-    if st.pinned.as_ref().map(|v| v.is_empty()).unwrap_or(false) {
+    if empty {
         grid = grid.push(note(&p, "Nothing is pinned to Quick. X picks what's here.", false));
     }
-    Some(grid.into())
+    grid.into()
 }
 
 pub fn subscription(_st: &State) -> Subscription<Msg> {

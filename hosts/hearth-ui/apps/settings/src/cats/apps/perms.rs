@@ -103,7 +103,7 @@ fn icon(k: &str) -> G {
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     let apps = st.apps.as_deref().unwrap_or(&[]);
     if st.apps.is_some() && apps.is_empty() {
         v.push(r(G::Store, "No apps from Flathub yet", "Apps from Flathub show here, each with what it may reach").view(&p));

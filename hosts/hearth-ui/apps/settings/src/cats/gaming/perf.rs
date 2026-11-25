@@ -64,7 +64,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let modes = ga(scr, "modes");
     let (w, h) = (gn(s, "w") as i64, gn(s, "h") as i64);
     let size = if w > 0 { format!("{w}x{h}") } else { "auto".into() };
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     if !st.msg.is_empty() {
         v.push(card(&p, iced::widget::column![hearth_ui::ui::tm("That didn't work", sz(15.0), p.danger), hearth_ui::ui::t(st.msg.clone(), sz(13.0), p.muted)].spacing(4.0)));
     }

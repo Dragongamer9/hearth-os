@@ -209,7 +209,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
     let p = sh.p;
     s.live.seen();
     let list = s.list.as_deref().unwrap_or(&[]);
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     if s.list.is_none() {
         c = c.push(words(&p, "Reading your devices…"));
     }
@@ -247,7 +247,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
 
 fn receive<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     if let Some(b) = &s.name {
         if !kit::bo(b, "present") {
             c = c.push(banner(&p, G::Bt, "No Bluetooth on this PC", "Plug in a Bluetooth adapter, or turn it on in the PC's firmware setup", false, None));

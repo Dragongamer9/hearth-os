@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 pub type E<'a, M> = Element<'a, M>;
+pub use crate::secs::Secs;
 
 static BIG: AtomicBool = AtomicBool::new(false);
 static PAL: Mutex<Option<Pal>> = Mutex::new(None);
@@ -215,7 +216,10 @@ pub fn link_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<S
 /// A section's heading (Brightness & colour, Related).
 pub fn head<'a, M: 'a>(p: &Pal, s: impl Into<String>) -> E<'a, M> {
     nav::flush();
-    container(ts(s.into(), sz(14.0), p.muted)).padding(Padding { top: 14.0, right: 0.0, bottom: 2.0, left: 2.0 }).into()
+    let s: String = s.into();
+    // it starts a section of the page (secs.rs: the page's blocks)
+    crate::secs::heading(&s);
+    container(ts(s, sz(14.0), p.muted)).padding(Padding { top: 14.0, right: 0.0, bottom: 2.0, left: 2.0 }).into()
 }
 
 pub fn card<'a, M: 'a>(p: &Pal, inner: impl Into<E<'a, M>>) -> E<'a, M> {

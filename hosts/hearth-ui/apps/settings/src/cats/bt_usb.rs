@@ -139,7 +139,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
         return thunderbolt(sh, s);
     }
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(head(&p, "When a USB drive or memory card is plugged in"));
     let storage = sh.desktop.get("removable").and_then(|r| r.get("storage")).and_then(|x| x.as_str()).unwrap_or("ask").to_string();
     c = c.push(choice(&p, G::Drive, "Then", "", [("ask", "Ask me"), ("open", "Open it in Files"), ("nothing", "Nothing")].iter().map(|&(v, l)| (l.to_string(), storage == v, Some(M::Storage(v)))).collect()));
@@ -196,7 +196,7 @@ fn security_text(s: &str) -> &'static str {
 
 fn thunderbolt<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0).push(head(&p, "Thunderbolt and USB4"));
+    let mut c = crate::secs::Plain::new(0).spacing(10.0).push(head(&p, "Thunderbolt and USB4"));
     let Some(st) = &s.tb else { return c.push(words(&p, "Asking bolt…")).push(said(&p, &s.tsay)).into() };
     let avail = kit::bo(st, "available");
     if !avail {

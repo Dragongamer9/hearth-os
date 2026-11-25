@@ -314,7 +314,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
     let on = s.kw.live();
     let q = if on { p } else { dim(&p) };
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(kw::gate(&p, &s.kw, "Drawing tablet and touchscreen settings", M::Go("your-desktop")));
     let pens: Vec<&Value> = s.devices.iter().filter(|d| kit::bo(d, "tabletTool")).collect();
     let pads: Vec<&Value> = s.devices.iter().filter(|d| kit::bo(d, "tabletPad")).collect();

@@ -519,12 +519,13 @@ pub fn gap<'a, M: 'a>(h: f32) -> E<'a, M> {
     Space::new().height(Length::Fixed(h)).into()
 }
 /// A page: its parts one under the other.
-pub fn page<'a, M: 'a>(items: Vec<E<'a, M>>) -> E<'a, M> {
-    Column::with_children(items).spacing(10.0).width(Length::Fill).into()
+pub fn page<'a, M: 'a>(items: impl Into<crate::secs::SecVec<'a, M>>) -> E<'a, M> {
+    // each heading (and group) starts a section, its block (secs.rs); as it always was when nothing is customised
+    items.into().plain(10.0, Some(Length::Fill)).into()
 }
 /// Push `e` when it's there.
-pub fn opt<'a, M: 'a>(v: &mut Vec<E<'a, M>>, e: Option<E<'a, M>>) {
+pub fn opt<'a, M: 'a>(v: &mut impl crate::secs::PushE<'a, M>, e: Option<E<'a, M>>) {
     if let Some(e) = e {
-        v.push(e);
+        v.push_e(e);
     }
 }

@@ -247,7 +247,7 @@ fn import(s: &mut S, f: String) -> Task<M> {
 pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
     s.live.seen();
-    let mut c = Column::new().spacing(10.0).push(head(&p, "Your VPNs"));
+    let mut c = crate::secs::Plain::new(0).spacing(10.0).push(head(&p, "Your VPNs"));
     for v in s.vpns() {
         let uuid = kit::st(v, "uuid");
         let name = kit::st(v, "name");

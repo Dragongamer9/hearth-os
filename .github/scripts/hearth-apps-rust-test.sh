@@ -216,7 +216,11 @@ fi
 
 # The limits.
 fail=$inner
-grep -q '^RESULT' "$ROOT/results.txt" || { echo "::error title=apps::nothing was measured"; fail=1; }
+# Nothing measured is a failure, except in an "only" run whose files take pictures without measuring (a notice then)
+ONLY_RUN=$(cat /tmp/shots-only 2>/dev/null | tr -d ' \n')
+if ! grep -q '^RESULT' "$ROOT/results.txt" 2>/dev/null; then
+  if [ -n "$ONLY_RUN" ]; then echo "::notice title=apps::nothing measured: this run took only the pictures of $ONLY_RUN"; else echo "::error title=apps::nothing was measured"; fail=1; fi
+fi
 while read -r kind name rest; do
   [ "$kind" = RESULT ] || continue
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"

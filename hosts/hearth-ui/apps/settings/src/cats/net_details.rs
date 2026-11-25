@@ -466,7 +466,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
         let u = kit::st(cn, "uuid");
         saved = saved.push(val_row(&p, kind_glyph(&k), kit::st(cn, "name"), format!("{}{}", kind_word(&k), if kit::bo(cn, "active") { " · Connected" } else { "" }), if s.uuid == u { "Showing" } else { "" }, Some(M::Pick(u.clone()))));
     }
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     if s.top {
         if let Some(q) = &s.qr {
             c = c.push(head(&p, format!("Share {}", s.dname()))).push(qr_card(&p, s, q));
@@ -539,7 +539,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
         }
     }
 
-    let mut c = if s.top && !s.adding.is_empty() { column![c, saved].spacing(10.0) } else { column![saved, c].spacing(10.0) };
+    let mut c = if s.top && !s.adding.is_empty() { c.section("Saved networks", saved) } else { crate::secs::Plain::new(0).spacing(10.0).section("Saved networks", saved).then(c) };
     let Some(d) = &s.d else {
         return c.push(said(&p, &s.say)).into();
     };

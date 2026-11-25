@@ -185,7 +185,7 @@ fn summary(x: &Value) -> String {
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
-    let mut out: Vec<E<M>> = Vec::new();
+    let mut out = crate::secs::SecVec::new();
     if st.status.is_null() {
         out.push(words(&p, "Asking KWin…", false));
     } else if !live(st) {

@@ -117,7 +117,8 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let s = &st.st;
     let client = gs(s, "client");
     let clients = go(s, "clients");
-    let mut v: Vec<E<M>> = vec![head(&p, "Your Discord")];
+    let mut v = crate::secs::SecVec::new();
+    v.push(head(&p, "Your Discord"));
     let sub = if client.is_empty() {
         "Not picked yet: pick one below".to_string()
     } else {

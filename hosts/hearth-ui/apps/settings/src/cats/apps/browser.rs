@@ -107,7 +107,8 @@ pub fn update(_sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let idle = !st.busy.on;
-    let mut v: Vec<E<M>> = vec![head(&p, "Your browser")];
+    let mut v = crate::secs::SecVec::new();
+    v.push(head(&p, "Your browser"));
     let ch = &st.ch;
     let chrome = go(ch, "chrome");
     let mine = gs(ch, "browser");

@@ -177,6 +177,8 @@ impl State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Got(&'static str, run::Output),
     Exec(Ex),
     Done(Ex, run::Output),
@@ -226,6 +228,12 @@ pub enum Msg {
     // Startup: a change of the schedule (its day, which change, what to do), and saving it.
     Sched(&'static str, usize, SchedOp),
     SchedSave,
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 /// What a change of Server mode's schedule does (SetStartup.qml: ← → move it 30 minutes, A changes its mode, X removes
@@ -670,6 +678,7 @@ fn after_read(st: &mut State, key: &'static str) -> Task<Msg> {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Got(key, o) => {
             let val = if key.starts_with("k-") { kv(&o.out) } else if o.ok { o.json().unwrap_or(Value::Null) } else { Value::Null };
             match key {
@@ -1083,7 +1092,7 @@ fn startup(a: &App) -> El<'_> {
     let server_on = vb(srv, "settings.on");
     let scheduled = server_on && vb(srv, "settings.schedule.on");
     let start_in = if st.has("server") { vs(srv, "startIn") } else { st.start.clone() };
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(t(format!("What this PC opens when it turns on{}", if server_on { ", and when it changes mode by itself." } else { "." }), sz(14.0), p.muted));
     // Game Mode on this PC (the owner, Nov 19: "need to add a option that turns off the game modes"): desktop.json's
     // gameModeOff through hearth_settings_io (merge, .bak, the change history); missing is On. nimbus-session reads it

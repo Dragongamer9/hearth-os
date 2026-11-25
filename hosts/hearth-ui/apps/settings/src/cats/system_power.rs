@@ -162,7 +162,7 @@ fn bat_line(b: &Value) -> String {
 fn power(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     let pw = st.j("power");
     let pset = st.j("pset");
     let bats = va(pset, "batteries");
@@ -304,7 +304,7 @@ fn profiles(a: &App) -> El<'_> {
         Msg::Exec(ex)
     };
     let modes = [("off", "Don't change"), ("performance", "Performance"), ("balanced", "Balanced"), ("power-saver", "Battery saver")];
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     let off_ac = screen_off(a, false);
     let sl_ac = sleep_after(a, false);
     let mut plug = Column::new();
@@ -409,7 +409,7 @@ fn awake(a: &App) -> El<'_> {
     };
     let blocking: Vec<&Value> = list.iter().filter(|i| vs(i, "mode") == "block").collect();
     let delaying: Vec<&Value> = list.iter().filter(|i| vs(i, "mode") != "block").collect();
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "pset", "what's keeping it awake") {
         c = c.push(w);
     }
@@ -480,7 +480,7 @@ impl<M> canvas::Program<M> for Ring {
 fn battery(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "pset", "the battery") {
         c = c.push(w);
     }

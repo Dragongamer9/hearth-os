@@ -14,7 +14,7 @@ use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
 use hearth_ui::ui::{self, glyph, t, tb, G};
-use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
+use iced::widget::{column, container, mouse_area, row, Row, Space};
 use iced::{mouse, Element, Length, Padding, Subscription, Task};
 use serde_json::{json, Map, Value};
 
@@ -30,6 +30,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Cfg(run::Output),
     Modes(run::Output),
     Pick(usize),
@@ -40,6 +42,12 @@ pub enum Msg {
     Display,
     Away,
     Did(run::Output),
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 fn path() -> std::path::PathBuf {
@@ -72,6 +80,7 @@ fn s_of(v: &Value, k: &str) -> String {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Cfg(o) => st.cfg = Some(o.json().filter(Value::is_object).unwrap_or(json!({}))),
         Msg::Modes(o) => st.modes = o.json(),
         Msg::Pick(i) => st.sel = i,
@@ -138,7 +147,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         return Some(away_page(a));
     }
     let list = screens(st);
-    let mut col = Column::new().spacing(10.0);
+    let mut col = crate::widgets::Secs::on(a, 0).spacing(10.0);
     col = col.push(t("Couch is for the controller and the TV, Desk for the mouse and keyboard, Away for when you're not there. Each screen has its own.", sz(16.0), p.muted));
     if !a.sh.error.is_empty() {
         col = col.push(note(&p, a.sh.error.clone(), true));
@@ -225,7 +234,7 @@ fn away_page(a: &App) -> Element<'_, Msg> {
     let c = cfg(&a.couch);
     let off = c.get("awayScreenOff").and_then(Value::as_i64).unwrap_or(10);
     let lock = c.get("awayLock").and_then(Value::as_i64).unwrap_or(10);
-    let mut col = Column::new().spacing(10.0);
+    let mut col = crate::widgets::Secs::on(a, 0).spacing(10.0);
     col = col.push(t("Away shows a big clock, what keeps working and how many notifications wait (not what they say).", sz(16.0), p.muted));
     col = col.push(srow(&p, G::Display, "Screens off", "After this long Away", steps(&p, off, "awayScreenOff")));
     col = col.push(srow(&p, G::Shield, "Lock with your PIN", "After this long Away, coming back asks for it", steps(&p, lock, "awayLock")));

@@ -82,7 +82,8 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     }
     opt(&mut g, say_view(&p, &st.say));
     g.push(r(G::Update, "Check again", "Read which services are running now").on(M::Load).view(&p));
-    let mut v = vec![group(&p, "Your background services", g)];
+    let mut v = crate::secs::SecVec::new();
+    v.push(group(&p, "Your background services", g));
     if !locked.is_empty() {
         let mut h: Vec<E<M>> = vec![expander(&p, G::Shield, format!("{} services Hearth needs", locked.len()), "Locked: switching them off would stop sound, apps or Hearth itself", None, String::new(), st.locked_open, M::Locked)];
         if st.locked_open {

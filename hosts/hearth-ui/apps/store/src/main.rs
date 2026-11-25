@@ -119,6 +119,9 @@ pub struct Uninst {
 pub enum Msg {
     /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
     Describe(hearth_ui::describe::DMsg),
+    /// Edit layout right there (a right-click on a part, Store settings' Edit layout): Arrange on this block page, with
+    /// this part picked
+    EditAt(&'static str, Option<&'static str>),
     Theme,
     Key(KEvent),
     Pad(pad::Button),
@@ -819,7 +822,28 @@ fn detached(cmd: &str) {
 
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // Arrange's page chips go to that page too, so what's arranged is what you see
+            let go = match &dm {
+                hearth_ui::describe::DMsg::Arrange(Some(pg)) => match *pg {
+                    "home" => Some(Page::Home),
+                    "apps" => Some(Page::Apps),
+                    "library" => Some(Page::Updates),
+                    "parts" => Some(Page::BuiltIn),
+                    "system" => Some(Page::System),
+                    "tests" => Some(Page::Tests),
+                    "settings" => Some(Page::Settings),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let t = a.describe.update(dm).map(Msg::Describe);
+            return match go {
+                Some(pg) if pg != a.page => Task::batch([t, a.go(pg)]),
+                _ => t,
+            };
+        }
+        Msg::EditAt(page, pick) => return hearth_ui::arrange::edit_at(&mut a.describe, page, pick).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Key(ev) => return key(a, ev),
         Msg::Pad(b) => return pad_press(a, b),
@@ -1681,6 +1705,10 @@ fn nav(a: &mut App, k: &str) -> Task<Msg> {
 
 fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
     let KEvent::KeyPressed { key, modifiers, .. } = ev else { return Task::none() };
+    // Arranging: Esc keeps it and leaves, Ctrl+Z undoes
+    if let Some(dm) = hearth_ui::arrange::arrange_key(&a.describe, &key, modifiers) {
+        return a.describe.update(dm).map(Msg::Describe);
+    }
     if a.pad && !a.pad_fixed && pad::desk_in_use() {
         set_look(a, false);
     }

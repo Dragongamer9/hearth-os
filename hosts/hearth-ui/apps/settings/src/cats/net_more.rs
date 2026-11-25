@@ -231,7 +231,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
     }
     let p = sh.p;
     s.live.seen();
-    let mut c = Column::new().spacing(10.0).push(head(&p, "Mobile hotspot"));
+    let mut c = crate::secs::Plain::new(0).spacing(10.0).push(head(&p, "Mobile hotspot"));
     let made = s.made();
     let (sub, can, on, ssid) = match &s.hs {
         None => ("Checking…".to_string(), false, false, String::new()),
@@ -278,7 +278,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
 
 fn proxy<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0).push(head(&p, "Proxy"));
+    let mut c = crate::secs::Plain::new(0).spacing(10.0).push(head(&p, "Proxy"));
     let sub = match &s.px {
         None => "Checking…".to_string(),
         Some(v) => match kit::st(v, "mode").as_str() {

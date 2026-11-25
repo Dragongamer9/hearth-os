@@ -1433,11 +1433,11 @@ pub fn meter<'a, M: 'a>(p: &Pal, frac: f64, warn: bool) -> E<'a, M> {
 
 /// The rows the page shows (builders push into it; `None` rows are left out, as QML's `visible: false`).
 pub struct Rows<'a, M> {
-    pub v: Vec<E<'a, M>>,
+    pub v: crate::secs::SecVec<'a, M>,
 }
 impl<'a, M: 'a> Rows<'a, M> {
     pub fn new() -> Self {
-        Rows { v: Vec::new() }
+        Rows { v: crate::secs::SecVec::new() }
     }
     pub fn add(&mut self, e: E<'a, M>) {
         self.v.push(e);
@@ -1447,12 +1447,9 @@ impl<'a, M: 'a> Rows<'a, M> {
             self.v.push(f());
         }
     }
+    /// The page: each heading (and group) starts a section, its block (secs.rs); as it always was when nothing is.
     pub fn el(self) -> E<'a, M> {
-        let mut c = Column::new().spacing(6.0);
-        for e in self.v {
-            c = c.push(e);
-        }
-        c.into()
+        self.v.plain(6.0, None).into()
     }
 }
 

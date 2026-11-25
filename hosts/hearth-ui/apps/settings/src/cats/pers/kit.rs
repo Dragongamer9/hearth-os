@@ -644,26 +644,8 @@ pub fn base(f: &str) -> String {
 }
 
 /// A page's column that can start further down (`hearth-settings-app --page PAGE:from:N`: CI's pictures of the
-/// lower part of a long page). Pushed to like a Column.
-pub struct Col<'a, M> {
-    v: Vec<E<'a, M>>,
-    skip: usize,
-}
-impl<'a, M: 'a> Col<'a, M> {
-    pub fn new(skip: usize) -> Self {
-        Col { v: Vec::new(), skip }
-    }
-    pub fn push(mut self, e: impl Into<E<'a, M>>) -> Self {
-        self.v.push(e.into());
-        self
-    }
-}
-impl<'a, M: 'a> From<Col<'a, M>> for E<'a, M> {
-    fn from(c: Col<'a, M>) -> E<'a, M> {
-        let skip = c.skip.min(c.v.len().saturating_sub(1));
-        Column::with_children(c.v.into_iter().skip(skip)).spacing(10.0).into()
-    }
-}
+/// lower part of a long page). Pushed to like a Column; each heading starts a section, its block (secs.rs Plain).
+pub type Col<'a, M> = crate::secs::Plain<'a, M>;
 /// `from:N` in the part a page was opened at.
 pub fn skip_of(part: &str) -> usize {
     part.split(',').find_map(|t| t.strip_prefix("from:").and_then(|n| n.parse().ok())).unwrap_or(0)

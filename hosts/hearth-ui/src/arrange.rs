@@ -255,3 +255,39 @@ pub fn parts_in<'a, M: Clone + 'a>(
     let c2 = cell.clone();
     page_in(d, pal, page_id, height, move || original(&mut cell.borrow_mut()), move |id| c2.borrow_mut().take(id), map)
 }
+
+// ------------------------------------------------------------------ Edit layout, right there (additive, Nov 24)
+// The owner: editing an app's layout must feel natural, not buried behind Describe it › Move and resize blocks. These
+// are what an app needs for that with Arrange as it is: a right-click on any part opens Arrange in place with that part
+// picked, an app's own Edit layout entry does the same for its page, and Esc / Ctrl+Z work while arranging.
+
+/// Edit layout right there: Arrange opens on `page` in place (the live app stays), with `pick` picked. Already
+/// arranging that page, only the pick changes, so nothing done is lost.
+pub fn edit_at(d: &mut Describe, page: &'static str, pick: Option<&'static str>) -> iced::Task<DMsg> {
+    let mut t = iced::Task::none();
+    if d.arr.as_ref().map(|a| a.page) != Some(page) {
+        t = d.update(DMsg::Arrange(Some(page)));
+    }
+    if let Some(id) = pick {
+        let _ = d.update(DMsg::Pick(id));
+    }
+    t
+}
+
+/// A part that a right-click edits (`msg`, the app's own message for [`edit_at`]); it looks and lays out as before
+/// (a press the part itself takes, its own right-click menu, stays the part's).
+pub fn right_edit<'a, M: Clone + 'a>(el: Element<'a, M>, msg: M) -> Element<'a, M> {
+    mouse_area(el).on_right_press(msg).into()
+}
+
+/// A key while a page is being arranged: Esc keeps what you did and leaves (Keep this), Ctrl+Z undoes. None when
+/// nothing is being arranged, or for any other key (the app's own).
+pub fn arrange_key(d: &Describe, key: &iced::keyboard::Key, mods: iced::keyboard::Modifiers) -> Option<DMsg> {
+    use iced::keyboard::{key::Named, Key};
+    d.arr.as_ref()?;
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(DMsg::ArrKeep),
+        Key::Character(c) if (mods.control() || mods.command()) && c.eq_ignore_ascii_case("z") => Some(DMsg::ArrUndo),
+        _ => None,
+    }
+}

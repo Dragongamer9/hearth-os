@@ -85,7 +85,7 @@ pub fn update(_sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let s = &st.st;
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     if !s.is_null() && !gb(s, "ludusavi") {
         v.push(card(&p, iced::widget::column![hearth_ui::ui::tm("Ludusavi isn't on this Hearth", sz(15.0), p.text), hearth_ui::ui::t("Saves can't be found here without it.", sz(13.0), p.muted)].spacing(4.0)));
     }

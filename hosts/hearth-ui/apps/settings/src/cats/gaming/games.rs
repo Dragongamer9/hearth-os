@@ -52,7 +52,7 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let app = |cmd: Vec<&'static str>, name: &'static str| M::App(cmd, name);
-    let mut v: Vec<E<M>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     opt(&mut v, say_view(&p, &st.say));
     v.push(head(&p, "Hearth Games"));
     v.push(r(G::Store, "Hearth Games", "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall").chev().on(app(vec!["hearth-gamestore"], "Hearth Games")).view(&p));

@@ -80,6 +80,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Did(run::Output),
     KdeDid(run::Output),
     Set(Value),
@@ -155,6 +157,12 @@ pub enum Msg {
     AppsFollow(bool),
 }
 
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
+}
+
 pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     st.page = page;
     st.msg.clear();
@@ -215,6 +223,7 @@ pub fn kde(cmd: Vec<String>) -> Task<Msg> {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Did(o) => sh.result("That setting couldn't be saved", &o),
         Msg::KdeDid(o) => {
             if !o.ok {

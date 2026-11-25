@@ -120,7 +120,8 @@ fn shown<'a>(st: &'a St) -> Vec<&'a Value> {
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
-    let mut v: Vec<E<M>> = vec![field(&p, "Find a kind of file, or an ending like .png", &st.find, M::Find).into()];
+    let mut v = crate::secs::SecVec::new();
+    v.push(field(&p, "Find a kind of file, or an ending like .png", &st.find, M::Find).into());
     let mut groups: Vec<String> = st.all.iter().flatten().map(|t| gs(t, "group")).collect();
     groups.sort();
     groups.dedup();

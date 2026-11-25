@@ -30,6 +30,7 @@ mod pages_list;
 mod pics;
 mod quick;
 mod registry;
+mod secs;
 mod shared;
 mod widgets;
 
@@ -124,6 +125,8 @@ macro_rules! define {
             Pointer,
             /// Your account picture was read (or read again): drawn in the corner.
             Face,
+            /// The page's sections looked at again (secs.rs: its blocks follow what it shows)
+            Blocks,
             Tab(usize),
             X,
             Find(bool),
@@ -142,7 +145,7 @@ macro_rules! define {
             let mut sh = Shared::new();
             sh.part = part;
             App {
-                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings").with_pages(home::BLOCKS),
+                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings").with_pages(STATIC_BLOCKS),
                 sh,
                 cat: registry::cat_of(first),
                 page: first,
@@ -243,6 +246,15 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let (first, part) = page_arg().as_deref().and_then(registry::resolve).unwrap_or(("home", String::new()));
         let mut a = new_app(first, part);
+        // HEARTH_ARRANGE_OPEN=settings:<page> for a page whose blocks are its sections: opened once it's drawn (secs.rs),
+        // not on the window's blocks in its place
+        if let Ok(v) = std::env::var("HEARTH_ARRANGE_OPEN") {
+            if let Some(pg) = v.strip_prefix("settings:") {
+                if !STATIC_BLOCKS.iter().any(|d| d.id == pg) {
+                    a.describe.arr = None;
+                }
+            }
+        }
         let layout = app::arg("--layout").or_else(|| std::env::var("HEARTH_SETTINGS_LAYOUT").ok()).unwrap_or_default();
         a.fixed = match layout.to_lowercase().as_str() {
             "b" | "controller" | "pad" => Some(true),
@@ -324,14 +336,68 @@ fn set_layout(a: &mut App, b: bool) {
     }
 }
 
+/// The blocks Settings names itself: the window (frame.rs) and Home; every other page's are its sections (secs.rs).
+pub const STATIC_BLOCKS: &[hearth_ui::blocks::PageDef] = &[frame::WINDOW, home::PAGE];
+
+/// Describe it and Arrange, for the window, Home and each page's sections.
+fn describe(a: &mut App, dm: hearth_ui::describe::DMsg) -> Task<Msg> {
+    use hearth_ui::describe::DMsg as D;
+    match dm {
+        // a right-click on a part: Edit layout right there, that part picked (the page's, else the window's); while
+        // arranging, a part of the page being arranged is picked
+        D::Pick(id) => {
+            let has = |a: &App, pg: &str| a.describe.pages.iter().any(|p| p.id == pg && p.blocks.iter().any(|b| b.id == id));
+            let arranging = a.describe.arr.as_ref().map(|x| x.page);
+            match arranging {
+                Some(pg) => {
+                    if has(&*a, pg) {
+                        a.describe.update(D::Pick(id)).map(Msg::Describe)
+                    } else {
+                        Task::none()
+                    }
+                }
+                None => {
+                    let here = a.page;
+                    let pg = if has(&*a, here) {
+                        here
+                    } else if has(&*a, "window") {
+                        "window"
+                    } else {
+                        return Task::none();
+                    };
+                    hearth_ui::arrange::edit_at(&mut a.describe, pg, Some(id)).map(Msg::Describe)
+                }
+            }
+        }
+        // Arrange's page chips go to that page too, so what's arranged is what you see
+        D::Arrange(Some(pg)) if pg != a.page && pg != "window" && registry::built(pg) => {
+            let t = a.describe.update(D::Arrange(Some(pg))).map(Msg::Describe);
+            Task::batch([t, a.open(pg)])
+        }
+        dm => a.describe.update(dm).map(Msg::Describe),
+    }
+}
+
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
-    if let Msg::Describe(dm) = m {
-        return a.describe.update(dm).map(Msg::Describe);
+    // the page's sections as its blocks, from when it was last drawn (secs.rs; once per new section)
+    if !matches!(m, Msg::Blocks) {
+        secs::touched();
     }
-    // Home's blocks are arranged by the app's Describe it (hearth_ui::blocks)
-    if let Msg::Home(home::Msg::Describe(dm)) = m {
-        return a.describe.update(dm).map(Msg::Describe);
-    }
+    secs::sync(a);
+    let m = match m {
+        Msg::Describe(dm)
+        | Msg::Home(home::Msg::Describe(dm))
+        | Msg::System(system::Msg::Arrange(dm))
+        | Msg::Net(net::Msg::Arrange(dm))
+        | Msg::Bt(bt::Msg::Arrange(dm))
+        | Msg::Couch(couch::Msg::Arrange(dm))
+        | Msg::Pers(pers::Msg::Arrange(dm))
+        | Msg::Accounts(accounts::Msg::Arrange(dm))
+        | Msg::A11y(a11y::Msg::Arrange(dm))
+        | Msg::Quick(quick::Msg::Arrange(dm))
+        | Msg::Sections(sections::Msg::Arrange(dm)) => return describe(a, dm),
+        m => m,
+    };
     let t = match m {
         Msg::Theme => {
             a.sh.p = hearth_ui::theme::load();
@@ -360,7 +426,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             nav::reset();
             Task::none()
         }
-        Msg::Key(KEvent::KeyPressed { key, modifiers, .. }) => key_press(a, key, modifiers),
+        // arranging: Esc keeps it and leaves, Ctrl+Z undoes
+        Msg::Key(KEvent::KeyPressed { key, modifiers, .. }) => match hearth_ui::arrange::arrange_key(&a.describe, &key, modifiers) {
+            Some(dm) => a.describe.update(dm).map(Msg::Describe),
+            None => key_press(a, key, modifiers),
+        },
         Msg::Key(_) => Task::none(),
         Msg::Pad(b) => pad_press(a, b),
         Msg::Focus(on) => {
@@ -368,6 +438,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             Task::none()
         }
         Msg::Face => Task::none(),
+        Msg::Blocks => Task::none(),
         Msg::Pointer => {
             if a.sh.big && a.fixed.is_none() && look::auto() && nav::look_age() > 4000 && crate::pad::desk_in_use() {
                 set_layout(a, false);
@@ -736,6 +807,10 @@ fn subscription(a: &App) -> Subscription<Msg> {
         iced::event::listen_with(window_focus),
     ];
     s.extend(cat_subs(a));
+    // a page's sections still to become its blocks: looked at again a few times a second (never at rest)
+    if secs::pending(a) {
+        s.push(iced::time::every(std::time::Duration::from_millis(250)).map(|_| Msg::Blocks));
+    }
     Subscription::batch(s)
 }
 

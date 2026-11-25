@@ -77,14 +77,31 @@ fn heading<'a>(p: &Pal, s: &str) -> El<'a> {
 // ------------------------------------------------------------------ the window
 /// Hearth Files' blocks (hearth_ui::blocks), and the file chooser's.
 const FILE_BLOCKS: &[hearth_ui::blocks::BlockDef] = &[
-    hearth_ui::blocks::bl("sidebar", "The sidebar", 0, 0, 2, 12),
+    hearth_ui::blocks::bl("sidebar", "The navigation pane", 0, 0, 2, 12),
     hearth_ui::blocks::bl("folder", "The folder", 2, 0, 7, 12),
-    hearth_ui::blocks::bl("preview", "The preview", 9, 0, 3, 12),
+    hearth_ui::blocks::bl("preview", "The details pane", 9, 0, 3, 12),
+];
+/// The window's bars round the panes (the owner, Nov 24: every part a block): the title bar and tabs, the address bar,
+/// the toolbar, the panes (the "window" page's blocks inside), the status bar.
+const BAR_BLOCKS: &[hearth_ui::blocks::BlockDef] = &[
+    hearth_ui::blocks::bl("tabs", "The title bar and tabs", 0, 0, 12, 2),
+    hearth_ui::blocks::bl("address", "The address bar", 0, 2, 12, 2),
+    hearth_ui::blocks::bl("toolbar", "The toolbar", 0, 4, 12, 2),
+    hearth_ui::blocks::bl("panes", "The panes (navigation, folder, details)", 0, 6, 12, 5),
+    hearth_ui::blocks::bl("status", "The status bar", 0, 11, 12, 1),
 ];
 pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[
-    hearth_ui::blocks::PageDef { id: "window", title: "Hearth Files", blocks: FILE_BLOCKS },
+    hearth_ui::blocks::PageDef { id: "window", title: "The panes", blocks: FILE_BLOCKS },
     hearth_ui::blocks::PageDef { id: "chooser", title: "The file chooser", blocks: FILE_BLOCKS },
+    hearth_ui::blocks::PageDef { id: "bars", title: "Hearth Files", blocks: BAR_BLOCKS },
 ];
+
+/// A bar a right-click edits (Edit layout with it picked). While the bars are being arranged, the bar's own content
+/// sits under its block's bar (Arrange's bar is drawn over the top of each block), so it stays visible.
+fn bar_part<'a>(a: &App, id: &'static str, el: El<'a>) -> (&'static str, El<'a>) {
+    let el = if a.describe.arr.as_ref().map(|x| x.page) == Some("bars") { container(el).padding(pad(26.0, 0.0, 0.0, 0.0)).into() } else { el };
+    (id, hearth_ui::arrange::right_edit(el, Msg::EditAt("bars", Some(id))))
+}
 
 pub fn view(a: &App) -> El<'_> {
     let p = a.p;
@@ -94,17 +111,8 @@ pub fn view(a: &App) -> El<'_> {
         col = col.push(fm); // CI's frame counter only (HEARTH_UI_FRAMES)
     }
     if picking {
-        col = col.push(pick_head(a));
-    } else {
-        // Describe it: no tabs (the window's own buttons stay, on a thin strip), and every bar from its pieces
-        col = col.push(tab_strip(a));
-        for z in ["top", "bar"] {
-            if let Some(r) = zone_row(a, z) {
-                col = col.push(r);
-            }
-        }
+        col = col.push(pick_head(a)).push(hline(p.line));
     }
-    col = col.push(hline(p.line));
     // Describe it's sidebar: "icons" (icons only) or "hidden", with the dashed outline while it's being tried
     let has_nav = a.nav_shown() && a.describe.knob("sidebar") != "hidden";
     let mut pieces: Vec<(&'static str, El)> = Vec::new();
@@ -159,13 +167,73 @@ pub fn view(a: &App) -> El<'_> {
         },
         Msg::Describe,
     );
-    col = col.push(body);
-    if let Some(j) = &a.job {
-        col = col.push(hline(p.line)).push(job_bar(a, j));
-    }
-    // Describe it's box at the bottom (board 11)
-    if a.describe.open && !picking {
-        col = col.push(container(hearth_ui::describe::bar(&p, &a.describe, Msg::Describe)).padding(pad(12.0, 16.0, 12.0, 16.0)));
+    if picking {
+        col = col.push(body);
+        if let Some(j) = &a.job {
+            col = col.push(hline(p.line)).push(job_bar(a, j));
+        }
+    } else {
+        // The window's bars and the panes, each a block ("bars"): Describe it's tabs (none: the window's own buttons
+        // stay, on a thin strip) and every bar from its pieces; as it was when nothing is.
+        let top = zone_row(a, "top");
+        let bar = zone_row(a, "bar");
+        let (has_top, has_bar) = (top.is_some(), bar.is_some());
+        let show_status = a.describe.knob("status") != "hidden";
+        let mut items: Vec<(&'static str, El)> = vec![bar_part(a, "tabs", tab_strip(a))];
+        if let Some(r) = top {
+            items.push(bar_part(a, "address", r));
+        }
+        if let Some(r) = bar {
+            items.push(bar_part(a, "toolbar", r));
+        }
+        items.push(("panes", column![hline(p.line), body].into()));
+        if show_status {
+            items.push(bar_part(a, "status", status_bar(a)));
+        }
+        // what sits between the panes and the status bar: the copy under way, Describe it's box (board 11), the
+        // bottom bar; laid out, they stay under the blocks
+        let mut extras: Vec<El> = Vec::new();
+        if let Some(j) = &a.job {
+            extras.push(hline(p.line));
+            extras.push(job_bar(a, j));
+        }
+        if a.describe.open {
+            extras.push(container(hearth_ui::describe::bar(&p, &a.describe, Msg::Describe)).padding(pad(12.0, 16.0, 12.0, 16.0)).into());
+        }
+        if let Some(r) = zone_row(a, "bottom") {
+            extras.push(hline(p.line));
+            extras.push(r);
+        }
+        let laid = a.describe.laid("bars").is_some() || a.describe.arr.as_ref().map(|x| x.page == "bars").unwrap_or(false);
+        let (inner, outer) = if laid { (Vec::new(), extras) } else { (extras, Vec::new()) };
+        let bars = hearth_ui::arrange::parts(
+            &a.describe,
+            &p,
+            "bars",
+            items,
+            move |ps| {
+                let mut c = Column::new().push(ps.take("tabs"));
+                if has_top {
+                    c = c.push(ps.take("address"));
+                }
+                if has_bar {
+                    c = c.push(ps.take("toolbar"));
+                }
+                c = c.push(ps.take("panes"));
+                for e in inner {
+                    c = c.push(e);
+                }
+                if show_status {
+                    c = c.push(ps.take("status"));
+                }
+                c.into()
+            },
+            Msg::Describe,
+        );
+        col = col.push(bars);
+        for e in outer {
+            col = col.push(e);
+        }
     }
     if picking {
         col = col.push(hline(p.line)).push(pick_bar(a));
@@ -173,13 +241,6 @@ pub fn view(a: &App) -> El<'_> {
         if a.pad.kb {
             let h = (a.area.get().1 * 0.75).clamp(220.0, 300.0);
             col = col.push(responsive(move |size: Size| crate::osk_view::keyboard(a, Size::new(size.width, h))).height(Length::Fixed(h + 6.0)));
-        }
-    } else {
-        if let Some(r) = zone_row(a, "bottom") {
-            col = col.push(hline(p.line)).push(r);
-        }
-        if a.describe.knob("status") != "hidden" {
-            col = col.push(status_bar(a));
         }
     }
     let base: El = container(col).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();

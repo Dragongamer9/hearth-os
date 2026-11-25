@@ -288,13 +288,42 @@ fn page_name(pg: &Page, a: &App) -> String {
 }
 
 // ------------------------------------------------------------------ the frame
-/// The Store's blocks (hearth_ui::blocks).
-pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "window",
-    title: "Hearth Store",
-    // The Windows 11 frame draws the rail and the title bar itself (store-win11); the page is the block here.
-    blocks: &[hearth_ui::blocks::bl("page", "The page", 0, 0, 12, 12)],
-}];
+/// The Store's blocks (hearth_ui::blocks): the window (its title bar with the search, the rail, the page) and each page
+/// of it made of its own parts, moved, sized, hidden, added back or restyled; as it was when nothing is. "page" comes
+/// first in the window so a file kept by 1.18 (the page alone, over the whole window) still opens under the rest.
+use hearth_ui::blocks::{bl, PageDef};
+pub const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "Hearth Store", blocks: &[bl("page", "The page", 1, 2, 11, 10), bl("title", "The title bar and search", 0, 0, 12, 2), bl("rail", "The rail (Home, Apps, Library…)", 0, 2, 1, 10)] },
+    PageDef { id: "home", title: "Home", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("featured", "The featured app", 0, 1, 9, 7), bl("picks", "Picks on the side", 9, 1, 3, 7), bl("yours", "Your apps", 0, 8, 12, 4)] },
+    PageDef { id: "apps", title: "Apps", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("filters", "The categories", 0, 1, 12, 1), bl("banner", "Your AI team", 0, 2, 12, 2), bl("list", "The apps", 0, 4, 12, 7), bl("more", "Looking for other apps?", 0, 11, 12, 1)] },
+    PageDef { id: "library", title: "Library", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("updates", "Updates", 0, 1, 12, 4), bl("tabs", "Apps, Hearth parts, Tests", 0, 5, 12, 1), bl("yours", "Your apps", 0, 6, 12, 5), bl("thispc", "This PC", 0, 11, 12, 1)] },
+    PageDef { id: "app", title: "An app's page", blocks: &[bl("card", "The app's card (Get, versions)", 0, 0, 4, 12), bl("shots", "Screenshots", 4, 0, 8, 6), bl("words", "What's new and Description", 4, 6, 5, 6), bl("info", "Additional information", 9, 6, 3, 6)] },
+    PageDef { id: "parts", title: "Hearth parts", blocks: &[bl("head", "Title, Check for updates and Update all", 0, 0, 12, 1), bl("intro", "What Hearth parts are", 0, 1, 12, 1), bl("filters", "The kinds", 0, 2, 12, 1), bl("list", "The parts", 0, 3, 6, 9), bl("services", "Services and the note", 6, 3, 6, 9)] },
+    PageDef { id: "system", title: "Library › Hearth OS", blocks: &[bl("head", "Title", 0, 0, 12, 1), bl("card", "The update", 0, 1, 12, 4), bl("kinds", "What it updates", 0, 5, 7, 4), bl("safe", "Kept safe", 7, 5, 5, 4), bl("bottom", "What's in this one", 0, 9, 12, 3)] },
+    PageDef { id: "tests", title: "Tests", blocks: &[bl("head", "Title and Check for updates", 0, 0, 12, 1), bl("intro", "What test versions are", 0, 1, 12, 1), bl("list", "The test versions", 0, 2, 12, 10)] },
+    PageDef { id: "settings", title: "Store settings", blocks: &[bl("title", "Title", 0, 0, 12, 1), bl("updates", "Updates", 0, 1, 12, 4), bl("tests", "Test versions", 0, 5, 12, 2), bl("more", "More", 0, 7, 12, 5)] },
+];
+
+/// A Store page's parts, each a right-click away from Edit layout (that part picked), and the Store's own way of putting
+/// them together when nothing is customised.
+pub fn page_parts<'a>(a: &'a App, page: &'static str, height: f32, items: Vec<(&'static str, E<'a, Msg>)>, original: impl FnOnce(&mut hearth_ui::arrange::Parts<'a, Msg>) -> E<'a, Msg>) -> E<'a, Msg> {
+    let items = items.into_iter().map(|(id, el)| (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))).collect();
+    hearth_ui::arrange::parts_in(&a.describe, &a.p, page, Some(height), items, original, Msg::Describe)
+}
+
+/// [`page_parts`] for the window itself (not in the page's scroll).
+pub fn page_parts_fill<'a>(a: &'a App, page: &'static str, items: Vec<(&'static str, E<'a, Msg>)>, original: impl FnOnce(&mut hearth_ui::arrange::Parts<'a, Msg>) -> E<'a, Msg>) -> E<'a, Msg> {
+    // while it's being arranged, the title bar's own content sits under its block's bar (drawn over each block's top)
+    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some(page);
+    let items = items
+        .into_iter()
+        .map(|(id, el)| {
+            let el: E<'a, Msg> = if arranging && id == "title" { container(el).padding(look::pad(26.0, 0.0, 0.0, 0.0)).into() } else { el };
+            (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))
+        })
+        .collect();
+    hearth_ui::arrange::parts(&a.describe, &a.p, page, items, original, Msg::Describe)
+}
 
 /// The Store with Describe it's box under it while it's open.
 pub fn shown(a: &App) -> E<'_, Msg> {
@@ -330,8 +359,7 @@ pub fn view(a: &App) -> E<'_, Msg> {
         column![container(t(a.note.clone(), f(15.0), c)).padding(look::pad(0.0, 0.0, z(14.0), 0.0)), body].into()
     };
     let _ = (tn, sidebar as fn(&App) -> E<'_, Msg>, title_bar as fn(&App) -> E<'_, Msg>, bottom as fn(&App) -> E<'_, Msg>);
-    // Every Hearth app made of blocks (hearth_ui::blocks): the page moved, sized or restyled; as it was when nothing is.
-    let body = hearth_ui::arrange::parts(&a.describe, &p, "window", vec![("page", body)], |ps| ps.take("page"), Msg::Describe);
+    // Every Hearth app made of blocks (hearth_ui::blocks): the window's are w11::frame's, each page's its own.
     ui::edges(overlays(a, w11::frame(a, body)), Msg::Resize)
 }
 

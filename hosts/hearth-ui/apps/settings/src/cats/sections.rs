@@ -422,6 +422,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (secs.rs parts_dyn; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Values(String, run::Output),
     Go(&'static str),
     Run(&'static [&'static str]),
@@ -432,6 +434,12 @@ pub enum Msg {
     Saved(run::Output),
     TextSize(f32),
     TextSizeDone,
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 fn helper() -> String {
@@ -455,6 +463,7 @@ pub fn open(_sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Values(sec, o) => {
             if sec == st.of {
                 if let Some(Value::Object(v)) = o.json() {
@@ -757,18 +766,23 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     let st = &a.sections;
     let v = &st.vals;
     let kde = v.contains_key("kde");
+    // its parts (secs.rs parts_dyn): what's on top, each card, KDE's more; as it always was when nothing is customised
     let mut c = Column::new().spacing(18.0);
+    let mut has_top = false;
     if !st.msg.is_empty() {
         c = c.push(note(&p, st.msg.clone(), true));
+        has_top = true;
     }
     if let Some(t) = top(&p, st, sec.id) {
         c = c.push(t);
+        has_top = true;
     }
     if sec.id == "link" {
         let devs = v.get("link_devices").and_then(Value::as_array).cloned().unwrap_or_default();
         if !devs.is_empty() {
             let cards: Vec<Element<'a, Msg>> = devs.iter().map(|d| link_card(&p, d)).collect();
             c = c.push(grid(cards, 3));
+            has_top = true;
         }
     }
     if sec.id == "pers" {
@@ -781,6 +795,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         }
         r = r.push(Space::new().width(Length::Fill)).push(btn(&p, if s(v, "mode") == "light" { "Light ▾" } else { "Dark ▾" }, BtnKind::Normal, false, Some(Msg::Go("appearance"))));
         c = c.push(r);
+        has_top = true;
     }
     // The cards: their rows, the special ones (Wi-Fi's networks, Online accounts, Seeing's slider), evened out.
     let mut lists: Vec<Vec<Element<'a, Msg>>> = Vec::new();
@@ -823,12 +838,38 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         heads.push(head);
     }
     let lists = even(lists, sec.cols);
-    let cards: Vec<Element<'a, Msg>> = lists.into_iter().zip(heads).map(|(l, h)| scard(&p, h, l)).collect();
-    c = c.push(grid(cards, sec.cols));
+    let mut items: Vec<(String, Element<'a, Msg>)> = Vec::new();
+    if has_top {
+        items.push((String::new(), c.into()));
+    }
+    let n_cards = heads.len();
+    for (l, h) in lists.into_iter().zip(heads) {
+        items.push((h.to_string(), scard(&p, h, l)));
+    }
+    let mut has_kde = false;
     if let Some((go, list)) = sec.kde {
         if kde {
-            c = c.push(kde_more(&p, list, Msg::Go(go)));
+            items.push(("More in KDE's settings".to_string(), kde_more(&p, list, Msg::Go(go))));
+            has_kde = true;
         }
     }
-    Some(c.into())
+    let cols = sec.cols;
+    Some(crate::secs::parts_dyn(a, items, move |els| {
+        let mut it = els.into_iter();
+        let mut c = Column::new().spacing(18.0);
+        if has_top {
+            if let Some(t) = it.next() {
+                // the top's own column, its parts 18 apart as before
+                c = c.push(t);
+            }
+        }
+        let cards: Vec<Element<'a, Msg>> = it.by_ref().take(n_cards).collect();
+        c = c.push(grid(cards, cols));
+        if has_kde {
+            if let Some(k) = it.next() {
+                c = c.push(k);
+            }
+        }
+        c.into()
+    }))
 }

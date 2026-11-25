@@ -501,7 +501,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
     let p = sh.p;
     let stt = s.state();
     let on = s.on();
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(words(&p, "Get your phone's notifications and messages here, share files and the clipboard both ways, use the phone as a touchpad or a presentation remote, and more. Install the free KDE Connect app on your Android phone or iPhone, and have both on the same Wi-Fi."));
     let Some(st) = &s.st else { return c.push(words(&p, "Asking Hearth Connect…")).into() };
     let e = kit::st(st, "error");
@@ -764,7 +764,7 @@ use hearth_ui::Pal;
 
 fn messages<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     let Some(ph) = s.phone() else {
         return c.push(words(&p, if s.st.is_none() { "Asking Hearth Connect…" } else { "Pair your phone first (Settings › Phone)." })).push(said(&p, &s.say)).into();
     };

@@ -397,7 +397,7 @@ fn mini<'a>(p: &Pal, id: &str) -> E<'a, M> {
 
 pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::secs::Plain::new(0).spacing(10.0);
     c = c.push(head(&p, if s.saving { "Layouts · saving…" } else { "Layouts" }));
     let sw_label = SWITCHES.iter().find(|x| x.0 == s.switch).map(|x| x.1).unwrap_or("the shortcut below");
     for (i, (lay, _v, name)) in s.layouts.iter().enumerate() {
@@ -534,10 +534,11 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     }
     k = k.push(said(&p, &s.kde_say));
     // `hearth-settings keyboard:osk` (Personalization's "On-screen keyboard style", the pictures): that part first.
+    // its parts (secs.rs Plain): the typing sections, the on-screen keyboard, the shortcuts
     if s.osk_top {
-        column![o, c, k].spacing(10.0).into()
+        crate::secs::Plain::new(0).spacing(10.0).section("On-screen keyboard", o).then(c).section("Keyboard shortcuts", k).into()
     } else {
-        column![c, o, k].spacing(10.0).into()
+        c.section("On-screen keyboard", o).section("Keyboard shortcuts", k).into()
     }
 }
 

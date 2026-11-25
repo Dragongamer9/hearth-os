@@ -1111,7 +1111,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     let pg = a.kde.pages.get(page).unwrap_or(&empty);
     let ps = page_spec(page)?;
     let page_plasma = ps.get("plasma").and_then(Value::as_bool).unwrap_or(false);
-    let mut v: Vec<E<'a>> = Vec::new();
+    let mut v = crate::secs::SecVec::new();
     let intro = s(ps, "intro");
     if !intro.is_empty() {
         v.push(small(&p, intro.to_string()));

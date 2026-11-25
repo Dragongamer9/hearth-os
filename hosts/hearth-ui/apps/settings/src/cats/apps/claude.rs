@@ -103,7 +103,8 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let p = sh.p;
     let s = &st.st;
     let idle = st.busy.is_empty();
-    let mut v: Vec<E<M>> = vec![head(&p, "Claude Desktop")];
+    let mut v = crate::secs::SecVec::new();
+    v.push(head(&p, "Claude Desktop"));
     let sub = if s.is_null() {
         "Checking…".to_string()
     } else if !gb(s, "supported") {

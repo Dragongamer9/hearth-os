@@ -277,6 +277,7 @@ impl App {
             if e.is_none() && !self.picking() {
                 // Describe it is here too, so a Files with its View button hidden can always be changed back
                 items.push(MenuItem::sep());
+                items.push(MenuItem::new("edit-layout", "Edit layout"));
                 items.push(MenuItem::new("describe", "Describe it…"));
                 if self.describe.has_kept() {
                     items.push(MenuItem::new("layout-original", "Back to the original layout"));
@@ -432,6 +433,7 @@ impl App {
             // Describe it (board 11): say how you'd like Files laid out; Back to the original undoes all of it
             items.push(MenuItem::sep());
             items.push(MenuItem::heading("LAYOUT"));
+            items.push(MenuItem::new("edit-layout", "Edit layout"));
             items.push(MenuItem::new("describe", "Describe it…"));
             if self.describe.has_kept() {
                 items.push(MenuItem::new("layout-original", "Back to the original"));
@@ -1075,6 +1077,11 @@ pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
             return Task::batch(vec![t1, a.details_lookups()]);
         }
         "describe" => return a.describe.update(hearth_ui::describe::DMsg::Open).map(Msg::Describe),
+        // Edit layout: the live window turns into Arrange in place (its bars and panes as blocks)
+        "edit-layout" => {
+            let page = if a.picking() { "chooser" } else { "bars" };
+            return hearth_ui::arrange::edit_at(&mut a.describe, page, None).map(Msg::Describe);
+        }
         "layout-original" => return a.describe.update(hearth_ui::describe::DMsg::Reset).map(Msg::Describe),
         "navpane" => {
             let on = !a.nav_shown();
@@ -1745,6 +1752,10 @@ pub fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
         }
         _ => return Task::none(),
     };
+    // Arranging: Esc keeps it and leaves, Ctrl+Z undoes
+    if let Some(dm) = hearth_ui::arrange::arrange_key(&a.describe, &key, mods) {
+        return a.describe.update(dm).map(Msg::Describe);
+    }
     a.mods = mods;
     let ctrl = mods.control();
     let shift = mods.shift();

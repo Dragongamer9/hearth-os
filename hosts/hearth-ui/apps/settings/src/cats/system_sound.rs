@@ -127,7 +127,7 @@ fn sound(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let s = snd(st);
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if !s.ok {
         return note(&p, if st.read("snd") { "Sound couldn't be read (PipeWire's wpctl didn't answer)." } else { "Reading sound…" }, st.read("snd"));
     }
@@ -245,7 +245,7 @@ fn cur_out(st: &State) -> Option<&Value> {
 fn speakers(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "outputs", "your speakers") {
         return w;
     }
@@ -318,7 +318,7 @@ fn speakers(a: &App) -> El<'_> {
 fn apps(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     let outs = devices(st, "sinks");
     let ins = devices(st, "sources");
     c = c.push(head(&p, "Apps playing sound"));
@@ -385,7 +385,7 @@ fn ptt(a: &App) -> El<'_> {
     // Mantel (Hearth's desktop) runs push to talk; KDE Plasma has none of its own, so on Plasma the switch is kept
     // for Mantel and says so instead of doing nothing.
     let here = std::env::var("HEARTH_WM").map(|w| w == "kwin").unwrap_or(false) && !plasma();
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if !here {
         c = c.push(card(&p, column![ts("Push to talk needs Mantel on KWin", sz(15.0), p.text), t("It runs in Hearth's own desktop. KDE Plasma has no push to talk of its own, so it's off here; your key is kept for Mantel.", sz(13.0), p.muted)].spacing(4.0)));
     }
@@ -435,7 +435,7 @@ fn sounds(a: &App) -> El<'_> {
         _ => "hearth",
     };
     let fdo = st.raw("fdo").trim() == "yes";
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(head(&p, "Sound set"));
     let pick = |v: &'static str| -> Msg {
         let mut ex = Ex::none();
