@@ -143,6 +143,10 @@ function reflow(placed, shown) {
     for (var i = 0; i < r.length; i++) {
         if (!gone(i)) continue;
         var b = r[i];
+        // a place another part already covers (a part kept over it) isn't given again: nothing ends up on top
+        var covered = false;
+        for (var k = 0; k < r.length; k++) if (k !== i && !gone(k) && overlap(r[k], b)) { covered = true; break; }
+        if (covered) continue;
         var sides = [
             function (a) { return a.x + a.w === b.x && a.y >= b.y && a.y + a.h <= b.y + b.h; },
             function (a) { return a.x === b.x + b.w && a.y >= b.y && a.y + a.h <= b.y + b.h; },

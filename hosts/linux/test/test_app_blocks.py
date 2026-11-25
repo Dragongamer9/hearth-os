@@ -213,6 +213,14 @@ class Rules(unittest.TestCase):
             return [a[1].w, b[1].x, b[1].w];''')
         self.assertEqual(o, [20, 0, 18])
 
+    def test_a_place_already_covered_isnt_given_again(self):
+        # the pane under the folder (kept over it) has nothing to show: its place isn't handed to the one beside it
+        o = self.run_js('''
+            var p = [{id:"folder",x:0,y:0,w:18,h:24},{id:"split",x:12,y:0,w:6,h:24},{id:"side",x:18,y:0,w:6,h:24}];
+            var r = reflow(p, {split: false});
+            return [r[2].x, r[2].w, r[0].w];''')
+        self.assertEqual(o, [18, 6, 18])
+
     def test_sizing_pulls_the_neighbour_and_moving_swaps(self):
         o = self.run_js(self.DEFS + '''
             var p = D.map(own);

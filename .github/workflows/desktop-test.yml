@@ -2740,7 +2740,7 @@ jobs:
           ipc files close; sleep 2
           # a layout kept for Files (as hearth-layout app-keep writes it): on the grid, then only the status bar hidden
           mkdir -p "$A"
-          printf '%s' '{"format":1,"layout":{"blocks":{"mantel-window":{"tabs":{"x":0,"y":0,"w":24,"h":2},"address":{"x":0,"y":2,"w":24,"h":2},"toolbar":{"x":0,"y":22,"w":24,"h":2},"sidebar":{"x":18,"y":4,"w":6,"h":18,"corners":16,"accent":"#5b8cff"},"folder":{"x":0,"y":4,"w":18,"h":16},"status":{"x":0,"y":20,"w":18,"h":2},"split":{"x":12,"y":4,"w":6,"h":18},"preview":{"x":12,"y":4,"w":6,"h":18,"hidden":true}}}},"features":[]}' > "$A/files.json"
+          printf '%s' '{"format":1,"layout":{"blocks":{"mantel-window":{"tabs":{"x":0,"y":0,"w":24,"h":2},"address":{"x":0,"y":2,"w":24,"h":2},"toolbar":{"x":0,"y":22,"w":24,"h":2},"sidebar":{"x":18,"y":4,"w":6,"h":18,"corners":16,"accent":"#5b8cff"},"folder":{"x":0,"y":4,"w":12,"h":16},"status":{"x":0,"y":20,"w":12,"h":2},"split":{"x":12,"y":4,"w":6,"h":18},"preview":{"x":12,"y":4,"w":6,"h":18,"hidden":true}}}},"features":[]}' > "$A/files.json"
           ipc files open "$HOME/Documents"; sleep 5
           grim $o/files-8-kept-on-the-grid.png || true
           want files "a kept layout is laid out on the grid" '"mode":"grid"'
