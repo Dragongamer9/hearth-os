@@ -36,14 +36,14 @@ class SiteLooks(unittest.TestCase):
         self.assertIn("25E2", css)                          # the ◢ labels
         self.assertIn('html[data-frame="gold"]', css)        # the corner marks
         index = (ROOT / "site/index.html").read_text()
-        track = re.search(r"LOOK_TRACK = \{ gold: '([a-z0-9-]+)' \}", index)
+        track = re.search(r"LOOK_TRACK = \{ gold: '([a-z0-9-]+)'", index)
         self.assertTrue(track, "Gold has no song of its own")
         self.assertEqual(track.group(1), "hearth-story")
         self.assertIn("'" + track.group(1) + "']", index)   # it's in the soundtrack list
         self.assertTrue((ROOT / "site/music" / (track.group(1) + ".mp3")).is_file())
         self.assertIn("gold: 'gold'", index)                # the background moves to the beat
-        # Steam-style stays the site's default look.
-        self.assertIn('DEF = "steam"', js)
+        # Constellation is the site's default look (Nov 25, 2026).
+        self.assertIn('DEF = "constellation"', js)
 
     def test_gold_light_mode_is_readable(self):
         """Gold's light mode keeps text and links at 4.5:1 or better."""

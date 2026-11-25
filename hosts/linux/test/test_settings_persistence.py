@@ -157,6 +157,7 @@ ALLOWED = {
     '.github/scripts/layouts-run.sh',
     '.github/scripts/mantel-rust-run.sh',
     '.github/scripts/hearth-apps-rust-shots.d/settings-layout.sh',
+    '.github/scripts/hearth-apps-rust-shots.d/app-blocks-b.sh',     # CI pictures: a throwaway home's look
     # The recovery menu (reached from the boot menu): a booting file, left for the owner to change.
     'os/system_files/usr/libexec/nimbus/hearth-recovery',
     'os/recovery/src/hearth-recovery',
