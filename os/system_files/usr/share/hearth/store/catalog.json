@@ -12,7 +12,7 @@
       "icon": "CC",
       "from": "#4a90ff",
       "to": "#1f5fd6",
-      "github": "Dragongamer9/hearth-ai-command-center",
+      "github": "Hearth-Organization/hearth-ai-command-center",
       "asset": "x86_64.AppImage",
       "sums": "SHA256SUMS.txt",
       "file": "Hearth-AI-Command-Center.AppImage",
@@ -24,9 +24,9 @@
       "keepNote": "Your settings, chats and sign-ins stay in your home folder ({size}) and are there again if you install it later",
       "closeNote": "It saves first",
       "pictures": [
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/nyarch-2-team-chat-panel.png",
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/settings-1-ai-team.png",
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/nyarch-1-talking-with-ithil.png"
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-ai-command-center/main/docs/mockups/nyarch-2-team-chat-panel.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-ai-command-center/main/docs/mockups/settings-1-ai-team.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-ai-command-center/main/docs/mockups/nyarch-1-talking-with-ithil.png"
       ]
     },
     {
@@ -40,7 +40,7 @@
       "icon": "moon",
       "from": "#a78bfa",
       "to": "#6d28d9",
-      "github": "Dragongamer9/Hearth-AI",
+      "github": "Hearth-Organization/Hearth-AI",
       "asset": "x86_64.AppImage",
       "sums": "SHA256SUMS.txt",
       "file": "Hearth-AI.AppImage",
@@ -55,9 +55,9 @@
       "reopenNote": "Hearth AI opens where you left her",
       "updateNote": "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after.",
       "pictures": [
-        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/1-talk.png",
-        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/3-mind.png",
-        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/9-settings.png"
+        "https://raw.githubusercontent.com/Hearth-Organization/Hearth-AI/v0.6/docs/mockups/ithil-0.6/1-talk.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/Hearth-AI/v0.6/docs/mockups/ithil-0.6/3-mind.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/Hearth-AI/v0.6/docs/mockups/ithil-0.6/9-settings.png"
       ]
     },
     {
@@ -69,7 +69,7 @@
       "icon": "CC",
       "from": "#22d3ee",
       "to": "#0e7490",
-      "github": "Dragongamer9/hearth-capture-card",
+      "github": "Hearth-Organization/hearth-capture-card",
       "asset": "x86_64.AppImage",
       "sums": "SHA256SUMS.txt",
       "file": "Capture-Card.AppImage",
@@ -79,9 +79,9 @@
       "dataNote": "Your settings (your recordings and screenshots stay in Videos and Pictures)",
       "keepNote": "Your settings stay in your home folder ({size}); your recordings and screenshots are never touched",
       "pictures": [
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-capture-card/main/docs/mockups/capture-card-1-viewer.png",
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-capture-card/main/docs/mockups/capture-card-4-recordings.png",
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-capture-card/main/docs/mockups/capture-card-5-game-mode-viewer.png"
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-capture-card/main/docs/mockups/capture-card-1-viewer.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-capture-card/main/docs/mockups/capture-card-4-recordings.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-capture-card/main/docs/mockups/capture-card-5-game-mode-viewer.png"
       ]
     },
     {
@@ -94,7 +94,7 @@
       "icon": "RP",
       "from": "#34d399",
       "to": "#047857",
-      "github": "Dragongamer9/hearth-console-remote-play",
+      "github": "Hearth-Organization/hearth-console-remote-play",
       "asset": "x86_64.AppImage",
       "sums": "SHA256SUMS.txt",
       "file": "Hearth-Console-Remote-Play.AppImage",
@@ -105,9 +105,9 @@
       "dataNote": "Your settings and this month's data count",
       "keepNote": "Your settings and data count stay in your home folder ({size}) and are there again if you install it later",
       "pictures": [
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-console-remote-play/main/docs/mockups/remote-play-2-my-consoles.png",
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-console-remote-play/main/docs/mockups/remote-play-4-streaming-bar.png",
-        "https://raw.githubusercontent.com/Dragongamer9/hearth-console-remote-play/main/docs/mockups/remote-play-g7a-ally-streaming-overlay.png"
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-console-remote-play/main/docs/mockups/remote-play-2-my-consoles.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-console-remote-play/main/docs/mockups/remote-play-4-streaming-bar.png",
+        "https://raw.githubusercontent.com/Hearth-Organization/hearth-console-remote-play/main/docs/mockups/remote-play-g7a-ally-streaming-overlay.png"
       ]
     },
     {

@@ -1894,7 +1894,7 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     if !au.signed_in() {
                         return Err(git::SIGN_IN_HELP.to_string());
                     }
-                    let slug = std::env::var("HEARTH_NOTES_CLONE_FROM").unwrap_or_else(|_| "Dragongamer9/hearth-workspace".into());
+                    let slug = std::env::var("HEARTH_NOTES_CLONE_FROM").unwrap_or_else(|_| "Hearth-Organization/hearth-workspace".into());
                     git::clone(&slug, &dest, &au)
                 }),
                 |r| Msg::Cloned(r.unwrap_or(Err("it stopped".into()))),

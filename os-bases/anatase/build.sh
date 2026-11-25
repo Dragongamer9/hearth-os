@@ -1015,7 +1015,7 @@ fi
 # Beacon's release package: `beacon`, the tool Hearth's library talks to (hosts/hearth-core/src/beacon.rs), and
 # `beacon-app`, its window (beacon.desktop: in Mantel's launcher and pinned to its taskbar). See docs/BEACON.md.
 # Optional: when there's no release to download yet, the build says so and carries on.
-BEACON_URL=https://github.com/Dragongamer9/beacon/releases/latest/download
+BEACON_URL=https://github.com/Hearth-Organization/beacon/releases/latest/download
 if [ "$(uname -m)" = x86_64 ] && dnf5 -y install "$BEACON_URL/beacon.x86_64.rpm"; then
   echo "Beacon installed"
 else

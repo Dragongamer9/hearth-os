@@ -185,7 +185,7 @@ mod tests {
     use super::*;
 
     fn cc() -> Entry {
-        crate::catalog::Entry::from_json(&json!({"id": "command-center", "name": "Hearth AI Command Center", "github": "Dragongamer9/hearth-ai-command-center"}), false).unwrap()
+        crate::catalog::Entry::from_json(&json!({"id": "command-center", "name": "Hearth AI Command Center", "github": "Hearth-Organization/hearth-ai-command-center"}), false).unwrap()
     }
 
     fn release(tag: &str, pre: bool, draft: bool) -> Value {

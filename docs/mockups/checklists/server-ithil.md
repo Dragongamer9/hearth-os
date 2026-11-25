@@ -3,7 +3,7 @@
 Mockups: next-update/server-ithil-dash.png, next-update/server-ithil-detail.png
 Release: 1.13
 
-Ithil is the owner's own AI app (Dragongamer9/hearth-ai). Hearth only reads her files (hosts/linux/desktop/shell/hearth_ithil.py);
+Ithil is the owner's own AI app (Hearth-Organization/hearth-ai). Hearth only reads her files (hosts/linux/desktop/shell/hearth_ithil.py);
 the rest of the dashboard in the first picture is the 1.12 gold dashboard as it is.
 
 ## The dashboard (server-ithil-dash)

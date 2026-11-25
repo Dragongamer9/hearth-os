@@ -118,7 +118,7 @@ timeout /t 5 >nul
         try {
             Step "Installing Beacon"
             $bsetup = Join-Path $env:TEMP 'Beacon-x64-setup.exe'
-            Invoke-WebRequest -UseBasicParsing 'https://github.com/Dragongamer9/beacon/releases/latest/download/Beacon-x64-setup.exe' -OutFile $bsetup
+            Invoke-WebRequest -UseBasicParsing 'https://github.com/Hearth-Organization/beacon/releases/latest/download/Beacon-x64-setup.exe' -OutFile $bsetup
             Start-Process $bsetup -ArgumentList '/S' -Wait
             Remove-Item $bsetup -ErrorAction SilentlyContinue
         } catch { Write-Host "Beacon wasn't installed ($($_.Exception.Message)). Get it later from Library > Stores." -ForegroundColor Yellow }

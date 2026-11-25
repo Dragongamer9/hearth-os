@@ -43,7 +43,7 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
    roadmap item for it is ticked only when its checklist is complete, and names the checklist. Before a release, open
    each page next to its mockup. `hosts/linux/test/test_mockups.py` fails a release whose mockups have open parts.
 12. **RED FLAG: Nothing made lives only in the session.** Everything made outside this repo (videos and their sources,
-   mockup sources, renders, research, notes) is pushed to the private repo `Dragongamer9/hearth-workspace` as it's
+   mockup sources, renders, research, notes) is pushed to the private repo `Hearth-Organization/hearth-workspace` as it's
    made, with a daily work log there (`log/YYYY-MM-DD.md`: what was made or changed, what the owner decided, where it
    is, what's waiting), and that repo is kept organized by its own rules (its CLAUDE.md; `tools/check.py` passes before
    every push). A reset once lost the older videos and their style.
@@ -55,6 +55,12 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
    (`hosts/linux/test/test_store_parts.py`). App update numbers (the owner, Nov 22): MAJOR.SMALL.N, where MAJOR.SMALL is
    the Hearth OS version it's for and N counts that app's updates on it (Mantel's next on 1.17 is 1.17.4); a new Hearth
    OS version starts N at 1 again (after 1.18, Mantel's next is 1.18.1). Each still needs the owner's go-ahead.
+
+14. **RED FLAG: Store updates first, Hearth OS releases last** (the owner, Nov 24, 2026: "try our best not to push a
+   Major Release, Try our best to push updates thru the Hearth Store"). Build every change so it can ship as a Hearth
+   Store update of the app or part it lives in (Mantel, an app, a helper, a service); a Hearth OS release only for what
+   truly lives in the image (booting, the base system, the Store itself), and then batched. Say which way each change
+   ships before building it.
 
 ## Branches and releasing
 

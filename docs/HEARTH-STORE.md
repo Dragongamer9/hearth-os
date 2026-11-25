@@ -111,7 +111,7 @@ as the public ones. Private apps are marked "Only on your devices" on their page
 
 ## Hearth AI's releases
 
-The owner (Nov 19): "Add Hearth AI releases". `Dragongamer9/Hearth-AI` has `.github/workflows/release.yml` on its
+The owner (Nov 19): "Add Hearth AI releases". `Hearth-Organization/Hearth-AI` has `.github/workflows/release.yml` on its
 branch `ci/releases` (not merged, never run): a version tag the owner pushes (his number, matching package.json) builds
 and tests her and makes a **draft** release with the AppImage, the .deb, `latest-linux.yml` and `SHA256SUMS.txt`;
 nothing is public until he presses Publish. Until Hearth AI has a published release, the Store shows her as "Coming".

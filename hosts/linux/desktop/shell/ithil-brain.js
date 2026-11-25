@@ -1,6 +1,6 @@
 .pragma library
 // 1.13: Ithil's 3D / 4D brain for Server mode (IthilBrain.qml), the same brain as her app's Mind screen
-// (Dragongamer9/hearth-ai src/renderer/brain3d.js), from the team's viewer: a seeded point cloud whose parts light up
+// (Hearth-Organization/hearth-ai src/renderer/brain3d.js), from the team's viewer: a seeded point cloud whose parts light up
 // from her real event log (hearth_ithil.brain). Brain regions are analogies, not equivalents.
 var R = [
   {id:'senses',name:'Senses',ana:'like the back of the brain (vision)',hex:'#e2e8f0',what:'Takes in his message, the time and the machine state.',test:'An input event is logged on every turn.'},

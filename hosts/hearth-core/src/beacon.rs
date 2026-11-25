@@ -496,7 +496,7 @@ const SETUP_LIMIT: Duration = Duration::from_secs(30 * 60);
 const PROGRAM_LIMIT: Duration = Duration::from_secs(6 * 60 * 60);
 /// The most of Beacon's output Hearth keeps (a status list is a few KB).
 const MAX_OUTPUT: usize = 4 << 20;
-pub const RELEASES: &str = "https://github.com/Dragongamer9/beacon/releases";
+pub const RELEASES: &str = "https://github.com/Hearth-Organization/beacon/releases";
 
 /// What Hearth is having Beacon do right now: one change at a time, since each Beacon process reads its config at the
 /// start and writes it at the end (two at once would lose one's change).

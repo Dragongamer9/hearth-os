@@ -1,6 +1,6 @@
 """Ithil (Hearth AI) in Server mode (1.13, mockups next-update/server-ithil-dash.png and server-ithil-detail.png).
 
-Ithil is the owner's own AI app (Dragongamer9/hearth-ai), installed from its .deb. Hearth OS only READS her files
+Ithil is the owner's own AI app (Hearth-Organization/hearth-ai), installed from its .deb. Hearth OS only READS her files
 (~/HearthAI, or HEARTH_AI_HOME): her state, her settings, her sleeps and her event log (events.db, opened read-only).
 It never writes there. Starting her app, restarting it and "Put her to sleep" (her own API on this PC) are the only
 things Server mode does to her, each only when the owner presses the button (or, for starting, when Server mode starts).
