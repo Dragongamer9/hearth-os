@@ -11,12 +11,18 @@ rm -rf "$BB"; mkdir -p "$BB/empty/nimbus/apps" "$BB/kept/nimbus/apps"
 E="$BB/empty"
 
 # NAME APPID APP:PAGE PICK COMMAND…: the page as it is, then in Edit layout
+# (run() sets name and appid itself, so these are named apart)
 both() {
-  local name=$1 appid=$2 open=$3 pick=$4
+  local bn=$1 bid=$2 open=$3 pick=$4
   shift 4
-  run "app-blocks-b-$name" "$appid" 0 env XDG_CONFIG_HOME="${CFG:-$E}" "$@"
-  run "app-blocks-b-$name-edit" "$appid" 0 env XDG_CONFIG_HOME="${CFG:-$E}" HEARTH_ARRANGE_OPEN="$open" HEARTH_ARRANGE_PICK="$pick" "$@"
+  run "app-blocks-b-$bn" "$bid" 0 env XDG_CONFIG_HOME="${CFG:-$E}" "$@"
+  run "app-blocks-b-$bn-edit" "$bid" 0 env XDG_CONFIG_HOME="${CFG:-$E}" HEARTH_ARRANGE_OPEN="$open" HEARTH_ARRANGE_PICK="$pick" "$@"
 }
+
+# Edit layout open and nobody touching it does no work (red flag: never make a device lag): measured at rest, the
+# ordinary limit (0.3 % of a core), with the picked block's outline, name and grips drawn.
+run app-blocks-b-rest-reliability-edit hearth-reliability 20 env XDG_CONFIG_HOME="$E" HEARTH_ARRANGE_OPEN=reliability:main HEARTH_ARRANGE_PICK=marks "$BIN/hearth-reliability-history"
+run app-blocks-b-rest-restore-edit hearth-restore 20 env XDG_CONFIG_HOME="$E" HEARTH_ARRANGE_OPEN=system-restore:main HEARTH_ARRANGE_PICK=changes "$BIN/hearth-system-restore"
 
 # ---- Task Manager: the window (the rail and the page) and every page
 TM="$BIN/hearth-task-manager"
@@ -84,13 +90,13 @@ NOTES_NOW=$(python3 "$ROOT/.github/scripts/hearth-notes-fixture.py" "$NF" "$ROOT
 printf '{"look": "steam", "mode": "dark", "accent": "#ff7a2f"}\n' > "$NF/desktop.json"
 # WORLD NAME APP:PAGE PICK ARGS…
 notes_both() {
-  local world=$1 name=$2 open=$3 pick=$4
+  local world=$1 bn=$2 open=$3 pick=$4
   shift 4
   local w="$NF/$world/home"
   local envs=(env HOME="$w" XDG_DATA_HOME="$w/.local/share" XDG_CONFIG_HOME="$w/.config" XDG_CACHE_HOME="$w/.cache" HEARTH_DESKTOP_JSON="$NF/desktop.json"
     HEARTH_NOTES_NOW="$NOTES_NOW" HEARTH_NOTES_THIS_PC="Hearth OS 1.16 · Fedora edition" HEARTH_NOTES_PC_NAME="Nvidia PC" PATH="$NF/bin:$PATH")
-  run "app-blocks-b-$name" hearth-notes 0 "${envs[@]}" "$BIN/hearth-notes-app" "$@" --no-auto-sync
-  run "app-blocks-b-$name-edit" hearth-notes 0 "${envs[@]}" HEARTH_ARRANGE_OPEN="$open" HEARTH_ARRANGE_PICK="$pick" "$BIN/hearth-notes-app" "$@" --no-auto-sync
+  run "app-blocks-b-$bn" hearth-notes 0 "${envs[@]}" "$BIN/hearth-notes-app" "$@" --no-auto-sync
+  run "app-blocks-b-$bn-edit" hearth-notes 0 "${envs[@]}" HEARTH_ARRANGE_OPEN="$open" HEARTH_ARRANGE_PICK="$pick" "$BIN/hearth-notes-app" "$@" --no-auto-sync
 }
 SN=hearth/mockups/hearth-store/README.md
 notes_both main notes-window notes:window side --note "$SN" --open-folders hearth,other
