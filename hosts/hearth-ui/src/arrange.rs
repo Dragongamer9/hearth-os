@@ -896,8 +896,10 @@ fn chrome<'a, M: Clone + 'a>(d: &Describe, a: &Arrange, p: &Pal, id: &'static st
         .on_exit(e(EMsg::Unhover(id)))
         .interaction(if held { mouse::Interaction::Grabbing } else { mouse::Interaction::Grab })
         .into();
+    // its name only while the pointer is on it (the picked one's name and ✕ Hide are in the bar), so nothing of the
+    // block is covered while it just sits there
     let mut top = Row::new().spacing(6.0).align_y(iced::Center).width(Length::Fill);
-    if picked || hov || held {
+    if hov || held {
         let bg = if picked { p.accent } else { Pal::a(p.panel3, 0.96) };
         let fg = if picked { p.ink } else { p.text };
         top = top.push(
@@ -905,14 +907,6 @@ fn chrome<'a, M: Clone + 'a>(d: &Describe, a: &Arrange, p: &Pal, id: &'static st
                 .padding(Padding { top: 3.0, right: 9.0, bottom: 3.0, left: 7.0 })
                 .style(ui::boxed(bg, p.r(8.0), None)),
         );
-        top = top.push(Space::new().width(Length::Fill));
-        if picked {
-            top = top.push(
-                mouse_area(container(t("✕ Hide", 12.0, p.ink).wrapping(Wrapping::None)).padding(Padding { top: 3.0, right: 9.0, bottom: 3.0, left: 9.0 }).style(ui::boxed(p.accent, p.r(8.0), None)))
-                    .on_press(e(EMsg::Hide(id)))
-                    .interaction(mouse::Interaction::Pointer),
-            );
-        }
     }
     let tag: Element<'a, M> = container(top).padding(6.0).width(Length::Fill).into();
     let edge_c = Pal::a(p.accent, if picked || hov { 0.55 } else { 0.0 });
@@ -1015,6 +1009,7 @@ fn bar<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, p: &Pal, map: &dyn Fn
     let mut under = Row::new().spacing(8.0).align_y(iced::Center);
     match a.pick.and_then(|id| a.placed.iter().find(|x| x.id == id)) {
         Some(pl) => {
+            under = under.push(chip(&p, format!("✕ Hide {}", pl.title), false, e(EMsg::Hide(pl.id))));
             under = under.push(ts(format!("Look of {}:", pl.title), 12.0, p.text));
             for part in [LookPart::Corners, LookPart::See, LookPart::Font, LookPart::Size, LookPart::Accent] {
                 let changed = match part {
