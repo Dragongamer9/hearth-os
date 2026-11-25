@@ -56,7 +56,7 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
    the Hearth OS version it's for and N counts that app's updates on it (Mantel's next on 1.17 is 1.17.4); a new Hearth
    OS version starts N at 1 again (after 1.18, Mantel's next is 1.18.1). Each still needs the owner's go-ahead.
 
-13. **RED FLAG: Store updates first, Hearth OS releases last** (the owner, Nov 24, 2026: "try our best not to push a
+14. **RED FLAG: Store updates first, Hearth OS releases last** (the owner, Nov 24, 2026: "try our best not to push a
    Major Release, Try our best to push updates thru the Hearth Store"). Build every change so it can ship as a Hearth
    Store update of the app or part it lives in (Mantel, an app, a helper, a service); a Hearth OS release only for what
    truly lives in the image (booting, the base system, the Store itself), and then batched. Say which way each change
