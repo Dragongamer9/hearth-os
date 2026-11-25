@@ -1,0 +1,65 @@
+Layout audit: 31 renders with problems, 0 script errors
+gm-blocks-edit: 12, gm-blocks-quick: 12, x-lib-mosaic: 4, x-wall: 2, x-lib-hex: 1
+
+n25 home x-wall 1280x720
+  - 1+ texts overlap: "Comet Kitchen" / "Starfall Drift"
+n25 library x-lib-mosaic 1280x800
+  - 1+ texts overlap: "Tidebound" / "Starfall Drift"
+n25 library x-lib-mosaic 1280x720
+  - 1+ texts overlap: "Steam" / "Installed · 38.2 GB"
+n25 home gm-blocks-edit 1280x800
+  - something is drawn over the footer: gmb-r
+n25 home gm-blocks-edit 1920x1080
+  - something is drawn over the footer: gmb-hints
+n25 home gm-blocks-edit 1280x720
+  - something is drawn over the footer: gmb-r
+n25 home gm-blocks-quick 1280x800
+  - something is drawn over the footer: qd-hb
+n25 home gm-blocks-quick 1920x1080
+  - something is drawn over the footer: qd-hb
+n25 home gm-blocks-quick 1280x720
+  - something is drawn over the footer: qd-hb
+n500 home x-wall 1280x720
+  - 3+ texts overlap: "Frost Valley 5" / "Starfall Drift"; "Ember Valley 3" / "Steam · Played today · 143 h"; "Age of the Ring" / "Steam · Played today · 143 h"
+n500 library x-lib-hex 1920x1080
+  - 1+ texts overlap: "Star Machine" / "Starfall Drift"
+n500 library x-lib-mosaic 1280x800
+  - 3+ texts overlap: "Echo Protocol" / "Starfall Drift"; "Ember Forge 3" / "Starfall Drift"; "Little Protocol 5" / "Installed · 38.2 GB"
+n500 library x-lib-mosaic 1920x1080
+  - 1+ texts overlap: "Broken Machine 2" / "Starfall Drift"
+n500 home gm-blocks-edit 1280x800
+  - something is drawn over the footer: gmb-r
+n500 home gm-blocks-edit 1920x1080
+  - something is drawn over the footer: gmb-hints
+n500 home gm-blocks-edit 1280x720
+  - something is drawn over the footer: gmb-r
+n500 home gm-blocks-quick 1280x800
+  - something is drawn over the footer: qd-hb
+n500 home gm-blocks-quick 1920x1080
+  - something is drawn over the footer: qd-hb
+n500 home gm-blocks-quick 1280x720
+  - something is drawn over the footer: qd-hb
+n1 home gm-blocks-edit 1280x800
+  - something is drawn over the footer: gmb-r
+n1 home gm-blocks-edit 1920x1080
+  - something is drawn over the footer: gmb-hints
+n1 home gm-blocks-edit 1280x720
+  - something is drawn over the footer: gmb-r
+n1 home gm-blocks-quick 1280x800
+  - something is drawn over the footer: qd-hb
+n1 home gm-blocks-quick 1920x1080
+  - something is drawn over the footer: qd-hb
+n1 home gm-blocks-quick 1280x720
+  - something is drawn over the footer: qd-hb
+n0 home gm-blocks-edit 1280x800
+  - something is drawn over the footer: div
+n0 home gm-blocks-edit 1920x1080
+  - something is drawn over the footer: div
+n0 home gm-blocks-edit 1280x720
+  - something is drawn over the footer: div
+n0 home gm-blocks-quick 1280x800
+  - something is drawn over the footer: qd-hb
+n0 home gm-blocks-quick 1920x1080
+  - something is drawn over the footer: qd-hb
+n0 home gm-blocks-quick 1280x720
+  - something is drawn over the footer: qd-hb
