@@ -296,6 +296,41 @@ pub fn drag(start: &Placed, grip: Grip, from: (u8, u8), to: (u8, u8)) -> Placed 
     p
 }
 
+fn overlaps(a: &Placed, b: &Placed) -> bool {
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+}
+
+/// The other blocks moved out of the way of block `fixed` (down below what's in the way, else to its right, else made
+/// shorter or narrower to fit), so nothing overlaps; with `fixed` None, the page is tidied as it reads (top to bottom,
+/// left to right). Hidden blocks are in nobody's way. Edit layout runs it on every move from the page as it was when
+/// the block was picked up, so blocks pushed aside come back when the held one moves on (live reflow).
+pub fn push_aside(placed: &mut [Placed], fixed: Option<usize>) {
+    let mut order: Vec<usize> = (0..placed.len()).filter(|i| Some(*i) != fixed && !placed[*i].hidden).collect();
+    order.sort_by_key(|i| (placed[*i].y, placed[*i].x));
+    let mut settled: Vec<usize> = fixed.filter(|i| *i < placed.len() && !placed[*i].hidden).into_iter().collect();
+    for j in order {
+        let mut p = placed[j].clone();
+        for _ in 0..(COLS as usize + ROWS as usize) * 2 {
+            let Some(s) = settled.iter().map(|k| &placed[*k]).find(|s| overlaps(&p, s)).cloned() else { break };
+            if s.y + s.h + p.h <= ROWS {
+                p.y = s.y + s.h;
+            } else if s.x + s.w + p.w <= COLS {
+                p.x = s.x + s.w;
+            } else if s.y + s.h < ROWS {
+                p.y = s.y + s.h;
+                p.h = ROWS - p.y;
+            } else if s.x + s.w < COLS {
+                p.x = s.x + s.w;
+                p.w = COLS - p.x;
+            } else {
+                break;
+            }
+        }
+        placed[j] = p;
+        settled.push(j);
+    }
+}
+
 /// A block moved by whole cells (the keys and the controller in Edit layout), staying whole and on the grid.
 pub fn nudge(p: &Placed, dx: i8, dy: i8) -> Placed {
     let mut n = p.clone();
@@ -471,6 +506,26 @@ mod tests {
         assert_eq!((g.w, g.h), (10, 1));
         let g = grow(&grow(&s, -3, -6), 1, 1);
         assert_eq!((g.x, g.w, g.h), (2, 8, 7));
+    }
+
+    #[test]
+    fn others_make_way_and_nothing_overlaps() {
+        const P3: PageDef = PageDef { id: "p", title: "P", blocks: &[bl("a", "A", 0, 0, 6, 2), bl("b", "B", 6, 0, 6, 2), bl("c", "C", 0, 2, 12, 10)] };
+        let mut r = defaults(&P3);
+        r[0] = drag(&r[0], Grip::Move, (0, 0), (0, 2)); // A dropped onto C
+        push_aside(&mut r, Some(0));
+        assert_eq!((r[0].y, r[0].h), (2, 2), "the held block stays where it was put");
+        assert_eq!((r[2].y, r[2].h), (4, 8), "C goes down below it, shorter to fit");
+        assert_eq!((r[1].x, r[1].y), (6, 0), "B wasn't in the way");
+        for i in 0..r.len() {
+            for j in 0..r.len() {
+                assert!(i == j || !overlaps(&r[i], &r[j]), "{} and {} overlap", r[i].id, r[j].id);
+            }
+        }
+        let mut t = defaults(&P3);
+        t[1].x = 3; // B half over A: tidied
+        push_aside(&mut t, None);
+        assert!(!overlaps(&t[0], &t[1]));
     }
 
     #[test]

@@ -166,7 +166,7 @@ impl Describe {
         e
     }
 
-    fn arrange(&mut self, m: DMsg) -> Task<DMsg> {
+    pub(crate) fn arrange(&mut self, m: DMsg) -> Task<DMsg> {
         match m {
             DMsg::Arrange(None) => self.arr = None,
             DMsg::Arrange(Some(page)) => {
@@ -335,6 +335,8 @@ impl Describe {
     fn update_inner(&mut self, m: DMsg) -> Task<DMsg> {
         match m {
             DMsg::Edit(e) => return self.edit(e),
+            // Edit layout in place (arrange.rs): every way into it starts the same
+            DMsg::Arrange(Some(p)) => return self.edit(crate::arrange::EMsg::StartAt(p, None)),
             DMsg::Arrange(_) | DMsg::Grab(..) | DMsg::Cell(..) | DMsg::Drop | DMsg::Pick(_) | DMsg::Hide(_) | DMsg::Show(_) | DMsg::Look(_) | DMsg::ArrUndo | DMsg::ArrReset | DMsg::ArrKeep => {
                 return self.arrange(m);
             }

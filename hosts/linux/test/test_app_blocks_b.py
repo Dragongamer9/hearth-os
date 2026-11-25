@@ -132,10 +132,38 @@ class EditLayoutIsDirect(unittest.TestCase):
     def test_right_click_any_block(self):
         for label in ('"Edit layout"', '"Hide this"', '"Describe it…"'):
             self.assertIn(label, self.A)
-        self.assertIn('on_right_press(map(DMsg::Edit(EMsg::Menu(Some((page, id))))))', self.A)
+        # at the pointer (the block's own right-click, with where it was pressed), kept inside the block
+        self.assertIn('EMsg::MenuAt(page, id, pt.x, pt.y, sz.width, sz.height)', self.A)
+        self.assertIn('cursor.position_in(b)', self.A)
+        self.assertIn('pin(block_menu(p, map, page, id)).x(px).y(py)', self.A)
         # in the app's own view too (Parts wraps each piece), and when laid out
-        self.assertIn('wrap(d, &pal, page_id, id, el, &m)', self.A)
+        self.assertIn('Some(b) => wrap(d, &pal, page_id, b.id, el, &m)', self.A)
         self.assertIn('let el = wrap(d, pal, page, pl.id, el, &map);', self.A)
+
+    def test_entering_edit_layout_moves_nothing(self):
+        # edited in place: the app's own view with each block's grips over it, each block's real place recorded, and
+        # only at the first change does each block start on the grid from where it really was (tidied, no overlaps)
+        self.assertIn('Some(b) if fresh => in_place_block(d, &pal, page_id, b.id, b.title, el, &m)', self.A)
+        self.assertIn('board.spot = Some((&d.ed.rects, page, ""))', self.A)
+        self.assertIn('fn adopt(&mut self)', self.A)
+        self.assertIn('blocks::push_aside(&mut base, None);', self.A)
+        self.assertIn('self.ed.fresh = if self.laid(page).is_none() { Some(page) } else { None };', self.A)
+        # back to the app's own way is kept as the app's own, not as the grid's nearest
+        self.assertIn('let own = self.in_place(a.page);', self.A)
+        # every way into Edit layout starts the same
+        self.assertIn('DMsg::Arrange(Some(p)) => return self.edit(crate::arrange::EMsg::StartAt(p, None))', self.D)
+
+    def test_others_make_way(self):
+        self.assertIn('pub fn push_aside(placed: &mut [Placed], fixed: Option<usize>)', self.B)
+        self.assertIn('fn others_make_way_and_nothing_overlaps', self.B)
+        # on every move, from the page as it was when the block was picked up (pushed ones come back)
+        self.assertIn('blocks::push_aside(&mut base, Some(i));', self.A)
+        self.assertIn('blocks::push_aside(&mut base, Some(j));', self.A)
+
+    def test_dragged_back_from_the_tray(self):
+        self.assertIn('e(EMsg::Tray(hb.id))', self.A)
+        self.assertIn('self.ed.tray = Some(id);', self.A)
+        self.assertIn('if tray == Some(id) {', self.A)
 
     def test_drag_anywhere_edges_and_corner(self):
         for g in ('Grip::Move', 'Grip::Wide', 'Grip::Tall', 'Grip::Size'):
@@ -176,7 +204,7 @@ class EditLayoutIsDirect(unittest.TestCase):
     def test_light_at_rest(self):
         # nothing per frame: no subscription, no timer that repeats; hover only on enter / exit
         self.assertNotIn('iced::time::every', self.A)
-        self.assertIn('on_enter(e(EMsg::Hover(pl.id)))', self.A)
+        self.assertIn('on_enter(e(EMsg::Hover(id)))', self.A)
         self.assertNotIn('on_move', self.A)
 
 
