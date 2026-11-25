@@ -7,6 +7,9 @@
 // what Hearth can't do yet shows Why, the closest it can make (Add this instead) and exactly what an idea sends, sent
 // only with Send this idea to Hearth. Opened from the bar's right-click menu, Settings › Desktop layout, or
 // `quickshell ipc -p <shell> call describe open <part>`. Nothing runs by itself: the AI is asked only on Make it.
+// While it waits (the owner, Nov 24: it sat on "Your AI is making it…" for minutes on his laptop's CPU): the seconds,
+// who's answering (hearth-layout's HEARTH_DESCRIBE_STATUS file), after 20 s that it's slow here and where a faster one is
+// picked (Settings › AI › Describe it uses), and Cancel, which ends hearth-layout and its curl (their own process group).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -28,6 +31,18 @@ PanelWindow {
     property bool tellMe: true
     property string sent: ""
     property var now: null              // today's layout (for NOW)
+    property int ask: 0                 // the ask being waited for (an answer to an older, cancelled one is let go)
+    property int waited: 0              // seconds so far
+    property var wait: null             // who's answering: {"engine", "model", "from", "words", "slow"}
+    readonly property string runDir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
+    function askFile(n, ext) { return runDir + "/hearth-describe-mantel-" + n + "." + ext; }
+    readonly property bool slowHere: !!wait && (wait.from === "here" || wait.slow === true)
+    readonly property string waitLine: {
+        const who = wait && wait.engine ? wait.engine : "your AI";
+        if (waited < 20) return "Asking " + who + "… " + waited + " s";
+        if (slowHere) return "Your AI is slow on this device" + (wait && wait.words ? " (about " + Math.max(1, Math.round(wait.words)) + " words a second)" : "") + " · " + waited + " s";
+        return who + " is taking a while · " + waited + " s";
+    }
     visible: shown
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
@@ -47,7 +62,24 @@ PanelWindow {
         shown = true; input.forceActiveFocus();
         run(["hearth-layout", "now"], o => { try { dz.now = JSON.parse(o); } catch (e) { dz.now = null; } });
     }
-    function close() { shown = false; drawing = false; }
+    function close() { if (busy) cancel(); shown = false; drawing = false; }
+    // Ends the ask being waited for: its whole process group (hearth-layout and its curl), nothing kept.
+    function cancel() {
+        if (!busy) return;
+        const pf = askFile(ask, "pid"), sf = askFile(ask, "json");
+        Quickshell.execDetached(["sh", "-c", 'p=$(cat "$1" 2>/dev/null); case "$p" in ""|*[!0-9]*) ;; *) kill -TERM -- "-$p"; rm -f "$(dirname "$1")/hearth-describe-$p.h" ;; esac; rm -f "$1" "$2"', "sh", pf, sf]);
+        ask++; busy = false; error = ""; sent = "";
+        cancelled = true;
+    }
+    property bool cancelled: false
+    Timer {
+        interval: 1000; repeat: true; running: dz.busy
+        onTriggered: {
+            dz.waited++;
+            const n = dz.ask;
+            if (dz.waited % 2 === 1) dz.run(["cat", dz.askFile(n, "json")], o => { if (n !== dz.ask) return; try { const v = JSON.parse(o); if (v && typeof v === "object") dz.wait = v; } catch (e) {} });
+        }
+    }
 
     Component {
         id: runComp
@@ -73,14 +105,22 @@ PanelWindow {
     }
     function make() {
         if (busy || (text.trim() === "" && sketch === "")) return;
-        busy = true; error = ""; result = null; kept = false; sent = ""; sharing = false;
-        run(["hearth-layout", "describe", part, text, sketch], (out, err, code) => {
+        busy = true; error = ""; result = null; kept = false; sent = ""; sharing = false; cancelled = false;
+        ask++; waited = 0; wait = null;
+        const n = ask, pf = askFile(n, "pid"), sf = askFile(n, "json");
+        // its own process group (setsid), its number in a file, so Cancel ends it and its curl together
+        const argv = ["setsid", "-w", "sh", "-c", 'echo $$ > "$0"; exec "$@"', pf, "env",
+                      "HEARTH_DESCRIBE_APP=Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || ""), "HEARTH_DESCRIBE_STATUS=" + sf,
+                      "hearth-layout", "describe", part, text, sketch];
+        run(argv, (out, err, code) => {
+            Quickshell.execDetached(["rm", "-f", pf, sf]);
+            if (n !== dz.ask) return;            // cancelled: its answer is let go
             dz.busy = false;
             let r = null;
             try { r = JSON.parse(out.trim().split("\n").pop() || "{}"); } catch (e) { r = null; }
             if (!r || r.ok !== true) { dz.error = (r && r.error) || err.trim() || "Your AI didn't answer."; return; }
             dz.result = r;
-        }, { HEARTH_DESCRIBE_APP: "Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "") });
+        });
     }
     function keep() {
         if (isLayout) run(["hearth-layout", "apply-json", JSON.stringify(result.layout)], (o, e, c) => { if (c === 0) dz.kept = true; else dz.error = (e || o).trim(); });
@@ -328,7 +368,28 @@ PanelWindow {
     }
 
     Text { visible: dz.error !== ""; anchors { horizontalCenter: parent.horizontalCenter; bottom: box.top; bottomMargin: 16 } text: dz.error; color: Theme.red || "#e5534b"; font.family: Theme.font; font.pixelSize: 14 }
-    Text { visible: dz.busy; anchors.centerIn: parent; text: "Your AI is making it…"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 18 }
+    Text { visible: !dz.busy && dz.cancelled && dz.error === ""; anchors { horizontalCenter: parent.horizontalCenter; bottom: box.top; bottomMargin: 16 } text: "Stopped. Nothing was changed."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
+    // ---- waiting: the seconds, who's answering, and after 20 s that it's slow here (with where to pick a faster one)
+    Column {
+        visible: dz.busy
+        anchors.centerIn: parent
+        spacing: 12
+        width: 760
+        Text { anchors.horizontalCenter: parent.horizontalCenter; text: dz.waitLine; color: dz.waited >= 20 ? (Theme.warn || "#f2b84b") : Theme.text; font.family: Theme.font; font.pixelSize: 20; font.weight: Font.DemiBold }
+        Text {
+            visible: dz.waited >= 20
+            width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+            text: dz.slowHere ? "Your PC's AI over Hearth Link answers much faster. Pick it in Settings › AI › Describe it uses."
+                              : "If it's often slow, pick another in Settings › AI › Describe it uses."
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 14
+        }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 10
+            Btn { label: "Cancel"; onClicked: dz.cancel() }
+            Btn { visible: dz.waited >= 20; label: "Pick a faster AI"; onClicked: { dz.cancel(); dz.close(); Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "settings", "page", "ai"]); } }
+        }
+    }
 
     // ---- the box to type in, with the sketch (board 7, bottom)
     Rectangle {
@@ -358,7 +419,7 @@ PanelWindow {
                 wrapMode: TextInput.Wrap
                 onAccepted: dz.make()
                 Keys.onEscapePressed: dz.close()
-                Text { visible: input.text === ""; text: "Say how you'd like " + dz.partName(dz.part).toLowerCase() + "…"; color: Theme.muted; font: input.font }
+                Text { visible: input.text === ""; text: "Tell Hearth how you'd like " + dz.partName(dz.part).toLowerCase() + "…"; color: Theme.muted; font: input.font }
             }
         }
         RowLayout {
@@ -368,7 +429,7 @@ PanelWindow {
             Btn { label: "Draw it here"; onClicked: dz.drawing = true }
             Text { Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                 text: "Try: \"make the calendar show the whole month and my next three events\" · \"a dock on the left, icons only\"" }
-            Btn { primary: true; label: dz.busy ? "Making it…" : "Make it"; onClicked: dz.make() }
+            Btn { primary: !dz.busy; label: dz.busy ? "Cancel" : "Make it"; onClicked: dz.busy ? dz.cancel() : dz.make() }
         }
     }
 

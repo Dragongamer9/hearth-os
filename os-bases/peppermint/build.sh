@@ -1199,6 +1199,10 @@ chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/d
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
+# hearth-ai-check as a command (the owner, Nov 24, 2026: he had to type python3 /usr/share/nimbus/desktop/shell/hearth-ai-check
+# status): which AI answers, Describe it's pick, speeds. Read only unless Settings changes a pick through it.
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-ai-check
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-ai-check /usr/bin/hearth-ai-check
 # Screens and screenshots on both of Mantel's compositors (1.14, docs/SCREENS.md): hearth-screens (Settings › Display,
 # restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
 # KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose

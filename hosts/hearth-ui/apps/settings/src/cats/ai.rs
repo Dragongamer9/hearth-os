@@ -8,6 +8,15 @@
 //! hearth-home-server status. Changes go through their own tools: hearth_ai_engines.py set ollamaModel (Change model),
 //! hearth-home-server set aiOn (Ollama on or off), hearth-link-settings ai-serve / ai-stop / ai-allow (sharing, Stop),
 //! hearth-home-server-helper app-fix (Fix it, as admin). Nothing changes by itself (red flag 9).
+//!
+//! Describe it uses (the owner, Nov 24, 2026: Describe it sat on "Your AI is making it…" on his laptop's slow CPU Ollama
+//! while his PC's AI was there): where Describe it asks first, Fastest available / This device / My other devices
+//! (hearth-ai-check use describe {"from": …}), and which AI that is now, with how fast it writes when it's slow.
+//! Shared from your other devices: every AI your other Hearth devices share (hearth-ai-check shared: the same list as
+//! Settings › Home server › AI devices, from hearth-ai-share devices, with Hearth Link's), each with its state, engine,
+//! models, graphics, speed when measured, whether Describe it uses it, and "Use this for Describe it" (hearth-ai-check
+//! use-shared: the same pick, through use). A device Hearth Link couldn't confirm as yours says so, with Pair again.
+//! Read when the page opens and on Refresh; nothing polls.
 
 use crate::shared::Shared;
 use crate::widgets::*;
@@ -45,6 +54,9 @@ pub struct State {
     pub dtest: Option<Value>,
     pub dstart: Option<std::time::Instant>,
     pub dsecs: f32,
+    /// Shared from your other devices (hearth-ai-check shared), and whether it's being looked up again
+    pub shared: Value,
+    pub sh_busy: bool,
 }
 
 /// What Test it asks (ai-2): a whole desktop, as Describe it would.
@@ -88,7 +100,17 @@ pub enum Msg {
     DTested(run::Output),
     ShowIt,
     Speed(run::Output),
+    /// Describe it uses… picked: fastest, here or link
+    DescribeFrom(&'static str),
+    Shared(run::Output),
+    RefreshShared,
+    /// Use this for Describe it: that device's AI (hearth-ai-check use-shared DEVICE)
+    UseShared(String),
+    UsedShared(run::Output),
 }
+
+/// Describe it uses… (Settings › AI): where it asks first, in hearth-ai-check's words.
+pub const DESCRIBE_FROM: [(&str, &str); 3] = [("fastest", "Fastest available"), ("here", "This device"), ("link", "My other devices")];
 
 fn py(name: &str, args: &[&str]) -> Vec<String> {
     let mut v = vec!["python3".to_string(), run::shell_helper(name)];
@@ -104,6 +126,7 @@ fn load() -> Task<Msg> {
         Task::perform(run::spawn(py("hearth-ai-check", &["models"])), Msg::Models),
         Task::perform(run::spawn(py("hearth-home-server", &["status"])), Msg::Hs),
         Task::perform(run::spawn(py("hearth-link-settings", &["status"])), Msg::Peers),
+        Task::perform(run::spawn(py("hearth-ai-check", &["shared"])), Msg::Shared),
     ])
 }
 
@@ -227,6 +250,28 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             run::detached(&v);
         }
         Msg::Copy(s) => return iced::clipboard::write(s),
+        Msg::Shared(o) => {
+            st.sh_busy = false;
+            st.shared = json_of(&o);
+        }
+        Msg::RefreshShared => {
+            st.sh_busy = true;
+            return Task::perform(run::spawn(py("hearth-ai-check", &["shared"])), Msg::Shared);
+        }
+        Msg::UseShared(dev) => {
+            st.busy = true;
+            return Task::perform(run::spawn(py("hearth-ai-check", &["use-shared", &dev])), Msg::UsedShared);
+        }
+        Msg::UsedShared(o) => {
+            st.busy = false;
+            let v = json_of(&o);
+            st.msg = if v["ok"] == Value::Bool(true) { String::new() } else if !s(&v, "error").is_empty() { s(&v, "error") } else { o.why() };
+            return load();
+        }
+        Msg::DescribeFrom(k) => {
+            st.busy = true;
+            return Task::perform(run::spawn(py("hearth-ai-check", &["use", "describe", &serde_json::json!({ "from": k }).to_string()])), Msg::Did);
+        }
     }
     Task::none()
 }
@@ -588,6 +633,100 @@ fn uses_card<'a>(p: &Pal, st: &'a State, laptop: bool) -> Element<'a, Msg> {
     container(c).padding(22.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(14.0), Some((Pal::a(p.text, 0.06), 1.0)))).into()
 }
 
+/// Describe it uses… (the owner, Nov 24): where Describe it asks first, and which AI that is now.
+fn describe_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
+    let u = &st.st["uses"]["describe"];
+    let from = if s(u, "from").is_empty() { if b(u, "own") { String::new() } else { "fastest".into() } } else { s(u, "from") };
+    let items: Vec<(String, bool, Option<Msg>)> = DESCRIBE_FROM.iter().map(|(k, label)| (label.to_string(), from == *k, if st.busy { None } else { Some(Msg::DescribeFrom(*k)) })).collect();
+    let now = if st.st.is_null() {
+        "Checking…".to_string()
+    } else if b(u, "ready") {
+        let via = if s(u, "via").is_empty() { s(u, "label") } else { s(u, "via") };
+        let mut x = format!("Now: {via}");
+        if !s(u, "model").is_empty() {
+            x.push_str(&format!(" · {}", s(u, "model")));
+        }
+        if b(u, "slow") {
+            x.push_str(&match u["words"].as_f64() {
+                Some(w) => format!(" · slow on this device (about {} words a second)", w.round() as i64),
+                None => " · slow on this device".into(),
+            });
+        }
+        x
+    } else {
+        "Nothing answers there right now: the fastest that answers is asked instead".into()
+    };
+    let r = row![
+        column![tb("Where Describe it asks first".to_string(), 15.0, p.text), t(now, 13.0, p.muted)].spacing(3.0).width(Length::Fill),
+        seg(p, items)
+    ]
+    .spacing(16.0)
+    .align_y(iced::Center);
+    let rows: Vec<Element<'a, Msg>> = vec![
+        r.into(),
+        Space::new().height(Length::Fixed(8.0)).into(),
+        t("Fastest available: your other devices over Hearth Link before a slow engine on this device (under 8 words a second, or no graphics card). Nothing here changes by itself.", 13.0, p.muted).into(),
+    ];
+    titled(p, "Describe it uses", "", rows)
+}
+
+/// Shared from your other devices (the owner, Nov 24): every AI your other Hearth devices share, read only, each with
+/// "Use this for Describe it". The words are Settings › Home server › AI devices' own (hs::services).
+fn shared_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
+    use super::hs::services::{gpu_word, reason_word};
+    let mut rows: Vec<Element<'a, Msg>> = Vec::new();
+    let devs = arr(&st.shared, "devices");
+    if st.shared.is_null() {
+        rows.push(t("Looking for your devices…", 13.0, p.muted).into());
+    } else if devs.is_empty() {
+        rows.push(t("None of your other devices shares its AI yet. Turn on Share this device's AI on it (Settings › Home server › AI devices), or pair it in Hearth Link.", 13.0, p.muted).into());
+    }
+    for d in devs {
+        let name = s(d, "name");
+        let state = s(d, "state");
+        let dev = s(d, "device");
+        let (word, good) = match state.as_str() {
+            "ready" => ("Ready".to_string(), true),
+            "playing" => ("Playing".to_string(), false),
+            "busy" => ("Busy".to_string(), false),
+            "unconfirmed" => ("Can't confirm".to_string(), false),
+            "offline" => ("Offline".to_string(), false),
+            other => (reason_word(other).to_string(), false),
+        };
+        let mut title = Row::new().spacing(8.0).align_y(iced::Center).push(tb(name.clone(), 15.0, p.text)).push(sec_chip(p, if word.is_empty() { "Not sharing" } else { word.as_str() }, good));
+        if b(d, "inUse") {
+            title = title.push(container(t("Describe it uses this", 12.0, p.accent)).padding(Padding { top: 2.0, right: 10.0, bottom: 2.0, left: 10.0 }).style(ui::boxed(Pal::a(p.accent, 0.12), 12.0, Some((Pal::a(p.accent, 0.5), 1.0)))));
+        }
+        let (line, right): (Element<'a, Msg>, Element<'a, Msg>) = if state == "unconfirmed" {
+            (t(format!("Can't confirm this is your {name} — pair it again"), 13.0, p.danger).into(), btn(p, "Pair again", BtnKind::Normal, false, Some(Msg::Go("link"))))
+        } else {
+            let mut bits: Vec<String> = Vec::new();
+            let models: Vec<String> = arr(d, "models").iter().filter_map(|m| m.as_str().map(str::to_string)).collect();
+            if !s(d, "engine").is_empty() {
+                bits.push(match s(d, "engine").as_str() { "ollama" => "Ollama".to_string(), "colibri" => "Colibri".to_string(), e => e.to_string() });
+            }
+            if !models.is_empty() {
+                bits.push(format!("{}{}", models.iter().take(2).cloned().collect::<Vec<_>>().join(", "), if models.len() > 2 { format!(" +{}", models.len() - 2) } else { String::new() }));
+            }
+            if !s(d, "gpu").is_empty() {
+                let vram = d["vramMB"].as_f64().unwrap_or(0.0);
+                bits.push(if vram > 0.0 { format!("{} · {:.0} GB", gpu_word(&s(d, "gpu")), vram / 1024.0) } else { gpu_word(&s(d, "gpu")).to_string() });
+            }
+            if let Some(w) = d["words"].as_f64() {
+                bits.push(format!("about {} words a second", w.round() as i64));
+            }
+            bits.push(match s(d, "via").as_str() { "tailscale" => "through Tailscale".to_string(), "hearth link" => "over Hearth Link".to_string(), _ => String::new() });
+            bits.retain(|x| !x.is_empty());
+            let right: Element<'a, Msg> = if b(d, "canUse") && !b(d, "inUse") { btn(p, "Use this for Describe it", BtnKind::Normal, false, if st.busy { None } else { Some(Msg::UseShared(dev.clone())) }) } else { Space::new().into() };
+            (t(bits.join(" · "), 13.0, p.muted).into(), right)
+        };
+        let r = row![column![title, line].spacing(3.0).width(Length::Fill), right].spacing(14.0).align_y(iced::Center);
+        rows.push(column![container(r).padding(Padding { top: 12.0, right: 6.0, bottom: 12.0, left: 6.0 }), ui::hline(Pal::a(p.text, 0.07))].into());
+    }
+    rows.push(container(row![t("Looked up when this page opens; nothing is asked in the background.", 13.0, p.muted).width(Length::Fill), btn(p, if st.sh_busy { "Looking…" } else { "Refresh" }, BtnKind::Normal, false, if st.sh_busy { None } else { Some(Msg::RefreshShared) })].spacing(12.0).align_y(iced::Center)).padding(Padding { top: 10.0, right: 6.0, bottom: 0.0, left: 6.0 }).into());
+    titled(p, "Shared from your other devices", "", rows)
+}
+
 /// If no AI answers (ai-3): use your PC's, turn on Ollama here, or another address.
 fn none_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
     let pc = arr(&st.link, "servers").first().map(|x| (s(x, "name"), arr(x, "models").len()));
@@ -645,6 +784,9 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     if !st.msg.is_empty() {
         c = c.push(note(&p, st.msg.clone(), true));
     }
+    // Where Describe it asks first, near the top (the owner's laptop, Nov 24)
+    c = c.push(describe_card(&p, st));
+    c = c.push(shared_card(&p, st));
     let answering = !st.st["answering"].is_null();
     let has_problem = arr(&st.st, "problems").iter().any(|x| s(x, "kind") != "none");
     if !answering || has_problem {

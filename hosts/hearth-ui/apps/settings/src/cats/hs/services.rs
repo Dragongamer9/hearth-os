@@ -678,7 +678,8 @@ fn kind_word(k: &str) -> String {
         other => other.to_string(),
     }
 }
-fn reason_word(r_: &str) -> &'static str {
+/// Why a device's AI isn't ready, in a word or two (also Settings › AI › Shared from your other devices).
+pub(crate) fn reason_word(r_: &str) -> &'static str {
     match r_ {
         "off" => "Not shared",
         "playing" => "Not while you play",
@@ -707,6 +708,14 @@ fn svc_ai_line(sv_: &Value, here: bool) -> String {
     let tail = if !b(sv_, "healthy") { " · not answering" } else if at(sv_, "reachable") == &Value::Bool(false) { " · only on that device" } else if b(sv_, "busy") { " · busy" } else { "" };
     format!("{head_}{tail}")
 }
+/// A device's graphics, in words (also Settings › AI › Shared from your other devices).
+pub(crate) fn gpu_word(vendor: &str) -> &'static str {
+    match vendor {
+        "nvidia" => "Nvidia card",
+        "amd" => "AMD graphics",
+        _ => "Intel graphics",
+    }
+}
 fn dev_line(d: &Value) -> String {
     let mut bits = vec![if b(d, "online") { "Online".to_string() } else { "Offline".into() }];
     if b(d, "online") && b(d, "gaming") {
@@ -718,11 +727,7 @@ fn dev_line(d: &Value) -> String {
         bits.push("plugged in".into());
     }
     if b(d, "gpu") {
-        bits.push(match s(d, "gpu.vendor").as_str() {
-            "nvidia" => "Nvidia card".into(),
-            "amd" => "AMD graphics".into(),
-            _ => "Intel graphics".into(),
-        });
+        bits.push(gpu_word(&s(d, "gpu.vendor")).into());
     }
     let sv_: Vec<String> = arr(d, "services").iter().map(|x| svc_ai_line(x, false)).collect();
     format!("{}{}", bits.join(" · "), if !sv_.is_empty() { format!("\n{}", sv_.join("\n")) } else if s(d, "via") == "hearth link" { "\nPaired over Hearth Link; turn on Share this device's AI and Tailscale on it".into() } else { String::new() })

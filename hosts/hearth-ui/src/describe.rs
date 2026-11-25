@@ -22,7 +22,12 @@ pub enum DMsg {
     Close,
     Text(String),
     Make,
-    Got(run::Output),
+    /// the answer to ask number N (an older one, cancelled, is let go)
+    Got(u32, run::Output),
+    /// a second more of waiting for ask number N (the seconds, and who's answering, on the waiting line)
+    Tick(u32),
+    /// stop waiting: the asking is ended (hearth-layout and its curl, the whole group)
+    Cancel,
     Keep,
     Kept(run::Output),
     Undo,
@@ -81,6 +86,35 @@ pub struct Describe {
     /// Edit layout's own (arrange.rs: the right-click menu, the block under the pointer, what was saved)
     pub ed: crate::arrange::EditState,
     closing: bool,
+    /// the ask being waited for: its number, when it started, how long so far, and who's answering it
+    /// (hearth-layout's HEARTH_DESCRIBE_STATUS file: {"engine", "model", "from", "words", "slow"})
+    pub ask: u32,
+    started: Option<std::time::Instant>,
+    pub secs: u64,
+    pub wait: Value,
+}
+
+/// Where the waiting ask leaves its process group's number and who's answering (this user's runtime folder).
+fn ask_files(app: &str, n: u32) -> (std::path::PathBuf, std::path::PathBuf) {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let base = format!("hearth-describe-{app}-{}-{n}", std::process::id());
+    (dir.join(format!("{base}.pid")), dir.join(format!("{base}.json")))
+}
+
+/// The waiting line (the owner, Nov 24: Describe it sat on "Your AI is making it…" for minutes on his laptop): who's
+/// asked and for how long, and after 20 s that it's slow here and where a faster one is picked.
+pub fn wait_line(secs: u64, wait: &Value) -> String {
+    let who = wait.get("engine").and_then(Value::as_str).filter(|s| !s.is_empty()).unwrap_or("your AI");
+    if secs < 20 {
+        return format!("Asking {who}… {secs} s");
+    }
+    let here = wait.get("from").and_then(Value::as_str) == Some("here") || wait.get("slow") == Some(&json!(true));
+    if here {
+        let speed = wait.get("words").and_then(Value::as_f64).map(|w| format!(" (about {} words a second)", w.round().max(1.0) as i64)).unwrap_or_default();
+        format!("{secs} s · Your AI is slow on this device{speed}. A faster one: Settings › AI › Describe it uses.")
+    } else {
+        format!("{secs} s · {who} is taking a while. A faster one: Settings › AI › Describe it uses.")
+    }
 }
 
 /// `hearth-layout ARGS…`, or nothing when it isn't installed (said plainly).
@@ -105,7 +139,7 @@ impl Describe {
     pub fn new(app: &'static str, name: &'static str) -> Describe {
         // HEARTH_DESCRIBE_OPEN=<app> opens the box at start (the CI pictures).
         let open = std::env::var("HEARTH_DESCRIBE_OPEN").map(|v| v == app).unwrap_or(false);
-        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app), pages: &[], laid: Vec::new(), arr: None, ed: Default::default(), closing: false }
+        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app), pages: &[], laid: Vec::new(), arr: None, ed: Default::default(), closing: false, ask: 0, started: None, secs: 0, wait: Value::Null }
     }
 
     /// The app's pages made of blocks (every Hearth app names its own). HEARTH_ARRANGE_OPEN=<app>[:<page>] opens Arrange
@@ -326,6 +360,21 @@ impl Describe {
         self.kept.get("layout").and_then(Value::as_object).map(|m| !m.is_empty()).unwrap_or(false) || self.kept.get("features").and_then(Value::as_array).map(|a| !a.is_empty()).unwrap_or(false)
     }
 
+    /// Ends the ask being waited for (its whole process group) and lets its answer go.
+    fn stop(&mut self) {
+        let (pidf, statf) = ask_files(self.app, self.ask);
+        if let Some(pid) = std::fs::read_to_string(&pidf).ok().and_then(|t| t.trim().parse::<i32>().ok()).filter(|p| *p > 1) {
+            unsafe {
+                libc::kill(-pid, libc::SIGTERM);
+            }
+            // an online AI's header file (hearth-layout's, named by its process number, which is this group's)
+            let _ = std::fs::remove_file(pidf.with_file_name(format!("hearth-describe-{pid}.h")));
+        }
+        let _ = std::fs::remove_file(pidf);
+        let _ = std::fs::remove_file(statf);
+        self.ask += 1;
+    }
+
     pub fn update(&mut self, m: DMsg) -> Task<DMsg> {
         let t = self.update_inner(m);
         self.relayout();
@@ -346,6 +395,9 @@ impl Describe {
                 self.said.clear();
             }
             DMsg::Close => {
+                if self.busy {
+                    self.stop();
+                }
                 self.open = false;
                 self.result = None;
                 self.busy = false;
@@ -357,11 +409,46 @@ impl Describe {
                 }
                 self.busy = true;
                 self.error.clear();
+                self.said.clear();
                 self.result = None;
-                let c = layout_cmd(vec!["describe-app".into(), self.app.into(), self.text.clone()]);
-                return Task::perform(run::spawn(self.env(c)), DMsg::Got);
+                self.ask += 1;
+                self.started = Some(std::time::Instant::now());
+                self.secs = 0;
+                self.wait = Value::Null;
+                let n = self.ask;
+                let (pidf, statf) = ask_files(self.app, n);
+                let mut c = self.env(layout_cmd(vec!["describe-app".into(), self.app.into(), self.text.clone()]));
+                c.insert(1, format!("HEARTH_DESCRIBE_STATUS={}", statf.display()));
+                // its own process group (setsid), its number in a file: Cancel ends hearth-layout and its curl together
+                let mut cmd = vec!["setsid".to_string(), "-w".into(), "sh".into(), "-c".into(), "echo $$ > \"$0\"; exec \"$@\"".into(), pidf.display().to_string()];
+                cmd.extend(c);
+                return Task::batch([Task::perform(run::spawn(cmd), move |o| DMsg::Got(n, o)), Task::perform(run::after(1000), move |_| DMsg::Tick(n))]);
             }
-            DMsg::Got(o) => {
+            DMsg::Tick(n) => {
+                if n != self.ask || !self.busy {
+                    return Task::none();
+                }
+                self.secs = self.started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
+                // (a plain read: it's hearth-layout's note, not a setting; written whole, then renamed)
+                if let Some(v) = std::fs::read(ask_files(self.app, n).1).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(Value::is_object) {
+                    self.wait = v;
+                }
+                return Task::perform(run::after(1000), move |_| DMsg::Tick(n));
+            }
+            DMsg::Cancel => {
+                if self.busy {
+                    self.stop();
+                    self.busy = false;
+                    self.said = "Stopped. Nothing was changed.".into();
+                }
+            }
+            DMsg::Got(n, o) => {
+                if n != self.ask {
+                    return Task::none();
+                }
+                let (pidf, statf) = ask_files(self.app, n);
+                let _ = std::fs::remove_file(pidf);
+                let _ = std::fs::remove_file(statf);
                 self.busy = false;
                 match o.json() {
                     Some(v) if v.get("ok") == Some(&json!(true)) => self.result = Some(v),
@@ -480,7 +567,7 @@ pub fn feature_text(f: &Value, value_of: &dyn Fn(&str) -> String) -> String {
 pub fn bar<'a, M: Clone + 'a>(p: &Pal, d: &'a Describe, map: impl Fn(DMsg) -> M + Clone + 'a) -> Element<'a, M> {
     let p = *p;
     let m = map.clone();
-    let input = text_input(&format!("Say how you'd like {}…", d.name), &d.text)
+    let input = text_input(&format!("Tell Hearth how you'd like {}…", d.name), &d.text)
         .on_input(move |s| m(DMsg::Text(s)))
         .on_submit(map(DMsg::Make))
         .size(19.0)
@@ -527,11 +614,17 @@ pub fn bar<'a, M: Clone + 'a>(p: &Pal, d: &'a Describe, map: impl Fn(DMsg) -> M 
                 let _ = pg;
                 buttons = buttons.push(ui::btn(&p, "Edit layout", ui::Kind::Normal, false, Some(map(DMsg::Edit(crate::arrange::EMsg::Start)))));
             }
-            buttons = buttons.push(ui::btn(&p, "Done", ui::Kind::Normal, false, Some(map(DMsg::Close))));
-            buttons = buttons.push(ui::btn(&p, if d.busy { "Making it…" } else { "Make it" }, ui::Kind::Primary, false, (!d.busy && !d.text.trim().is_empty()).then(|| map(DMsg::Make))));
+            if d.busy {
+                buttons = buttons.push(ui::btn(&p, "Cancel", ui::Kind::Normal, false, Some(map(DMsg::Cancel))));
+            } else {
+                buttons = buttons.push(ui::btn(&p, "Done", ui::Kind::Normal, false, Some(map(DMsg::Close))));
+                buttons = buttons.push(ui::btn(&p, "Make it", ui::Kind::Primary, false, (!d.text.trim().is_empty()).then(|| map(DMsg::Make))));
+            }
         }
     }
-    let status: Element<'a, M> = if !d.error.is_empty() {
+    let status: Element<'a, M> = if d.busy {
+        t(wait_line(d.secs, &d.wait), 13.0, if d.secs >= 20 { p.warn } else { p.muted }).into()
+    } else if !d.error.is_empty() {
         t(d.error.clone(), 13.0, p.danger).into()
     } else if !d.said.is_empty() {
         t(d.said.clone(), 13.0, p.good).into()
@@ -572,6 +665,17 @@ mod tests {
         assert_eq!(d.features("downloads").len(), 1);
         assert!(d.features("downloads")[0].1, "marked new");
         assert!(d.features("folder").is_empty());
+    }
+
+    #[test]
+    fn the_waiting_line_says_who_and_how_slow() {
+        assert_eq!(wait_line(3, &Value::Null), "Asking your AI… 3 s");
+        let w = json!({"engine": "Ollama", "from": "here", "words": 3.4, "slow": true});
+        assert_eq!(wait_line(5, &w), "Asking Ollama… 5 s");
+        let l = wait_line(25, &w);
+        assert!(l.contains("slow on this device (about 3 words a second)") && l.contains("Settings › AI"), "{l}");
+        let r = wait_line(30, &json!({"engine": "Claude (online, your key)", "from": "online"}));
+        assert!(r.contains("Claude (online, your key) is taking a while"), "{r}");
     }
 
     #[test]

@@ -260,6 +260,9 @@ ShellRoot {
         // For checks and for apps that open it with words already typed: opens at PART and asks your AI.
         function ask(part: string, text: string): void { if (describe.item) { describe.openAt(part); describe.item.text = text; describe.item.make(); } else { describe.ask = text; describe.openAt(part); } }
         function close(): void { if (describe.item) describe.item.close(); }
+        // Cancel while it waits for your AI, and what it's doing (for checks): busy, seconds waited, who's answering.
+        function cancel(): void { if (describe.item) describe.item.cancel(); }
+        function state(): string { return describe.item ? JSON.stringify({ shown: describe.item.shown, busy: describe.item.busy, waited: describe.item.waited, wait: describe.item.wait, line: describe.item.waitLine, error: describe.item.error }) : "{}"; }
     }
     IpcHandler {
         target: "overview"

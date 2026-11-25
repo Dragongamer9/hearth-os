@@ -23,6 +23,19 @@ it never changes a setting or starts anything.
                             own eval_duration; without MODEL, the models already loaded (nothing else is loaded for it).
                             Cached in ~/.cache/hearth/ai-speed.json; "models" shows it
 
+  hearth-ai-check shared   JSON {"devices": [...]}: every AI your other Hearth devices share (Settings › AI › Shared from
+                            your other devices): from hearth-ai-share devices (Tailscale, port 8189, the same list as
+                            Settings › Home server › AI devices) and Hearth Link (hearth-link-settings ai-status), each
+                            with its state, engine, models, graphics card, speed when measured here, whether Describe it
+                            uses it now, and "unconfirmed" when Hearth Link couldn't confirm it's your device (its
+                            certificate didn't match: pair it again). Read only
+  hearth-ai-check use-shared DEVICE   Describe it uses that device's AI (the same pick as Settings › AI's
+                            "Describe it uses", through use): its address shared over Tailscale, or over Hearth Link
+
+Describe it's own pick can also be where it asks first ({"from": "here" | "link"}; none: "Fastest available"):
+the fastest that answers is your order, except that an engine on this device that's slow (measured under 8 words a
+second, or no graphics card for it when it hasn't been measured) goes after your other devices.
+
 Every use's own pick and the order are in ~/.config/nimbus/ai-uses.json {"uses": {USE: {...}}, "order": [...]}: changed
 only from Settings (hearth_settings_io: atomic, .bak, under its lock). A missing use means Hearth's AI; a missing order
 means this device's engines, then your devices over Hearth Link, then an online AI with your key.
@@ -59,6 +72,9 @@ ORDER = ('here', 'link', 'online')
 CACHE = os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache')
 SPEED = os.path.join(CACHE, 'hearth', 'ai-speed.json')
 OLLAMA = os.environ.get('HEARTH_OLLAMA', 'http://127.0.0.1:11434')
+# Describe it uses… (Settings › AI): where it asks first
+DESCRIBE_FROM = {'fastest': 'Fastest available', 'here': 'This device', 'link': 'My other devices'}
+SLOW_WORDS = 8.0
 
 
 def uses_file():
@@ -173,10 +189,15 @@ def status():
         out['online'] = {'provider': p, 'label': ONLINE_BASES[p][1], 'model': o.get('model') or '', 'key': has_key}
         if has_key and o.get('model'):
             cands['online'].append({'from': 'online', 'label': '%s (online, your key)' % ONLINE_BASES[p][1], 'base': ONLINE_BASES[p][0], 'model': o['model'], 'provider': p})
+    for c in cands['here']:
+        c['slow'], c['words'] = slow_here(c['model'])
+    out['sources'] = cands
     # Hearth's AI: the first that answers, in your order (Settings › AI › Where your AI comes from)
     for k in order:
         if cands[k] and out['answering'] is None:
             out['answering'] = cands[k][0]
+    r = ranked(cands, order)
+    out['fastest'] = r[0] if r else None
     # Every AI a use can be given (What uses your AI's pickers): each that answers now
     out['choices'] = [c for k in order for c in cands[k]]
     out['uses'] = {u: use_state(u, out) for u in USES}
@@ -191,10 +212,54 @@ def status():
     return out
 
 
+def has_gpu():
+    """A graphics card an engine here can run on (4 GB of its own memory or more, or Nvidia's driver)."""
+    global _GPU
+    if _GPU is None:
+        import glob
+        _GPU = vram_bytes() >= (4 << 30) or bool(glob.glob('/proc/driver/nvidia/gpus/*'))
+    return _GPU
+
+
+_GPU = None
+
+
+def slow_here(model):
+    """(slow, words a second) for a model on this device: measured (hearth-ai-check speed, or how fast Describe it
+    found it: "felt"), else slow when there's no graphics card for it."""
+    sp = read_speeds().get(model)
+    w = None
+    if isinstance(sp, dict):
+        w = sp.get('words') or sp.get('felt')
+    if isinstance(w, (int, float)) and w > 0:
+        return w < SLOW_WORDS, w
+    return not has_gpu(), None
+
+
+def ranked(cands, order, first=None):
+    """Every AI that answers, the one to ask first at the top: FIRST's (the person's pick) first; then your order,
+    a slow engine on this device after the rest."""
+    seq = ([first] if first in ORDER else []) + [k for k in order if k != first]
+    lst = [c for k in seq for c in cands.get(k) or []]
+    if first in ORDER:
+        mine = [c for c in lst if c in (cands.get(first) or [])]
+        rest = [c for c in lst if c not in mine]
+        return mine + sorted(rest, key=lambda c: bool(c.get('slow')))
+    return sorted(lst, key=lambda c: bool(c.get('slow')))
+
+
 def use_state(u, st):
     """One use's AI as Settings shows it: its own pick (and whether it answers) or Hearth's AI."""
     uses, _ = uses_file()
     pick = uses.get(u) if isinstance(uses.get(u), dict) else None
+    if u == 'describe' and (not pick or pick.get('from')) and not (not pick and read_json(DESCRIBE).get('url')):
+        k = (pick or {}).get('from') if (pick or {}).get('from') in DESCRIBE_FROM else 'fastest'
+        src = st.get('sources') or {}
+        here = (src.get(k) or []) if k != 'fastest' else []
+        top = here[0] if here else st.get('fastest')
+        return {'own': k != 'fastest', 'from': k, 'label': DESCRIBE_FROM[k], 'ready': top is not None,
+                'model': top.get('model') if top else '', 'via': top.get('label') if top else '',
+                'slow': bool(top and top.get('slow')), 'words': top.get('words') if top else None}
     if u == 'describe' and not pick:
         own = read_json(DESCRIBE)
         if isinstance(own.get('url'), str) and own['url'].startswith(('http://', 'https://')):
@@ -218,6 +283,19 @@ def for_use(u):
         return {'error': 'not a use: ' + ', '.join(USES)}
     st = status()
     us = st['uses'][u]
+    if us.get('from'):
+        # Describe it: where you said it asks first, else the fastest that answers
+        k = us['from']
+        r = ranked(st.get('sources') or {}, st.get('order') or list(ORDER), k if k != 'fastest' else None)
+        if not r:
+            return {'error': 'No AI is answering.'}
+        a = r[0]
+        out = {'url': a['base'].rstrip('/'), 'model': a['model'], 'label': a['label'], 'from': a['from']}
+        if a.get('provider'):
+            out['provider'] = a['provider']
+        if k != 'fastest' and a not in ((st.get('sources') or {}).get(k) or []):
+            out['note'] = '%s isn\'t answering, so the fastest that answers was used' % DESCRIBE_FROM[k]
+        return out
     if us.get('own') and us.get('ready'):
         if us.get('online'):
             return {'url': ONLINE_BASES[us['online']][0], 'model': us.get('model', ''), 'label': us['label'], 'from': 'online', 'provider': us['online']}
@@ -252,7 +330,11 @@ def set_use(u, what):
             return {'ok': False, 'error': 'not JSON'}
         if not isinstance(v, dict):
             return {'ok': False, 'error': 'not an AI'}
-        if v.get('online'):
+        if v.get('from') is not None:
+            if u != 'describe' or v['from'] not in DESCRIBE_FROM:
+                return {'ok': False, 'error': 'not a place Describe it can ask first'}
+            pick = None if v['from'] == 'fastest' else {'from': v['from']}
+        elif v.get('online'):
             if v['online'] not in ONLINE_BASES:
                 return {'ok': False, 'error': 'not an online AI Hearth knows'}
             pick = {'online': v['online']}
@@ -393,6 +475,106 @@ def ollama_models():
     return out
 
 
+def helper_json(args, fixture_env, timeout=30):
+    """A Hearth helper's JSON answer (its last line), or None. FIXTURE_ENV: a file to read instead (CI's pictures)."""
+    f = os.environ.get(fixture_env)
+    if f:
+        return read_json(f) or None
+    try:
+        r = subprocess.run(['python3', os.path.join(HERE, args[0])] + list(args[1:]), capture_output=True, text=True, timeout=timeout)
+        line = next((l for l in reversed((r.stdout or '').splitlines()) if l.strip().startswith('{')), '')
+        v = json.loads(line) if line else None
+        return v if isinstance(v, dict) else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def short(name):
+    return re.sub(r'[^a-z0-9-]+', '-', (name or '').split('.')[0].lower()).strip('-')[:63]
+
+
+def shared():
+    """Every AI your other devices share, one row a device, for Settings › AI (read only: asks, changes nothing)."""
+    devs = helper_json(['hearth-ai-share', 'devices'], 'HEARTH_AI_SHARED_FIXTURE') or {}
+    link = helper_json(['hearth-link-settings', 'ai-status'], 'HEARTH_AI_LINK_FIXTURE') or {}
+    fu = for_use('describe')
+    speeds = read_speeds()
+    rows = {}
+
+    def row(key, name):
+        return rows.setdefault(key, {'device': key, 'name': name or key, 'state': 'offline', 'via': '', 'engine': '', 'models': [],
+                                     'gpu': '', 'vramMB': 0, 'words': None, 'inUse': False, 'url': '', 'linkId': '', 'canUse': False})
+    for d in devs.get('devices') or []:
+        if not isinstance(d, dict) or d.get('via') == 'this device':
+            continue
+        r = row(short(d.get('device') or d.get('name')), d.get('name') or d.get('device'))
+        r['via'] = d.get('via') or ''
+        r['state'] = ('offline' if not d.get('online') else 'playing' if d.get('gaming') else 'busy' if d.get('busy')
+                      else 'ready' if d.get('available') else (d.get('reason') or 'not-sharing'))
+        g = d.get('gpu') or {}
+        r['gpu'], r['vramMB'] = g.get('vendor') or '', g.get('vramMB') or 0
+        chat = next((v for v in d.get('services') or [] if v.get('kind') == 'chat' and v.get('openai')), None)
+        if chat:
+            r['engine'], r['models'], r['url'] = chat.get('engine') or '', [m for m in chat.get('models') or [] if writes(m)], chat['openai']
+            r['canUse'] = d.get('online') is True and bool(r['models'])
+    for v in link.get('servers') or []:
+        if not isinstance(v, dict):
+            continue
+        r = row(short(v.get('name') or v.get('id')), v.get('name'))
+        r['linkId'] = v.get('id') or ''
+        if r['state'] in ('offline', 'not-sharing', 'off', ''):
+            r['state'] = 'ready'
+        r['via'] = r['via'] if r['via'] == 'tailscale' else 'hearth link'
+        if not r['models']:
+            r['models'] = [m for m in v.get('models') or [] if isinstance(m, str) and writes(m)]
+            r['engine'] = r['engine'] or 'ollama'
+        if not r['vramMB'] and isinstance(v.get('vram'), (int, float)) and v['vram'] > 0:
+            r['vramMB'] = int(v['vram'] / (1 << 20)) if v['vram'] > (1 << 20) else int(v['vram'])
+        r['canUse'] = r['canUse'] or bool(r['models'])
+    for u in link.get('unreached') or []:
+        if isinstance(u, dict) and u.get('mismatch'):
+            r = row(short(u.get('name') or u.get('id')), u.get('name'))
+            r['state'], r['linkId'], r['canUse'] = 'unconfirmed', u.get('id') or '', False
+    using = (link.get('using') or {}) if isinstance(link.get('using'), dict) else {}
+    for r in rows.values():
+        # only a device whose AI is free now (not one that's playing, offline or not sharing)
+        r['canUse'] = r['canUse'] and r['state'] in ('ready', 'busy')
+        m = r['models'][0] if r['models'] else ''
+        sp = speeds.get('link:' + m) if r['linkId'] else speeds.get(m)
+        if isinstance(sp, dict):
+            r['words'] = sp.get('words') or sp.get('felt')
+        url = (fu.get('url') or '').rstrip('/')
+        # Describe it asks it now: its own address, or Hearth Link's for this device
+        r['inUse'] = bool(url) and bool((r['url'] and url == r['url'].rstrip('/'))
+                                        or (r['linkId'] and fu.get('from') in ('link', 'own') and using.get('server') == r['linkId']
+                                            and url.startswith('http://127.0.0.1:')))
+    order = {'ready': 0, 'busy': 1, 'playing': 2, 'unconfirmed': 3}
+    lst = sorted(rows.values(), key=lambda r: (order.get(r['state'], 4), r['name'].lower()))
+    return {'devices': lst, 'describe': {'label': fu.get('label', ''), 'from': fu.get('from', ''), 'error': fu.get('error', '')}}
+
+
+def use_shared(key):
+    """Describe it uses this device's AI: the same pick Settings › AI › Describe it uses writes (set_use)."""
+    r = next((x for x in shared()['devices'] if x['device'] == key), None)
+    if not r or not r['canUse']:
+        return {'ok': False, 'error': 'That device isn\'t sharing an AI Describe it can use right now.'}
+    model = r['models'][0]
+    if r['url']:
+        return set_use('describe', json.dumps({'url': r['url'], 'model': model, 'label': r['name']}))
+    # over Hearth Link: it listens for that device on this one, then Describe it asks there
+    bin_ = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
+    try:
+        p = subprocess.run([bin_, 'call', 'ai.use', json.dumps({'server': r['linkId']})], capture_output=True, text=True, timeout=30)
+        line = (p.stdout or '').strip().splitlines()
+        v = json.loads(line[-1]) if line else {}
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        return {'ok': False, 'error': 'Hearth Link didn\'t answer (%s).' % str(e)[:100]}
+    url = v.get('url') if isinstance(v, dict) else ''
+    if not isinstance(url, str) or not re.fullmatch(r'http://127\.0\.0\.1:\d{1,5}', url):
+        return {'ok': False, 'error': (v.get('error') if isinstance(v, dict) else '') or 'Hearth Link couldn\'t reach it.'}
+    return set_use('describe', json.dumps({'url': url + '/v1', 'model': model, 'label': '%s (Hearth Link)' % r['name']}))
+
+
 def main(argv):
     if argv[:1] == ['models']:
         print(json.dumps({'models': ollama_models(), 'vram': vram_bytes()}))
@@ -416,10 +598,17 @@ def main(argv):
         r = set_order(argv[1])
         print(json.dumps(r))
         return 0 if r.get('ok') else 1
+    if argv[:1] == ['shared']:
+        print(json.dumps(shared()))
+        return 0
+    if argv[:1] == ['use-shared'] and len(argv) == 2:
+        r = use_shared(argv[1])
+        print(json.dumps(r))
+        return 0 if r.get('ok') else 1
     if argv[:1] == ['speed']:
         print(json.dumps(speed(argv[1] if len(argv) > 1 else None)))
         return 0
-    print('usage: hearth-ai-check status | models | test | for USE | use USE hearth|JSON | order A,B,C | speed [MODEL]')
+    print('usage: hearth-ai-check status | models | test | for USE | use USE hearth|JSON | order A,B,C | speed [MODEL] | shared | use-shared DEVICE')
     return 2
 
 

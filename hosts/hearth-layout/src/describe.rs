@@ -27,6 +27,9 @@ pub struct Engine {
     pub label: String,
     /// an online AI's key, read from the system's password store when it's used (never kept in a file or a log)
     pub key: String,
+    /// where it is: "here" (an engine on this device), "link" (your other device over Hearth Link), "online", or ""
+    /// (your own address, or a test's)
+    pub from: String,
 }
 
 fn share() -> std::path::PathBuf {
@@ -63,7 +66,9 @@ pub const ORDER: [&str; 3] = ["here", "link", "online"];
 /// only search (nomic-embed-text and the like) is never picked for writing. None answering: None (NO_AI says why).
 pub fn engine_for(use_: &str) -> Option<Engine> {
     if std::env::var_os("HEARTH_DESCRIBE_FAKE").is_some() {
-        return Some(Engine { base: String::new(), model: String::new(), label: "the answer given for this check".into(), ..Default::default() });
+        // (the waiting screen's pictures name an engine and where it is: HEARTH_DESCRIBE_FAKE_LABEL, _FROM)
+        let label = std::env::var("HEARTH_DESCRIBE_FAKE_LABEL").unwrap_or_else(|_| "the answer given for this check".into());
+        return Some(Engine { label, from: std::env::var("HEARTH_DESCRIBE_FAKE_FROM").unwrap_or_default(), ..Default::default() });
     }
     if let Ok(u) = std::env::var("HEARTH_DESCRIBE_URL") {
         return Some(Engine { base: u, model: std::env::var("HEARTH_DESCRIBE_MODEL").unwrap_or_default(), label: "the AI set for this test".into(), ..Default::default() });
@@ -74,6 +79,10 @@ pub fn engine_for(use_: &str) -> Option<Engine> {
         pick = Some(crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/describe.json"))).filter(|v| v.get("url").is_some());
     }
     if let Some(p) = pick {
+        // Describe it uses… (Settings › AI): where it asks first, "Fastest available" when it's not there
+        if let Some(from) = p.get("from").and_then(Value::as_str) {
+            return fastest(&order, ORDER.iter().find(|k| **k == from).copied());
+        }
         if let Some(provider) = p.get("online").and_then(Value::as_str) {
             if let Some(e) = online().filter(|_| online_provider().as_deref() == Some(provider)) {
                 return Some(e);
@@ -90,13 +99,113 @@ pub fn engine_for(use_: &str) -> Option<Engine> {
         }
         // its own pick isn't answering: Hearth's AI answers instead
     }
+    if use_ == "describe" {
+        return fastest(&order, None);
+    }
     hearths_ai(&order)
 }
 
 /// Hearth's AI: the first that answers, in your order.
 fn hearths_ai(order: &[String]) -> Option<Engine> {
+    order.iter().find_map(|k| from_source(k))
+}
+
+/// Describe it's AI (the owner, Nov 24: his laptop's Ollama on its CPU took 20-48 s an answer while his PC's was there):
+/// FIRST when the person picked where it asks first and that answers; else your order, except that a slow engine on
+/// this device (is_slow) is asked only when nothing faster answers.
+pub fn fastest(order: &[String], first: Option<&str>) -> Option<Engine> {
+    if let Some(e) = first.and_then(from_source) {
+        return Some(e);
+    }
+    let mut slow: Option<Engine> = None;
     for k in order {
-        let found = match k.as_str() {
+        if Some(k.as_str()) == first {
+            continue;
+        }
+        let Some(e) = from_source(k) else { continue };
+        if e.from == "here" && is_slow(&e.model) {
+            slow.get_or_insert(e);
+            continue;
+        }
+        return Some(e);
+    }
+    slow
+}
+
+/// Under 8 words a second (measured by hearth-ai-check speed, or as Describe it found it), or, not measured yet, no
+/// graphics card it can run on.
+pub const SLOW_WORDS: f64 = 8.0;
+
+pub fn is_slow(model: &str) -> bool {
+    match word_speed(model) {
+        Some(w) => w < SLOW_WORDS,
+        None => !has_gpu(),
+    }
+}
+
+/// The speeds file, read plainly (it's a cache hearth-ai-check and Describe it write whole, not a setting): {} when
+/// it's missing or can't be read.
+fn read_speeds() -> Value {
+    std::fs::read(speed_file()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(Value::is_object).unwrap_or_else(|| json!({}))
+}
+
+fn speed_file() -> std::path::PathBuf {
+    std::env::var_os("XDG_CACHE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".cache")).join("hearth/ai-speed.json")
+}
+
+/// How many words a second this model writes here: measured (hearth-ai-check speed "words"), else as Describe it
+/// found it ("felt": its whole answers, reading the question included).
+pub fn word_speed(model: &str) -> Option<f64> {
+    if let Some(w) = std::env::var("HEARTH_DESCRIBE_FAKE_WORDS").ok().and_then(|v| v.parse::<f64>().ok()) {
+        return Some(w);
+    }
+    let v = read_speeds();
+    let m = v.get(model)?;
+    m.get("words").and_then(Value::as_f64).filter(|w| *w > 0.0).or_else(|| m.get("felt").and_then(Value::as_f64).filter(|w| *w > 0.0))
+}
+
+/// Describe it's own measure of a model here (its "felt" speed; hearth-ai-check's measured one stays as it is).
+fn note_speed(model: &str, words: f64) {
+    if model.is_empty() || !(words > 0.0) {
+        return;
+    }
+    let f = speed_file();
+    let mut v = read_speeds();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let e = v.as_object_mut().unwrap().entry(model.to_string()).or_insert(json!({}));
+    if !e.is_object() {
+        *e = json!({});
+    }
+    e["felt"] = json!((words * 10.0).round() / 10.0);
+    e["feltAt"] = json!(now);
+    if let Some(d) = f.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let tmp = f.with_extension("json.tmp");
+    if std::fs::write(&tmp, v.to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, &f);
+    }
+}
+
+/// A graphics card an engine here can use: Nvidia's driver, or a card with 4 GB of its own memory or more.
+fn has_gpu() -> bool {
+    if std::fs::read_dir("/proc/driver/nvidia/gpus").map(|mut d| d.next().is_some()).unwrap_or(false) {
+        return true;
+    }
+    std::fs::read_dir("/sys/class/drm")
+        .map(|d| {
+            d.flatten().any(|e| {
+                let n = e.file_name().to_string_lossy().to_string();
+                n.starts_with("card") && !n.contains('-') && std::fs::read_to_string(e.path().join("device/mem_info_vram_total")).ok().and_then(|t| t.trim().parse::<u64>().ok()).map(|b| b >= 4 << 30).unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// The first that answers in one place: "here", "link" or "online".
+fn from_source(k: &str) -> Option<Engine> {
+    let mut e = {
+        match k {
             "here" => {
                 // Hearth's engines on this PC, the default first (hearth_ai_engines.py list)
                 let mut tries: Vec<(String, String, String)> = Vec::new();
@@ -112,13 +221,12 @@ fn hearths_ai(order: &[String]) -> Option<Engine> {
                 first_answering(tries)
             }
             "link" => first_answering(vec![("http://127.0.0.1:11435/v1".into(), String::new(), "your other device's AI (Hearth Link)".into())]),
-            _ => online(),
-        };
-        if found.is_some() {
-            return found;
+            "online" => online(),
+            _ => None,
         }
-    }
-    None
+    }?;
+    e.from = k.to_string();
+    Some(e)
 }
 
 fn first_answering(tries: Vec<(String, String, String)>) -> Option<Engine> {
@@ -158,7 +266,7 @@ fn online() -> Option<Engine> {
     if key.is_empty() {
         return None;
     }
-    Some(Engine { base: base.to_string(), model, label: format!("{label} (online, your key)"), key })
+    Some(Engine { base: base.to_string(), model, label: format!("{label} (online, your key)"), key, from: "online".into() })
 }
 
 /// The models an OpenAI-style address has (GET /models, 3 s at most); None when nothing answers there.
@@ -216,10 +324,62 @@ Never write code, commands or file paths. Use plain words for the owner in \"cha
     )
 }
 
-/// One OpenAI-style chat call through curl (no password or key: your own AI on your own network), or the CI's
-/// canned answer (HEARTH_DESCRIBE_FAKE: a file with what the AI would say).
+/// How long Describe it waits for its AI: one answer at most PER_ASK seconds, both tries together at most TOTAL
+/// (HEARTH_DESCRIBE_LIMIT changes TOTAL), then it says so instead of waiting on in silence.
+pub const PER_ASK: u64 = 150;
+pub const TOTAL: u64 = 240;
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// Who's answering, for the app that waits (HEARTH_DESCRIBE_STATUS: a file it reads while it waits): the AI's name,
+/// its model, where it is and how fast it writes here when that's known.
+fn note_status(e: &Engine, attempt: u32) {
+    let Some(f) = std::env::var_os("HEARTH_DESCRIBE_STATUS").map(std::path::PathBuf::from) else { return };
+    let words = if e.from == "here" || std::env::var_os("HEARTH_DESCRIBE_FAKE").is_some() { word_speed(&e.model) } else { None };
+    let v = json!({ "engine": e.label, "model": e.model, "from": e.from, "words": words, "attempt": attempt, "slow": e.from == "here" && is_slow(&e.model) });
+    let tmp = f.with_extension("tmp");
+    if std::fs::write(&tmp, v.to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, &f);
+    }
+}
+
+/// "Your AI took too long…" in plain words, with how fast it writes here when that's known.
+pub fn too_slow(e: &Engine, secs: u64) -> String {
+    let speed = if e.from == "here" { word_speed(&e.model).map(|w| format!(" It writes about {} words a second on this device.", w.round().max(1.0) as i64)).unwrap_or_default() } else { String::new() };
+    format!("{} took too long, so Hearth stopped waiting after {secs} s.{speed} Pick a faster AI in Settings › AI › Describe it uses.", cap(&e.label))
+}
+
+/// Words with the key taken out (a provider that says it back in an error).
+fn hide(t: &str, key: &str) -> String {
+    if key.is_empty() { t.to_string() } else { t.replace(key, "•••") }
+}
+
+fn cap(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => "Your AI".into(),
+    }
+}
+
+/// One OpenAI-style chat call through curl, or the CI's canned answer (HEARTH_DESCRIBE_FAKE: a file with what the AI
+/// would say; HEARTH_DESCRIBE_FAKE_WAIT: seconds it takes, for the waiting screen's pictures).
 pub fn chat(e: &Engine, system: &str, user: &str, sketch: Option<&std::path::Path>) -> Result<String, String> {
+    let started = *STARTED.get_or_init(std::time::Instant::now);
+    let total = std::env::var("HEARTH_DESCRIBE_LIMIT").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(TOTAL);
+    let used = started.elapsed().as_secs();
+    if used + 15 > total {
+        return Err(too_slow(e, used));
+    }
+    let limit = PER_ASK.min(total - used);
+    note_status(e, if used == 0 { 1 } else { 2 });
     if let Ok(f) = std::env::var("HEARTH_DESCRIBE_FAKE") {
+        if let Some(w) = std::env::var("HEARTH_DESCRIBE_FAKE_WAIT").ok().and_then(|v| v.parse::<u64>().ok()) {
+            if w >= limit {
+                std::thread::sleep(std::time::Duration::from_secs(limit));
+                return Err(too_slow(e, limit));
+            }
+            std::thread::sleep(std::time::Duration::from_secs(w));
+        }
         return std::fs::read_to_string(f).map_err(|e| e.to_string());
     }
     let mut content: Value = json!(user);
@@ -232,27 +392,32 @@ pub fn chat(e: &Engine, system: &str, user: &str, sketch: Option<&std::path::Pat
         content = json!([{ "type": "text", "text": user }, { "type": "image_url", "image_url": { "url": format!("data:{mime};base64,{}", b64(&b)) } }]);
     }
     // "/no_think": Qwen3 answers at once instead of thinking out loud first (other models pass over it)
-    let system = format!("{system}\n/no_think");
-    let body = json!({ "model": e.model, "temperature": 0.2, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": content }] });
-    // an online AI's key goes in a header file only this user can read, gone right after (never in the command line)
+    let mut system = format!("{system}\n/no_think");
+    let mut body = json!({ "model": e.model, "temperature": 0.2, "messages": [{ "role": "system", "content": "" }, { "role": "user", "content": content }] });
+    if e.from != "online" {
+        // a short answer is a quick one on a slow engine: compact JSON, only what's needed, and a cap on its length so
+        // a model that runs on can't keep a slow PC busy (an online AI is asked as before)
+        system.push_str("\nKeep the answer short: compact JSON on one line, no spaces between its parts, only what's needed, at most three short \"changes\".");
+        body["max_tokens"] = json!(3000);
+    }
+    body["messages"][0]["content"] = json!(system);
+    // an online AI's key goes in a header file only this user can read, gone right after (never in the command line);
+    // its name has this process's number, so Cancel (which ends this process) takes it away too
     let hdr = (!e.key.is_empty()).then(|| {
         let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
         let f = dir.join(format!("hearth-describe-{}.h", std::process::id()));
         let _ = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&f).and_then(|mut h| writeln!(h, "Authorization: Bearer {}", e.key));
         f
     });
-    let mut args: Vec<String> = ["-sS", "--max-time", "180", "-H", "Content-Type: application/json"].iter().map(|s| s.to_string()).collect();
+    let lim = limit.to_string();
+    let mut args: Vec<String> = ["-sS", "--max-time", lim.as_str(), "-H", "Content-Type: application/json"].iter().map(|s| s.to_string()).collect();
     if let Some(f) = &hdr {
         args.push("-H".into());
         args.push(format!("@{}", f.display()));
     }
     args.extend(["--data-binary".to_string(), "@-".to_string(), format!("{}/chat/completions", e.base)]);
-    let child = Command::new("curl")
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+    let t0 = std::time::Instant::now();
+    let child = Command::new("curl").args(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
     let mut child = match child {
         Ok(c) => c,
         Err(x) => {
@@ -269,10 +434,27 @@ pub fn chat(e: &Engine, system: &str, user: &str, sketch: Option<&std::path::Pat
     }
     let out = out?;
     if !out.status.success() {
-        return Err(format!("Your AI didn't answer ({}).", String::from_utf8_lossy(&out.stderr).trim()));
+        let why = hide(&String::from_utf8_lossy(&out.stderr), &e.key).trim().chars().take(160).collect::<String>();
+        return Err(match out.status.code() {
+            Some(28) => too_slow(e, t0.elapsed().as_secs()),
+            Some(6) | Some(7) => format!("Couldn't reach {}. Is it on?", e.label),
+            _ => format!("{} didn't answer ({why}).", cap(&e.label)),
+        });
     }
-    let v: Value = serde_json::from_slice(&out.stdout).map_err(|_| "Your AI's answer couldn't be read.".to_string())?;
-    v.pointer("/choices/0/message/content").and_then(Value::as_str).map(str::to_string).ok_or_else(|| "Your AI answered with nothing.".into())
+    let v: Value = serde_json::from_slice(&out.stdout).map_err(|_| format!("{}'s answer couldn't be read.", cap(&e.label)))?;
+    if let Some(m) = v.pointer("/error/message").and_then(Value::as_str) {
+        return Err(format!("{} said: {}", cap(&e.label), hide(m, &e.key).chars().take(200).collect::<String>()));
+    }
+    let said = v.pointer("/choices/0/message/content").and_then(Value::as_str).map(str::to_string).ok_or_else(|| format!("{} answered with nothing.", cap(&e.label)))?;
+    // how fast it was here, for the next time (Settings › AI and the waiting screen say it)
+    if e.from == "here" {
+        let secs = t0.elapsed().as_secs_f64();
+        let tokens = v.pointer("/usage/completion_tokens").and_then(Value::as_f64).unwrap_or(said.len() as f64 / 4.0);
+        if secs > 1.0 {
+            note_speed(&e.model, tokens * 0.75 / secs);
+        }
+    }
+    Ok(said)
 }
 
 fn b64(b: &[u8]) -> String {
@@ -574,6 +756,16 @@ mod tests {
         assert_eq!(b64(b"Man"), "TWFu");
         assert_eq!(b64(b"Ma"), "TWE=");
         assert_eq!(b64(b"M"), "TQ==");
+    }
+
+    #[test]
+    fn a_slow_answer_is_said_plainly_and_a_key_never_shows() {
+        let e = Engine { label: "Ollama".into(), model: "dolphin3:8b".into(), from: "online".into(), ..Default::default() };
+        let m = too_slow(&e, 150);
+        assert!(m.starts_with("Ollama took too long") && m.contains("150 s") && m.contains("Settings › AI › Describe it uses"));
+        assert_eq!(hide("bad key sk-123 here", "sk-123"), "bad key ••• here");
+        assert_eq!(hide("nothing to hide", ""), "nothing to hide");
+        assert_eq!(cap("your other device's AI"), "Your other device's AI");
     }
 
     #[test]

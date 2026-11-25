@@ -1,0 +1,173 @@
+# Describe it on a slow device, in Mantel's QML desktop (the owner's laptop, Nov 24, 2026: "Your AI is making it…"
+# for minutes on its CPU Ollama): unit tests (test_hearth_ai_check.py, test_hearth_ai_describe.py), then Desktop Mode
+# on a virtual 1920 × 1080 screen (labwc headless + Quickshell on Fedora, as searchbar.yml): Describe it asked, its
+# waiting screen at ~25 s (who's asked, the seconds, slow on this device with its words a second, Pick a faster AI,
+# Cancel), Cancel ending the ask's whole process group, and Settings › AI › Describe it (Fastest available / This device
+# / My other devices). hearth-layout is a stand-in here that only waits (the real one is Rust: hearth-layout.yml), and the
+# AIs are stand-ins that only list models (.github/scripts/ai-standin.py). Pictures: SHOT notices (tools/shot-notices.py).
+name: Describe it waiting (QML)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/ai-describe]
+    paths: ['.github/scripts/ai-shared-fixtures.py', 'hosts/linux/desktop/shell/DescribeIt.qml', 'hosts/linux/desktop/shell/SetAIDescribe.qml', 'hosts/linux/desktop/shell/hearth-ai-check',
+            'hosts/linux/test/test_hearth_ai_describe.py', '.github/workflows/ai-describe-qml.yml']
+
+concurrency:
+  group: ai-describe-qml-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  labwc:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct util-linux \
+            google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme python3-gobject dbus-daemon dbus-tools libnotify >/dev/null
+          dnf -y install wl-clipboard wtype hicolor-icon-theme rsms-inter-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        run: |
+          fail=0
+          for t in test_hearth_ai_check test_hearth_ai_describe test_settings_redesign test_hearth_settings_basics; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" >/tmp/$t.out 2>&1 || { fail=1; echo "::error title=$t::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/$t.out | head -6 | tr '\n' '|' | cut -c1-900)"; }
+            echo "::notice title=$t::$(tail -3 /tmp/$t.out | tr '\n' ' ')"
+          done
+          exit $fail
+
+      - name: Desktop Mode, Describe it waiting
+        shell: bash
+        run: |
+          mkdir -p shots/post shots/full
+          exec > >(tee shots/step.log) 2>&1
+          set +e +o pipefail
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          FAIL() { echo "::error title=describe waiting::$*"; touch shots/FAILED; }
+          SAY() { echo "::notice title=describe waiting::$*"; }
+          SH="$NIMBUS_SHARE/desktop/shell"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 $SH/hearth-browser asked >/dev/null 2>&1 || true
+          # stand-in AIs: this "laptop"'s slow Ollama and the PC's over Hearth Link (only their model lists)
+          python3 .github/scripts/ai-standin.py 11434 dolphin3:8b & python3 .github/scripts/ai-standin.py 11435 qwen3:30b-a3b &
+          # Shared from your other devices (stand-in answers, read by hearth-ai-check; the shell started below inherits them)
+          python3 .github/scripts/ai-standin.py 11436 qwen3:30b-a3b huihui_ai/qwen3-abliterated:14b &
+          sleep 1
+          python3 .github/scripts/ai-shared-fixtures.py /tmp/ai-shared http://127.0.0.1:11436/v1
+          export HEARTH_AI_SHARED_FIXTURE=/tmp/ai-shared/devices.json HEARTH_AI_LINK_FIXTURE=/tmp/ai-shared/link.json
+          # a stand-in hearth-layout: "now" answers {}, "describe" says who's answering (as the real one does) and waits
+          mkdir -p /tmp/fakebin
+          cat > /tmp/fakebin/hearth-layout <<'FAKE'
+          #!/bin/sh
+          case "$1" in
+            now) echo '{}' ;;
+            describe)
+              [ -n "$HEARTH_DESCRIBE_STATUS" ] && printf '{"engine": "Ollama", "model": "dolphin3:8b", "from": "here", "words": 4.4, "slow": true, "attempt": 1}' > "$HEARTH_DESCRIBE_STATUS"
+              echo "$$" > /tmp/fake-describe.pid
+              sleep 300; echo '{"ok": false, "error": "too slow"}' ;;
+            *) echo '{}' ;;
+          esac
+          FAKE
+          chmod +x /tmp/fakebin/hearth-layout
+          export PATH="/tmp/fakebin:$PATH"
+          CONF=$(python3 $SH/hearth-system labwc-config | tail -1)
+          labwc -C "$CONF" >>shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          shot() { sleep "${2:-2}"; grim "shots/full/$1.png" || echo "::warning title=pictures::no picture $1"; cp "shots/full/$1.png" shots/post/ 2>/dev/null; }
+          for i in $(seq 1 60); do [ -n "$(q describe state)" ] && break; sleep 2; done
+          sleep 8
+          # ---- 1. Describe it asked: waiting, then slow at ~25 s
+          q describe ask bar "put the bar at the bottom and make the clock bigger"
+          sleep 5; echo "::notice title=at 5 s::$(q describe state | head -c 600)"
+          shot da-01-waiting-5s 0
+          sleep 20; s=$(q describe state); echo "::notice title=at 25 s::$(echo "$s" | head -c 600)"
+          echo "$s" | grep -q 'slow on this device (about 4 words a second)' || FAIL "the waiting line at 25 s doesn't say it's slow here: $(echo "$s" | head -c 400)"
+          shot da-02-waiting-25s 0
+          # ---- 2. Cancel ends it: the stand-in's whole group is gone, nothing kept
+          P=$(cat /tmp/fake-describe.pid 2>/dev/null)
+          kill -0 "$P" 2>/dev/null && SAY "the ask is running (pid $P)" || FAIL "the ask wasn't running before Cancel"
+          q describe cancel; sleep 3
+          if kill -0 "$P" 2>/dev/null || pgrep -f 'sleep 300' >/dev/null; then FAIL "Cancel didn't end the ask: $(ps -o pid,pgid,args -p "$P" 2>&1 | tail -1)"; else SAY "Cancel ended the ask and its sleep"; fi
+          s=$(q describe state); echo "::notice title=after Cancel::$(echo "$s" | head -c 400)"
+          echo "$s" | grep -q '"busy":false' || FAIL "still busy after Cancel"
+          shot da-03-cancelled 1
+          q describe close
+          # ---- 3. Settings › AI › Describe it (the QML Settings: no Rust Settings here), with Shared from your other
+          # devices: the PC ready with an Nvidia card (Describe it uses it), the Ally playing, the office PC unconfirmed
+          before=$(ls -la "$HOME/.config/nimbus" | md5sum)
+          python3 $SH/hearth-ai-check for describe | tee shots/for-describe.json
+          grep -q '"from": "link"' shots/for-describe.json && SAY "Fastest available: the other device over this slow one" || FAIL "Fastest available didn't pick the other device: $(cat shots/for-describe.json)"
+          q settings page ai-describe; shot da-04-settings-describe 8
+          [ "$before" = "$(ls -la "$HOME/.config/nimbus" | md5sum)" ] || echo "::warning title=describe waiting::the config folder changed while Settings opened: $(ls "$HOME/.config/nimbus")"
+          python3 $SH/hearth-ai-check use-shared desktop | tee shots/use-shared.json
+          grep -q '"ok": true' shots/use-shared.json || FAIL "Use this for Describe it didn't save: $(cat shots/use-shared.json)"
+          python3 $SH/hearth-ai-check shared | tee shots/shared.json
+          grep -q '"unconfirmed"' shots/shared.json || FAIL "the office PC isn't shown as unconfirmed"
+          q settings close; sleep 1; q settings page ai-describe; shot da-05-shared-devices 8
+          q settings close
+          cp "$LOG" shots/shell.log 2>/dev/null
+          P='(DescribeIt|SetAIDescribe|shell)\.qml'
+          if grep -E "$P" "$LOG" | grep -E "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read|failed to load|unavailable)" >/dev/null 2>&1; then
+            FAIL "$(grep -E "$P" "$LOG" | grep -E 'Error|Cannot|non-existent|not a type|not defined|Unable|Expected|Syntax|unavailable|load' | sort -u | head -8 | cut -c1-260 | tr '\n' '|')"
+          fi
+          ls -la shots/post
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-describe-qml
+          path: shots
+          retention-days: 14
+
+      - name: Fail if something went wrong
+        if: always()
+        run: test ! -e shots/FAILED
+
+  shots:
+    needs: [labwc]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/shot-notices.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ai-describe-qml
+          path: a
+        continue-on-error: true
+      - run: |
+          mkdir -p shots/post; cp a/post/*.png shots/post/ 2>/dev/null || true
+          pip install --quiet pillow >/dev/null 2>&1 || true
+      - name: Pictures 1
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 0
+      - name: Pictures 2
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 1
+      - name: Pictures 3
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
+      - name: Pictures 4
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4

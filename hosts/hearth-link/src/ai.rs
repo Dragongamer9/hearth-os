@@ -176,6 +176,12 @@ async fn models(backend: &str) -> Result<Vec<String>, String> {
 }
 
 /// The graphics memory of this device's biggest card (AMD and Intel report it in sysfs), for the device list.
+/// A connection refused because the device answering isn't the one paired (TLS: its key isn't the one pinned at
+/// pairing, which rustls says as UnknownIssuer), not because it's off or away.
+pub fn cert_mismatch(e: &str) -> bool {
+    e.contains("UnknownIssuer") || e.contains("invalid peer certificate") || e.contains("certificate verify failed")
+}
+
 fn vram() -> Option<u64> {
     std::fs::read_dir("/sys/class/drm").ok()?.flatten()
         .filter_map(|e| std::fs::read_to_string(e.path().join("device/mem_info_vram_total")).ok()?.trim().parse::<u64>().ok())
@@ -287,15 +293,24 @@ impl Node {
                     set.spawn(async move { let r = tokio::time::timeout(Duration::from_secs(6), n.request(&id, &json!({"op": "ai.info"}))).await; (id, r) });
                 }
                 let mut servers = Vec::new();
+                // the paired devices that didn't answer, and whether that's because the one answering couldn't be
+                // confirmed as yours (its certificate didn't match: pair it again), for Settings › AI
+                let mut unreached = Vec::new();
+                let pnames: std::collections::HashMap<String, String> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
                 while let Some(r) = set.join_next().await {
-                    if let Ok((id, Ok(Ok(mut v)))) = r { if v["serving"] == true { v["id"] = json!(id); servers.push(v); } }
+                    match r {
+                        Ok((id, Ok(Ok(mut v)))) => { if v["serving"] == true { v["id"] = json!(id); servers.push(v); } }
+                        Ok((id, Ok(Err(e)))) => unreached.push(json!({"id": id, "name": pnames.get(&id).cloned().unwrap_or_default(), "mismatch": cert_mismatch(&e)})),
+                        Ok((id, Err(_))) => unreached.push(json!({"id": id, "name": pnames.get(&id).cloned().unwrap_or_default(), "mismatch": false})),
+                        _ => {}
+                    }
                 }
                 let here = if c.serve { let m = models(&c.backend).await; json!({"models": m.as_ref().ok(), "error": m.err(), "vram": vram()}) } else { Value::Null };
                 let u = crate::lock(using()).as_ref().map(|u| json!({"server": u.server, "name": u.name, "port": u.port, "url": format!("http://127.0.0.1:{}", u.port)}));
                 let names: std::collections::HashMap<String, String> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
                 let mut clients: Vec<Value> = crate::lock(uses()).iter().map(|(id, x)| json!({"id": id, "name": names.get(id).cloned().unwrap_or_else(|| id.clone()), "last": x.last, "model": x.model, "asks": x.asks, "stopped": c.stopped.contains(id)})).collect();
                 clients.sort_by(|a, b| b["last"].as_u64().cmp(&a["last"].as_u64()));
-                Ok(json!({"serve": c.serve, "backend": c.backend, "here": here, "servers": servers, "using": u, "clients": clients, "stopped": c.stopped, "now": now_secs()}))
+                Ok(json!({"serve": c.serve, "backend": c.backend, "here": here, "servers": servers, "unreached": unreached, "using": u, "clients": clients, "stopped": c.stopped, "now": now_secs()}))
             }
             "ai.set" => {
                 let mut c = self.ai_cfg();
@@ -332,6 +347,13 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_certificate_that_isnt_your_device_is_told_apart_from_offline() {
+        assert!(cert_mismatch("Can't reach Desktop: the cryptographic handshake failed: error 48: invalid peer certificate: UnknownIssuer"));
+        assert!(!cert_mismatch("Can't reach Desktop (it's off, asleep or offline)"));
+        assert!(!cert_mismatch("connection lost"));
+    }
 
     #[test]
     fn only_this_devices_own_server() {
