@@ -26,6 +26,7 @@
 // arrows size it, X (Menu) hides it, B (Esc) is done. Describe it (your AI) is beside it in the bar.
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import "app-blocks.js" as L
@@ -67,6 +68,9 @@ Item {
         onLoadFailed: { ab.kept = {}; ab.unreadable = false; }
     }
     Connections { target: AppBlocksHub; function onChanged(a) { if (a === ab.app) fv.reload(); } }
+    // read again each time the window shows (a file made while it was closed isn't watched yet: an app kept warm, Files)
+    readonly property bool windowShown: ab.Window.window ? ab.Window.window.visible : false
+    onWindowShownChanged: if (windowShown && app !== "") fv.reload()
     function readKept(t) {
         if (String(t).trim() === "") { kept = {}; unreadable = false; return; }
         let o = null;
@@ -750,7 +754,7 @@ Item {
         id: ebar
         visible: ab.editing
         z: 40
-        width: Math.min(ab.width - 24, Math.max(560, ebFlow.implicitWidth + 28))
+        width: Math.min(ab.width - 24, 1040)
         height: ebCol.implicitHeight + 24
         anchors.horizontalCenter: parent.horizontalCenter
         y: ab.barTop ? 12 : ab.height - height - 12
