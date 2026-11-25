@@ -14,7 +14,7 @@ use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
 use hearth_ui::ui::{self, glyph, t, tb, G};
-use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
+use iced::widget::{column, container, mouse_area, row, Row, Space};
 use iced::{mouse, Element, Length, Padding, Subscription, Task};
 use serde_json::{json, Map, Value};
 

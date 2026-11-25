@@ -1078,7 +1078,10 @@ pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
         }
         "describe" => return a.describe.update(hearth_ui::describe::DMsg::Open).map(Msg::Describe),
         // Edit layout: the live window turns into Arrange in place (its bars and panes as blocks)
-        "edit-layout" => return hearth_ui::arrange::edit_at(&mut a.describe, if a.picking() { "chooser" } else { "bars" }, None).map(Msg::Describe),
+        "edit-layout" => {
+            let page = if a.picking() { "chooser" } else { "bars" };
+            return hearth_ui::arrange::edit_at(&mut a.describe, page, None).map(Msg::Describe);
+        }
         "layout-original" => return a.describe.update(hearth_ui::describe::DMsg::Reset).map(Msg::Describe),
         "navpane" => {
             let on = !a.nav_shown();
