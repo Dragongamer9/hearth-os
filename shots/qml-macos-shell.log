@@ -1,0 +1,44 @@
+[32m  INFO[0m: Launching config: "/usr/share/nimbus/desktop/shell/shell.qml"
+[32m  INFO[0m: Shell ID: "d54e383c51faa63b3a04b032ea3530c4" Path ID "d54e383c51faa63b3a04b032ea3530c4"
+[32m  INFO[0m: Saving logs to "/tmp/xdg-qml-macos/quickshell/by-id/ha1jkg1pt/log.qslog"
+[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/usr/share/nimbus/desktop/shell/fhcouch" from "/usr/share/nimbus/desktop/shell/FhpDeskBar.qml"
+[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/usr/share/nimbus/desktop/shell/fhcouch/deskmenus.js" from "/usr/share/nimbus/desktop/shell/FhpDeskBar.qml"
+[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/usr/share/nimbus/desktop/shell/fhcouch/fhp.js" from "/usr/share/nimbus/desktop/shell/FhpDeskBar.qml"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[33m  WARN[0m: qs:@/qs/FireholdCards.qml: File not found
+[32m  INFO[97m qml[0m: Mantel: loaded in 302 ms (labwc)
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @shell.qml[510:9]: Read of /tmp/home-qml-macos/.config/nimbus/screens.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeskState.qml[292:5]: Read of /tmp/home-qml-macos/.local/state/nimbus/notifications.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[130:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[188:5]: Read of /tmp/home-qml-macos/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[45:5]: Read of /tmp/home-qml-macos/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[204:5]: Read of /tmp/home-qml-macos/.config/nimbus/notify.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[183:5]: Read of /tmp/xdg-qml-macos/hearth-vnc/clients.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[176:5]: Read of /tmp/xdg-qml-macos/hearth-record/state.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @ScreenLayout.qml[93:5]: Read of /tmp/home-qml-macos/.local/share/nimbus/screen.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @ScreenEditor.qml[123:5]: Read of /tmp/home-qml-macos/.local/share/nimbus/lock-screen.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[244:5]: Read of /tmp/xdg-qml-macos/hearth-activities-windows.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[243:5]: Read of /tmp/xdg-qml-macos/hearth-activities-windows.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[201:5]: Read of /tmp/home-qml-macos/.config/nimbus/activities.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Launcher.qml[273:5]: Read of /tmp/home-qml-macos/.cache/hearth/search/rates.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Launcher.qml[272:5]: Read of /tmp/home-qml-macos/.config/hearth/search.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[365:5]: Cannot open: file:///tmp/home-qml-macos/.config/nimbus/wallpaper.jpg
+[33m  WARN[97m scene[0m: QML FileView at @Dwell.qml[28:5]: Read of /tmp/home-qml-macos/.config/nimbus/accessibility.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Firehold.qml[38:5]: Read of /tmp/home-qml-macos/.config/nimbus/firehold.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @WidgetStore.qml[92:5]: Read of /tmp/home-qml-macos/.config/nimbus/widgets.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @InkWatch.qml[19:5]: Read of /tmp/home-qml-macos/.local/state/nimbus/ink-told.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @BtReceive.qml[22:5]: Read of /tmp/home-qml-macos/.local/state/nimbus/bt-received.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Welcome.qml[27:5]: Read of /tmp/home-qml-macos/.local/state/nimbus/welcome.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeviceWatch.qml[27:5]: Read of /tmp/home-qml-macos/.local/state/nimbus/usb-seen.json failed: File does not exist.
+[32m  INFO[97m qml[0m: Mantel: the memory watch reads /proc directly
+[33m  WARN[97m scene[0m: QML FileView at @FirmwareWatch.qml[18:5]: Read of /tmp/home-qml-macos/.local/state/nimbus/firmware-told.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Mixer.qml[66:5]: Read of /tmp/home-qml-macos/.config/nimbus/app-volumes.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-time", "--weather-summary")
+[33m  WARN[97m scene[0m: QML Image at @Wallpaper.qml[373:5]: Cannot open: file:///tmp/home-qml-macos/.config/nimbus/wallpaper.png
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device")
+[32m  INFO[97m qml[0m: Mantel's password prompt: no logind session for this desktop, so it doesn't register; the classic agent asks
+[33m  WARN[97m qt.qpa.services[0m: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: Connection already associated with an application ID")
+[32m  INFO[97m qml[0m: Mantel: up 3563 ms after it started loading
+[32m  INFO[97m qml[0m: Mantel's password prompt isn't registered (another agent has this session, or polkit isn't reachable); the classic agent asks
