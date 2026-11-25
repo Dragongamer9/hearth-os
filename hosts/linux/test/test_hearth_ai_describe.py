@@ -108,6 +108,7 @@ class SharedDevices(unittest.TestCase):
                 self.assertNotIn('laptop', rows)                                  # this device isn't "shared from"
                 self.assertEqual((rows['desktop']['state'], rows['desktop']['gpu'], rows['desktop']['models']), ('ready', 'nvidia', ['qwen3:30b-a3b']))
                 self.assertEqual(rows['rog-ally']['state'], 'playing')
+                self.assertFalse(rows['rog-ally']['canUse'])                      # playing: not offered
                 self.assertEqual(rows['office-pc']['state'], 'unconfirmed')
                 self.assertFalse(rows['office-pc']['canUse'])
                 self.assertNotIn('old-laptop', rows)                              # just away: not listed as a problem

@@ -537,6 +537,8 @@ def shared():
             r['state'], r['linkId'], r['canUse'] = 'unconfirmed', u.get('id') or '', False
     using = (link.get('using') or {}) if isinstance(link.get('using'), dict) else {}
     for r in rows.values():
+        # only a device whose AI is free now (not one that's playing, offline or not sharing)
+        r['canUse'] = r['canUse'] and r['state'] in ('ready', 'busy')
         m = r['models'][0] if r['models'] else ''
         sp = speeds.get('link:' + m) if r['linkId'] else speeds.get(m)
         if isinstance(sp, dict):

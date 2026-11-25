@@ -51,7 +51,7 @@ SetPage {
                 + (page.use.slow ? " · slow on this device" + (page.use.words ? " (about " + Math.round(page.use.words) + " words a second)" : "") : "")
             : "Nothing answers there right now: the fastest that answers is asked instead"
         options: [{ value: "fastest", label: "Fastest available" }, { value: "here", label: "This device" }, { value: "link", label: "My other devices" }]
-        current: page.use && page.use.from ? page.use.from : "fastest"
+        current: page.use && page.use.from ? page.use.from : page.use && page.use.own ? "" : "fastest"
         // hearth-ai-check says {"ok": false, "error"} when it can't: shown, never taken as done
         onChosen: v => job.run(["use", "describe", JSON.stringify({ from: v })], r => { page.msg = r && r.ok === false ? (r.error || "That didn't work.") : ""; page.refresh(); }, e => page.msg = e)
     }
