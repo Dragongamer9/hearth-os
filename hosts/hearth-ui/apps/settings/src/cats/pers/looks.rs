@@ -480,7 +480,7 @@ pub fn appearance(a: &App) -> E<'_> {
     let cur_look = cur_look(sh);
     let cur_mode = sh.d_str("mode");
     let cur_accent = sh.d_str("accent").to_lowercase();
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     c = c.push(t("Hearth's look for the whole desktop: KDE's Global Theme, its colours and Hearth's apps all follow it. A Global Theme you pick in KDE's System Settings shows here too.", sz(14.0), p.muted));
     if !st.msg.is_empty() {
         c = c.push(kit::said(&p, &st.msg, st.msg_bad));
@@ -704,7 +704,7 @@ pub fn my_looks_page(a: &App) -> E<'_> {
     let sh = &a.sh;
     let st = &a.pers;
     let p = sh.p;
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     c = c.push(head(&p, "Save how it looks now"));
     c = c.push(row![field(&p, "A name, like Cosy evening", &st.my_name, Msg::MyName).on_submit(Msg::MySave), btn(&p, "Save as my look", ui::Kind::Primary, false, Some(Msg::MySave))].spacing(10.0).align_y(iced::Center));
     c = c.push(small(&p, format!("Keeps {}, {} mode, the accent, the wallpaper, the bar and dock, the menus, the window frames and your fonts, cursor and icons.", look_label(sh), if sh.d_str("mode") == "light" { "light" } else { "dark" })));
@@ -759,7 +759,7 @@ pub fn look_more(a: &App) -> E<'_> {
     let p = sh.p;
     let plasma = kit::on_plasma();
     let tint = st.tint.unwrap_or_else(|| sh.d_num("frameTint", 0.0) as f32);
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     c = c.push(head(&p, "Window frames"));
     // Two windows, the one in front and one behind, in the colours the frames will have.
     let win = |active: bool, title: &'static str| -> E<'static> {

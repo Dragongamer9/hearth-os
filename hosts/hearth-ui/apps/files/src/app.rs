@@ -443,6 +443,9 @@ pub enum Msg {
     Sort(crate::sortdl::SMsg),
     /// Describe it (board 11) and what a feature made with it does when pressed
     Describe(hearth_ui::describe::DMsg),
+    /// Edit layout right there (a right-click on a bar, the menus' Edit layout): Arrange on this block page, this
+    /// part picked
+    EditAt(&'static str, Option<&'static str>),
     DescAct(String),
     SortNoteGone(u64),
     /// The pointer moved over the file view (its own coordinates): drag to select.
@@ -3222,6 +3225,10 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Pad(m) => return crate::pad::update(app, m),
         Msg::Sort(m) => return crate::sortdl::update(app, m),
         Msg::Describe(m) => return app.describe.update(m).map(Msg::Describe),
+        Msg::EditAt(page, pick) => {
+            app.overlay = None;
+            return hearth_ui::arrange::edit_at(&mut app.describe, page, pick).map(Msg::Describe);
+        }
         Msg::DescAct(act) => return crate::ldescribe::act(app, &act),
         Msg::SortNoteGone(n) => {
             if app.sorted_seq == n {

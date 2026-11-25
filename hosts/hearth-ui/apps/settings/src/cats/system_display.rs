@@ -242,7 +242,7 @@ pub fn view(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let sh = &a.sh;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     let Some(o) = cur(st) else {
         c = c.push(waiting(a, "screens", "your displays").unwrap_or_else(|| note(&p, "No display was found. Display settings work in Desktop Mode.", false)));
         return c.into();

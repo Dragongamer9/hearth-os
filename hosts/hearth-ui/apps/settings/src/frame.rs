@@ -80,11 +80,26 @@ pub fn x_label(a: &App) -> Option<&'static str> {
     }
 }
 
+/// The window's blocks (hearth_ui::blocks): Hearth's flame and "Settings", the search, the categories, the page's title
+/// and the page (each page's own sections are its blocks too: secs.rs). As it was when nothing is customised.
+pub const WINDOW: hearth_ui::blocks::PageDef = hearth_ui::blocks::PageDef {
+    id: "window",
+    title: "Settings' window",
+    blocks: &[
+        hearth_ui::blocks::bl("brand", "Hearth's flame and Settings", 0, 0, 3, 1),
+        hearth_ui::blocks::bl("search", "Search settings", 0, 1, 3, 1),
+        hearth_ui::blocks::bl("cats", "The categories", 0, 2, 3, 10),
+        hearth_ui::blocks::bl("title", "The page's title", 3, 0, 9, 1),
+        hearth_ui::blocks::bl("page", "The page", 3, 1, 9, 11),
+    ],
+};
+
 pub fn frame(a: &App) -> Element<'_, Msg> {
     let p = a.sh.p;
     set_big(a.sh.big);
     set_pal(p);
     nav::begin();
+    crate::secs::begin();
     let el = if a.sh.big { frame_b(a) } else { frame_a(a) };
     nav::end();
     nav::Gate::new(el, Msg::Pointer).into()
@@ -138,7 +153,7 @@ fn with_dialogs<'a>(a: &'a App, base: Element<'a, Msg>) -> Element<'a, Msg> {
 
 // ------------------------------------------------------------------ A: keyboard and mouse
 
-fn frame_a(a: &App) -> Element<'_, Msg> {
+fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
     let p = a.sh.p;
     let rail_bg = Pal::mix(p.bg, p.panel, 0.55);
     let initial = a.sh.info.real.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "·".into());
@@ -170,19 +185,38 @@ fn frame_a(a: &App) -> Element<'_, Msg> {
     // The redesign (settings-cleanup, Nov 23): Hearth's flame and "Settings" over the search, not your picture.
     let _ = (avatar, who);
     let flame = container(Space::new()).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).style(ui::boxed(p.accent, 9.0, None));
-    let rail = container(column![row![flame, tb("Settings", 24.0, p.text)].spacing(14.0).align_y(iced::Center), Space::new().height(Length::Fixed(18.0)), search, Space::new().height(Length::Fixed(14.0)), scrollable(cats).height(Length::Fill)])
-        .padding(Padding { top: 20.0, right: 18.0, bottom: 12.0, left: 18.0 })
-        .width(Length::Fixed(320.0))
-        .height(Length::Fill)
-        .style(ui::boxed(rail_bg, 0.0, None));
-
-    let main = Column::new().push(crumbs(a)).push(Space::new().height(Length::Fixed(18.0))).push(page_column(a, true));
-    let main = container(main).padding(Padding { top: 18.0, right: 36.0, bottom: 0.0, left: 44.0 }).width(Length::Fill).height(Length::Fill);
+    let brand: Element<'_, Msg> = row![flame, tb("Settings", 24.0, p.text)].spacing(14.0).align_y(iced::Center).into();
+    // its blocks (WINDOW), each a right-click away from Edit layout (that part picked); as it was when nothing is
+    let edit = |id: &'static str, el: Element<'a, Msg>| -> (&'static str, Element<'a, Msg>) { (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id)))) };
+    let items = vec![
+        edit("brand", brand),
+        edit("search", search.into()),
+        edit("cats", scrollable(cats).height(Length::Fill).into()),
+        edit("title", crumbs(a)),
+        ("page", page_column(a, true).into()),
+    ];
+    let body = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "window",
+        items,
+        move |ps| {
+            let rail = container(column![ps.take("brand"), Space::new().height(Length::Fixed(18.0)), ps.take("search"), Space::new().height(Length::Fixed(14.0)), ps.take("cats")])
+                .padding(Padding { top: 20.0, right: 18.0, bottom: 12.0, left: 18.0 })
+                .width(Length::Fixed(320.0))
+                .height(Length::Fill)
+                .style(ui::boxed(rail_bg, 0.0, None));
+            let main = Column::new().push(ps.take("title")).push(Space::new().height(Length::Fixed(18.0))).push(ps.take("page"));
+            let main = container(main).padding(Padding { top: 18.0, right: 36.0, bottom: 0.0, left: 44.0 }).width(Length::Fill).height(Length::Fill);
+            row![rail, main].height(Length::Fill).into()
+        },
+        Msg::Describe,
+    );
 
     let titlebar = hearth_ui::describe::title_bar(&p, &a.describe, G::Gear, "Hearth Settings", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, rail_bg, Msg::Describe(hearth_ui::describe::DMsg::Open));
     // No button hints along the bottom any more (the redesign has none; the controller look is gone, 1.18).
     let _ = hints;
-    let page = column![titlebar, row![rail, main].height(Length::Fill)];
+    let page = column![titlebar, body];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     ui::edges(with_dialogs(a, base), Msg::Resize)
 }

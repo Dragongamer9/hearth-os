@@ -36,6 +36,8 @@ enum Mode {
 enum Msg {
     /// Describe it (hearth_ui::describe; every Hearth app has it)
     Describe(hearth_ui::describe::DMsg),
+    /// Edit layout right there (a right-click on a part or the title bar): Arrange on this page, this part picked
+    EditAt(&'static str, Option<&'static str>),
     Theme,
     Tick,
     Key(KEvent),
@@ -131,7 +133,12 @@ impl App {
         let big = matches!(layout.as_str(), "b" | "controller" | "pad");
         let name: String = app::arg("--name").unwrap_or_else(|| "Someone".into()).chars().filter(|c| !c.is_control()).take(40).collect();
         let a = App {
-            describe: hearth_ui::describe::Describe::new("family", "Family and friends").with_pages(BLOCKS),
+            describe: hearth_ui::describe::Describe::new("family", "Family and friends").with_pages(match mode {
+                // each window its own page (the question and the notice are windows of their own)
+                Mode::Friends => BLOCKS.get(0..1).unwrap_or(BLOCKS),
+                Mode::Ask => BLOCKS.get(1..2).unwrap_or(BLOCKS),
+                Mode::Notice => BLOCKS.get(2..3).unwrap_or(BLOCKS),
+            }),
             p: hearth_ui::theme::load(),
             mode,
             big,
@@ -225,6 +232,7 @@ impl App {
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
         Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::EditAt(page, pick) => return hearth_ui::arrange::edit_at(&mut a.describe, page, pick).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
             if a.mode == Mode::Ask && now_ms().saturating_sub(a.started) > 60_000 {
@@ -313,7 +321,13 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.fr = r;
             a.fb = b;
         }
-        Msg::Key(KEvent::KeyPressed { key, .. }) => return key_press(a, key),
+        Msg::Key(KEvent::KeyPressed { key, modifiers, .. }) => {
+            // arranging: Esc keeps it and leaves, Ctrl+Z undoes
+            if let Some(dm) = hearth_ui::arrange::arrange_key(&a.describe, &key, modifiers) {
+                return a.describe.update(dm).map(Msg::Describe);
+            }
+            return key_press(a, key);
+        }
         Msg::Key(_) | Msg::Nothing => {}
         Msg::Drag => return win::drag(),
         Msg::Close => {
@@ -386,6 +400,13 @@ fn frame<'a>(a: &'a App, title: &'static str, mark: G, body: Element<'a, Msg>, h
         .on_press(Msg::Drag)
         .into()
     };
+    // a right-click on the title bar: Edit layout (the window's page)
+    let page = match a.mode {
+        Mode::Friends => "friends",
+        Mode::Ask => "ask",
+        Mode::Notice => "notice",
+    };
+    let bar = hearth_ui::arrange::right_edit(bar, Msg::EditAt(page, None));
     container(column![bar, container(body).padding(a.s(22.0)).height(Length::Fill), hints])
         .width(Length::Fill)
         .height(Length::Fill)
@@ -394,11 +415,19 @@ fn frame<'a>(a: &'a App, title: &'static str, mark: G, body: Element<'a, Msg>, h
 }
 
 /// Family and friends' blocks (hearth_ui::blocks).
-const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "friends",
-    title: "Family and friends",
-    blocks: &[hearth_ui::blocks::bls("people", "Their PCs", 0, 0, 12, 9), hearth_ui::blocks::bls("add", "Add with a code", 0, 9, 12, 3)],
-}];
+/// The list's people keep their ids from 1.18; the title and its line are a block of their own now.
+use hearth_ui::blocks::{bl, bls, PageDef};
+const BLOCKS: &[PageDef] = &[
+    PageDef { id: "friends", title: "Family and friends", blocks: &[bls("people", "Their PCs", 0, 1, 12, 8), bls("add", "Add with a code", 0, 9, 12, 3), bl("head", "Title and its line", 0, 0, 12, 1)] },
+    PageDef { id: "ask", title: "Someone wants to connect", blocks: &[bl("who", "Who wants to connect", 0, 0, 12, 3), bl("what", "What they could do", 0, 3, 12, 4), bl("buttons", "Allow, Deny, Always allow", 0, 7, 12, 3), bl("time", "Time to answer", 0, 10, 12, 2)] },
+    PageDef { id: "notice", title: "Sharing this PC", blocks: &[bl("who", "Who is connected", 0, 0, 12, 4), bl("what", "What they can do", 0, 4, 12, 4), bl("stop", "Stop sharing now", 0, 8, 12, 4)] },
+];
+
+/// A page's parts, each a right-click away from Edit layout (that part picked).
+fn parts_of<'a>(a: &'a App, page: &'static str, items: Vec<(&'static str, Element<'a, Msg>)>, original: impl FnOnce(&mut hearth_ui::arrange::Parts<'a, Msg>) -> Element<'a, Msg>) -> Element<'a, Msg> {
+    let items = items.into_iter().map(|(id, el)| (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))).collect();
+    hearth_ui::arrange::parts(&a.describe, &a.p, page, items, original, Msg::Describe)
+}
 
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
@@ -406,42 +435,44 @@ fn view(a: &App) -> Element<'_, Msg> {
         Mode::Ask => {
             let secs = 60u64.saturating_sub(now_ms().saturating_sub(a.started) / 1000);
             let sees = if a.what == "games" { "your games (Steam's Big Picture) on this screen" } else { "this PC's whole screen" };
-            let mut body = column![
-                row![
-                    container(glyph(G::Users, p.ink, a.s(22.0), 2.0)).center_x(Length::Fixed(a.s(46.0))).center_y(Length::Fixed(a.s(46.0))).style(ui::boxed(p.accent, a.s(23.0), None)),
-                    column![tb(format!("{} wants to connect", a.name), a.s(20.0), p.text), t("Family and friends · Moonlight", a.s(13.0), p.muted)].spacing(2.0)
-                ]
-                .spacing(14.0)
-                .align_y(iced::Center),
-                t(format!("If you allow it, {} can see {sees}, control it with their mouse, keyboard or controller, and hear its sound{}.", a.name, if a.limit > 0 { format!(", {}", limit_word(a.limit)) } else { String::new() }), a.s(14.0), p.text),
+            let who: Element<Msg> = row![
+                container(glyph(G::Users, p.ink, a.s(22.0), 2.0)).center_x(Length::Fixed(a.s(46.0))).center_y(Length::Fixed(a.s(46.0))).style(ui::boxed(p.accent, a.s(23.0), None)),
+                column![tb(format!("{} wants to connect", a.name), a.s(20.0), p.text), t("Family and friends · Moonlight", a.s(13.0), p.muted)].spacing(2.0)
             ]
-            .spacing(a.s(14.0));
-            body = body.push(row![
+            .spacing(14.0)
+            .align_y(iced::Center)
+            .into();
+            let what: Element<Msg> = t(format!("If you allow it, {} can see {sees}, control it with their mouse, keyboard or controller, and hear its sound{}.", a.name, if a.limit > 0 { format!(", {}", limit_word(a.limit)) } else { String::new() }), a.s(14.0), p.text).into();
+            let buttons: Element<Msg> = row![
                 a.b("Allow", ui::Kind::Primary, a.big && a.fb == 0, Some(Msg::Answer("allow"))),
                 a.b("Deny", ui::Kind::Normal, a.big && a.fb == 1, Some(Msg::Answer("deny"))),
                 Space::new().width(Length::Fill),
                 a.b(format!("Always allow {}", a.name), ui::Kind::Normal, a.big && a.fb == 2, Some(Msg::Answer("always"))),
-            ].spacing(10.0).align_y(iced::Center));
-            body = body.push(t(format!("Nobody answering in {secs} s is a no. You can change who may connect in Settings › Gaming › Family and friends."), a.s(12.0), p.muted));
-            frame(a, "Family and friends", G::Users, body.into(), a.hints(&[("A", "Choose"), ("B", "Deny"), ("← →", "Move")]), true)
+            ].spacing(10.0).align_y(iced::Center).into();
+            let time: Element<Msg> = t(format!("Nobody answering in {secs} s is a no. You can change who may connect in Settings › Gaming › Family and friends."), a.s(12.0), p.muted).into();
+            // its blocks (BLOCKS "ask"); as it was when nothing is
+            let s14 = a.s(14.0);
+            let body = parts_of(a, "ask", vec![("who", who), ("what", what), ("buttons", buttons), ("time", time)], move |ps| {
+                column![ps.take("who"), ps.take("what"), ps.take("buttons"), ps.take("time")].spacing(s14).into()
+            });
+            frame(a, "Family and friends", G::Users, body, a.hints(&[("A", "Choose"), ("B", "Deny"), ("← →", "Move")]), true)
         }
         Mode::Notice => {
             let dot = container(Space::new()).width(Length::Fixed(a.s(10.0))).height(Length::Fixed(a.s(10.0))).style(ui::boxed(p.good, a.s(5.0), None));
-            let mut body = column![
-                row![dot, tb(format!("{} is connected", a.name), a.s(18.0), p.text)].spacing(10.0).align_y(iced::Center),
-                t(format!("They can see and control this PC and hear its sound with Moonlight. {} · {}", what_word(&a.what), left(a.until)), a.s(13.0), p.muted),
-                a.b(if a.busy == "stop" { "Stopping…" } else { "Stop sharing now" }, ui::Kind::Danger, a.big, if a.busy.is_empty() { Some(Msg::Stop) } else { None }),
-            ]
-            .spacing(a.s(12.0));
+            let s12 = a.s(12.0);
+            let who: Element<Msg> = row![dot, tb(format!("{} is connected", a.name), a.s(18.0), p.text)].spacing(10.0).align_y(iced::Center).into();
+            let what: Element<Msg> = t(format!("They can see and control this PC and hear its sound with Moonlight. {} · {}", what_word(&a.what), left(a.until)), a.s(13.0), p.muted).into();
+            let mut stop = column![a.b(if a.busy == "stop" { "Stopping…" } else { "Stop sharing now" }, ui::Kind::Danger, a.big, if a.busy.is_empty() { Some(Msg::Stop) } else { None })].spacing(s12);
             if !a.said.0.is_empty() {
-                body = body.push(t(a.said.0.clone(), a.s(12.0), p.danger));
+                stop = stop.push(t(a.said.0.clone(), a.s(12.0), p.danger));
             }
-            frame(a, "Sharing this PC (Moonlight)", G::Display, body.into(), a.hints(&[("A", "Stop sharing now")]), false)
+            // its blocks (BLOCKS "notice"); as it was when nothing is
+            let body = parts_of(a, "notice", vec![("who", who), ("what", what), ("stop", stop.into())], move |ps| column![ps.take("who"), ps.take("what"), ps.take("stop")].spacing(s12).into());
+            frame(a, "Sharing this PC (Moonlight)", G::Display, body, a.hints(&[("A", "Stop sharing now")]), false)
         }
         Mode::Friends => {
+            let head: Element<Msg> = column![tb("Family and friends", a.s(22.0), p.text), t("Their PCs that let you connect with Moonlight. They may be asked to say yes first.", a.s(13.0), p.muted)].spacing(a.s(10.0)).into();
             let mut c = Column::new().spacing(a.s(10.0));
-            c = c.push(tb("Family and friends", a.s(22.0), p.text));
-            c = c.push(t("Their PCs that let you connect with Moonlight. They may be asked to say yes first.", a.s(13.0), p.muted));
             let mut ri = 0usize;
             if let Some(conn) = a.data.get("connected").filter(|c| !c.is_null()) {
                 let focused = a.big && a.fr == ri;
@@ -494,14 +525,12 @@ fn view(a: &App) -> Element<'_, Msg> {
             d = d.push(t("The picture goes through Hearth Link's own connection, encrypted end to end. No router ports are opened.", a.s(12.0), p.muted));
             // its blocks (hearth_ui::blocks): the people and adding one, moved, sized, hidden or restyled
             let s10 = a.s(10.0);
-            let body = hearth_ui::arrange::parts(
-                &a.describe,
-                &p,
+            let body = parts_of(
+                a,
                 "friends",
-                vec![("people", c.into()), ("add", d.into())],
-                // as it was: one list that scrolls, the people then adding one
-                move |ps| scrollable(column![ps.take("people"), ps.take("add")].spacing(s10)).height(Length::Fill).into(),
-                Msg::Describe,
+                vec![("head", head), ("people", c.into()), ("add", d.into())],
+                // as it was: one list that scrolls, the title, the people then adding one
+                move |ps| scrollable(column![ps.take("head"), ps.take("people"), ps.take("add")].spacing(s10)).height(Length::Fill).into(),
             );
             frame(a, "Family and friends", G::Users, body, a.hints(&[("A", "Connect"), ("← →", "Connect / Remove"), ("↑ ↓", "Move"), ("B", "Close")]), true)
         }

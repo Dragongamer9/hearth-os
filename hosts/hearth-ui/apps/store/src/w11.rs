@@ -40,8 +40,13 @@ pub fn frame<'a>(a: &'a App, body: E<'a, Msg>) -> E<'a, Msg> {
             border: iced::Border { color: tn.line, width: 1.0, radius: iced::border::Radius { top_left: z(10.0), top_right: 0.0, bottom_left: 0.0, bottom_right: 0.0 } },
             ..container::Style::default()
         });
-    let main = row![rail(a), page].height(Length::Fill);
-    container(column![title_bar(a), main]).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into()
+    // its blocks (view::BLOCKS "window"): the title bar with the search, the rail and the page; as it was when nothing is
+    let items: Vec<(&'static str, E<'a, Msg>)> = vec![("page", page.into()), ("title", title_bar(a)), ("rail", rail(a))];
+    let body = view::page_parts_fill(a, "window", items, |ps| {
+        let main = row![ps.take("rail"), ps.take("page")].height(Length::Fill);
+        column![ps.take("title"), main].into()
+    });
+    container(body).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into()
 }
 
 fn title_bar<'a>(a: &'a App) -> E<'a, Msg> {
@@ -278,9 +283,8 @@ fn side_picks<'a>(a: &'a App, feat: Option<&str>) -> Vec<&'a Entry> {
 pub fn home(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let mut c = Column::new().push(head(a, "Home", false));
     if !a.search.trim().is_empty() {
-        return search_results(a, c);
+        return search_results(a, Column::new().push(head(a, "Home", false)));
     }
     let feat = view::featured(a);
     let mut right = Column::new().spacing(z(16.0)).width(Length::FillPortion(30)).height(Length::Fill);
@@ -291,9 +295,9 @@ pub fn home(a: &App) -> E<'_, Msg> {
         Some((e, st)) => hero(a, e, st),
         None => Space::new().into(),
     };
-    c = c.push(row![container(big).width(Length::FillPortion(100)).height(Length::Fill), right].spacing(z(16.0)).height(Length::Fixed(z(420.0))));
+    let featured: E<Msg> = container(big).width(Length::FillPortion(100)).height(Length::Fill).into();
     let mine: Vec<&Entry> = a.cat.apps.iter().filter(|e| !e.test && ((e.kind == Kind::Install && a.inst.contains_key(&e.id)) || (e.kind == Kind::BuiltIn && a.here.contains(&e.id)) || a.parts.contains_key(&e.id))).collect();
-    c = c.push(container(click(row![ts("Your apps", f(20.0), tn.text), t("  ›", f(20.0), tn.muted)].align_y(iced::Center), Some(Msg::Go(Page::Updates)))).padding(look::pad(z(34.0), 0.0, z(14.0), 0.0)));
+    let yours_head = container(click(row![ts("Your apps", f(20.0), tn.text), t("  ›", f(20.0), tn.muted)].align_y(iced::Center), Some(Msg::Go(Page::Updates)))).padding(look::pad(z(34.0), 0.0, z(14.0), 0.0));
     let mut r = Row::new().spacing(z(16.0));
     for e in mine.iter().take(8) {
         r = r.push(container(tile(a, e)).width(Length::FillPortion(1)));
@@ -301,7 +305,11 @@ pub fn home(a: &App) -> E<'_, Msg> {
     for _ in mine.len().min(8)..8 {
         r = r.push(Space::new().width(Length::FillPortion(1)));
     }
-    c.push(r).into()
+    // its blocks (view::BLOCKS "home"); as it was when nothing is: the title, the featured app beside the picks, Your apps
+    let items: Vec<(&'static str, E<Msg>)> = vec![("head", head(a, "Home", false)), ("featured", featured), ("picks", right.into()), ("yours", column![yours_head, r].into())];
+    view::page_parts(a, "home", z(760.0), items, |ps| {
+        column![ps.take("head"), row![ps.take("featured"), ps.take("picks")].spacing(z(16.0)).height(Length::Fixed(z(420.0))), ps.take("yours")].into()
+    })
 }
 
 fn search_results<'a>(a: &'a App, mut c: Column<'a, Msg>) -> E<'a, Msg> {
@@ -364,9 +372,8 @@ fn cards<'a>(a: &'a App, list: &[&Entry]) -> E<'a, Msg> {
 pub fn apps(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let mut c = Column::new().push(head(a, "Apps", false));
     if !a.search.trim().is_empty() {
-        return search_results(a, c);
+        return search_results(a, Column::new().push(head(a, "Apps", false)));
     }
     let filter = a.filter.clone();
     let mut pills = Row::new().spacing(z(10.0)).align_y(iced::Center);
@@ -378,8 +385,9 @@ pub fn apps(a: &App) -> E<'_, Msg> {
         pills = pills.push(click(pill, Some(Msg::Filter(cat.to_string()))));
     }
     pills = pills.push(Space::new().width(Length::Fill)).push(chip(&p, "Sort: Name", Chip::Plain));
-    c = c.push(pills).push(gap(1.0, z(22.0)));
-    if filter.is_empty() || filter == "All" || filter == "AI" {
+    let has_banner = filter.is_empty() || filter == "All" || filter == "AI";
+    let mut items: Vec<(&'static str, E<Msg>)> = vec![("head", head(a, "Apps", false)), ("filters", pills.into())];
+    if has_banner {
         let banner = container(
             row![
                 column![ts("YOUR AI TEAM, ON YOUR OWN PC", f(12.0), PURPLE), tb("Hearth AI and the Command Center", f(24.0), Color::WHITE), t("Ithil lives on your PC; the Command Center gets Claude, ChatGPT and Gemini working on one task together.", f(14.0), Pal::mix(Color::WHITE, tn.muted, 0.35))].spacing(z(6.0)).width(Length::Fill),
@@ -391,10 +399,10 @@ pub fn apps(a: &App) -> E<'_, Msg> {
         .padding(look::pad(z(24.0), z(28.0), z(24.0), z(28.0)))
         .width(Length::Fill)
         .style(look::grad(110.0, Color::from_rgb8(0x2a, 0x1d, 0x4a), Color::from_rgb8(0x14, 0x2a, 0x55), 8.0, None));
-        c = c.push(banner).push(gap(1.0, z(22.0)));
+        items.push(("banner", banner.into()));
     }
     let list: Vec<&Entry> = a.cat.apps.iter().filter(|e| !e.test && e.part.is_none() && e.group_of() == "apps" && (filter.is_empty() || filter == "All" || category(e) == filter)).collect();
-    c = c.push(cards(a, &list));
+    items.push(("list", cards(a, &list)));
     let flat = container(
         row![
             column![tb("Looking for other apps?", f(15.0), tn.text), t("Flathub's apps are in Settings › Apps › App store", f(13.0), tn.muted)].spacing(z(3.0)).width(Length::Fill),
@@ -405,7 +413,15 @@ pub fn apps(a: &App) -> E<'_, Msg> {
     .padding(z(18.0))
     .width(Length::Fill)
     .style(look::bx(tn.card, 8.0, Some((tn.line, 1.0))));
-    c.push(gap(1.0, z(22.0))).push(flat).into()
+    items.push(("more", flat.into()));
+    // its blocks (view::BLOCKS "apps"); as it was when nothing is
+    view::page_parts(a, "apps", z(1100.0), items, move |ps| {
+        let mut c = Column::new().push(ps.take("head")).push(ps.take("filters")).push(gap(1.0, z(22.0)));
+        if has_banner {
+            c = c.push(ps.take("banner")).push(gap(1.0, z(22.0)));
+        }
+        c.push(ps.take("list")).push(gap(1.0, z(22.0))).push(ps.take("more")).into()
+    })
 }
 
 // ------------------------------------------------------------------ 4. Library
@@ -415,7 +431,7 @@ pub fn library(a: &App) -> E<'_, Msg> {
     }
     let p = a.p;
     let tn = tone(&p);
-    let mut c = Column::new().push(head(a, "Library", true));
+    let lib_head = head(a, "Library", true);
     // Updates: how many, Pause, Update all, then each (from → to, what's new, size, Update; the downloading one)
     let ups = a.ready();
     let parts = a.part_offers();
@@ -462,7 +478,7 @@ pub fn library(a: &App) -> E<'_, Msg> {
         };
         box_ = box_.push(line_()).push(lrow(a, e, format!("{} → {}{}", i.version, r.version, if what.is_empty() { String::new() } else { format!(" · {what}") }), right));
     }
-    c = c.push(container(box_).width(Length::Fill).style(look::bx(tn.card, 8.0, Some((tn.line, 1.0)))));
+    let updates_el: E<Msg> = container(box_).width(Length::Fill).style(look::bx(tn.card, 8.0, Some((tn.line, 1.0)))).into();
     // Your apps: Apps / Hearth parts / Tests, Sort by
     let tab = a.lib_tab.clone();
     let mut pills = Row::new().spacing(z(10.0)).align_y(iced::Center);
@@ -477,7 +493,7 @@ pub fn library(a: &App) -> E<'_, Msg> {
         pills = pills.push(click(pill, Some(Msg::LibTab(id.to_string()))));
     }
     pills = pills.push(Space::new().width(Length::Fill)).push(chip(&p, "Sort by: Date updated ▾", Chip::Plain));
-    c = c.push(container(pills).padding(look::pad(z(28.0), 0.0, z(14.0), 0.0)));
+    let tabs_el: E<Msg> = container(pills).padding(look::pad(z(28.0), 0.0, z(14.0), 0.0)).into();
     let tab = if tab.is_empty() { "apps".to_string() } else { tab };
     let list: Vec<&Entry> = a
         .cat
@@ -522,10 +538,12 @@ pub fn library(a: &App) -> E<'_, Msg> {
     if list.is_empty() {
         mine = mine.push(container(t("Nothing here yet.", f(14.0), tn.muted)).padding(z(18.0)));
     }
-    c = c.push(container(mine).width(Length::Fill).style(look::bx(tn.card, 8.0, Some((tn.line, 1.0)))));
+    let mine_el: E<Msg> = container(mine).width(Length::Fill).style(look::bx(tn.card, 8.0, Some((tn.line, 1.0)))).into();
     // This PC's Hearth OS: Library › Hearth OS (store-everything/store-2), the system underneath and its updates.
-    c = c.push(container(row![Space::new().width(Length::Fill), click(t(format!("This PC: {} ›", view::this_pc_pub(a)), f(12.0), tn.muted), Some(Msg::Go(Page::System)))]).padding(look::pad(z(18.0), 0.0, 0.0, 0.0)));
-    c.into()
+    let pc_el: E<Msg> = container(row![Space::new().width(Length::Fill), click(t(format!("This PC: {} ›", view::this_pc_pub(a)), f(12.0), tn.muted), Some(Msg::Go(Page::System)))]).padding(look::pad(z(18.0), 0.0, 0.0, 0.0)).into();
+    // its blocks (view::BLOCKS "library"); as it was when nothing is: one after another
+    let items: Vec<(&'static str, E<Msg>)> = vec![("head", lib_head), ("updates", updates_el), ("tabs", tabs_el), ("yours", mine_el), ("thispc", pc_el)];
+    view::page_parts(a, "library", z(1000.0), items, |ps| column![ps.take("head"), ps.take("updates"), ps.take("tabs"), ps.take("yours"), ps.take("thispc")].into())
 }
 
 fn lrow<'a>(a: &'a App, e: &Entry, sub: String, right: E<'a, Msg>) -> E<'a, Msg> {
@@ -538,13 +556,16 @@ fn lrow<'a>(a: &'a App, e: &Entry, sub: String, right: E<'a, Msg>) -> E<'a, Msg>
 pub fn tests(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let mut c = Column::new().push(head(a, "Tests", false));
-    c = c.push(t("Test versions of Hearth's own apps and parts: they may change from week to week, and your usual one is always one click away.", f(14.0), tn.muted)).push(gap(1.0, z(18.0)));
+    let intro: E<Msg> = t("Test versions of Hearth's own apps and parts: they may change from week to week, and your usual one is always one click away.", f(14.0), tn.muted).into();
     let list: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.test).collect();
+    let mut l = Column::new();
     if list.is_empty() {
-        c = c.push(t("No test versions right now.", f(14.0), tn.muted));
+        l = l.push(t("No test versions right now.", f(14.0), tn.muted));
     }
-    c.push(cards(a, &list)).into()
+    l = l.push(cards(a, &list));
+    // its blocks (view::BLOCKS "tests"); as it was when nothing is
+    let items: Vec<(&'static str, E<Msg>)> = vec![("head", head(a, "Tests", false)), ("intro", intro), ("list", l.into())];
+    view::page_parts(a, "tests", z(800.0), items, |ps| column![ps.take("head"), ps.take("intro"), gap(1.0, z(18.0)), ps.take("list")].into())
 }
 
 
@@ -725,10 +746,10 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
             }
         }
     }
-    let left = side_card(a, l);
+    let left: E<'a, Msg> = side_card(a, l);
     // The right: Screenshots, then What's new and Description, and Additional information
     let top = iced::widget::stack![backdrop(e, z(300.0)), column![Space::new().height(Length::Fixed(z(250.0))), ts("Screenshots", f(20.0), tn.text)]];
-    let mut r = Column::new().push(top).push(gap(1.0, z(14.0)));
+    let r = Column::new().push(top).push(gap(1.0, z(14.0)));
     let shots: Vec<&iced::widget::image::Handle> = e.pictures.iter().filter_map(|u| a.pics.get(u)).take(3).collect();
     let mut sr = Row::new().spacing(z(16.0));
     if shots.is_empty() {
@@ -741,7 +762,7 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
             sr = sr.push(container(im).width(Length::FillPortion(1)).height(Length::Fixed(z(236.0))).clip(true).style(look::bx(Color::from_rgb8(0x0f, 0x11, 0x15), 6.0, Some((tn.line, 1.0)))));
         }
     }
-    r = r.push(sr).push(gap(1.0, z(26.0)));
+    let shots_el: E<'a, Msg> = r.push(sr).into();
     let mut words = Column::new().spacing(z(8.0));
     if let Some(rl) = rel.as_ref().filter(|r| !r.notes.is_empty()) {
         words = words.push(ts(format!("What's new in {}", hearth_store::short_version(&rl.version)), f(18.0), tn.text)).push(bullets(&p, &rl.notes, f(14.0))).push(gap(1.0, z(12.0)));
@@ -762,9 +783,14 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     ]
     .spacing(z(16.0));
     let boxed = |c: E<'a, Msg>, w: u16| -> E<'a, Msg> { container(c).padding(z(22.0)).width(Length::FillPortion(w)).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0)))).into() };
-    r = r.push(row![boxed(words.into(), 58), boxed(info.into(), 42)].spacing(z(20.0)));
-    let page = row![container(left).padding(look::pad(z(30.0), 0.0, 0.0, 0.0)), container(r).width(Length::Fill)].spacing(z(28.0));
-    with_note(a, page.into())
+    // its blocks (view::BLOCKS "app"); as it was when nothing is: the card on the left; on the right the screenshots,
+    // then What's new and Description beside Additional information
+    let items: Vec<(&'static str, E<'a, Msg>)> = vec![("card", left), ("shots", shots_el), ("words", boxed(words.into(), 58)), ("info", boxed(info.into(), 42))];
+    let page = view::page_parts(a, "app", z(1000.0), items, |ps| {
+        let r = column![ps.take("shots"), gap(1.0, z(26.0)), row![ps.take("words"), ps.take("info")].spacing(z(20.0))];
+        row![container(ps.take("card")).padding(look::pad(z(30.0), 0.0, 0.0, 0.0)), container(r).width(Length::Fill)].spacing(z(28.0)).into()
+    });
+    with_note(a, page)
 }
 
 // ------------------------------------------------------------------ 5. A test version's page
@@ -893,14 +919,21 @@ pub fn settings(a: &App) -> E<'_, Msg> {
         srow_w11(a, G::Shield, "The app list", signed, trusted, None),
         srow_w11(a, G::Gear, "About Hearth Store", format!("{} · This PC: {}", store_version(a), view::this_pc_pub(a)), Space::new().into(), None),
     ]);
-    let mut c = column![ts("Settings", f(30.0), tn.text), updates, tests, more].width(Length::Fixed(z(1010.0)));
+    // More's own last line: Edit layout, the Store's parts moved, sized, hidden or restyled right here (the owner, Nov 24)
+    let mut more = Column::new().push(more).push(container(row![
+        ui::glyph(G::Grid, tn.muted, z(16.0), 1.5),
+        t("Move, size, hide or restyle the Store's parts: right-click any of them, or", f(13.0), tn.muted),
+        btn(&p, "Edit layout", B::Normal, false, false, Some(Msg::EditAt("window", None)))
+    ].spacing(z(12.0)).align_y(iced::Center)).padding(look::pad(z(14.0), 0.0, 0.0, z(4.0))));
     if a.prefs.unreadable {
-        c = c.push(container(t("The Store's settings file couldn't be read, so nothing is written over it (it's left for you to look at).", f(14.0), look::BAD)).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
+        more = more.push(container(t("The Store's settings file couldn't be read, so nothing is written over it (it's left for you to look at).", f(14.0), look::BAD)).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
     }
     if !a.note.is_empty() {
-        c = c.push(container(t(a.note.clone(), f(14.0), if a.note_bad { look::BAD } else { look::ORANGE2 })).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
+        more = more.push(container(t(a.note.clone(), f(14.0), if a.note_bad { look::BAD } else { look::ORANGE2 })).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
     }
-    c.into()
+    // its blocks (view::BLOCKS "settings"); as it was when nothing is (the notes under More)
+    let items: Vec<(&'static str, E<Msg>)> = vec![("title", ts("Settings", f(30.0), tn.text).into()), ("updates", updates), ("tests", tests), ("more", more.into())];
+    view::page_parts(a, "settings", z(820.0), items, |ps| column![ps.take("title"), ps.take("updates"), ps.take("tests"), ps.take("more")].width(Length::Fixed(z(1010.0))).into())
 }
 
 /// The Store's own version: its quick update when that's what runs, else the Hearth OS it came with.
@@ -1042,7 +1075,7 @@ pub fn parts(a: &App) -> E<'_, Msg> {
         btn(&p, "Update all", B::Primary, false, false, (n > 0 && !a.offline()).then_some(Msg::UpdateAll))
     ]
     .align_y(iced::Center);
-    let mut c = Column::new().push(head).push(container(t("Everything Hearth makes, each with its own updates: fixes reach you the day they're made, no system update and no restart. A part that doesn't start goes back to the one before by itself.", f(14.0), Pal::mix(tn.text, tn.muted, 0.3))).padding(look::pad(z(4.0), 0.0, z(16.0), 0.0)));
+    let intro: E<Msg> = container(t("Everything Hearth makes, each with its own updates: fixes reach you the day they're made, no system update and no restart. A part that doesn't start goes back to the one before by itself.", f(14.0), Pal::mix(tn.text, tn.muted, 0.3))).padding(look::pad(z(4.0), 0.0, z(16.0), 0.0)).into();
     // The filter pills with their counts
     let f_on = a.parts_filter.clone();
     let mut pills = Row::new().spacing(z(10.0)).align_y(iced::Center);
@@ -1058,7 +1091,6 @@ pub fn parts(a: &App) -> E<'_, Msg> {
             .style(look::bx(if on { ORANGE } else { Pal::a(Color::WHITE, 0.03) }, 16.0, Some((if on { Color::TRANSPARENT } else { Pal::mix(tn.line, tn.text, 0.1) }, 1.0))));
         pills = pills.push(click(pill, Some(Msg::PartsFilter(id))));
     }
-    c = c.push(pills);
     let pick = |g: &str| -> Vec<&Entry> {
         all.iter().copied().filter(|e| if f_on.is_empty() || f_on == "all" { in_group(e, g) } else if f_on == "desktop" { g == "desktop" && in_group(e, g) } else { g == f_on && e.group_of() == g }).collect()
     };
@@ -1086,8 +1118,10 @@ pub fn parts(a: &App) -> E<'_, Msg> {
         right = right.push(s);
     }
     right = right.push(gap(1.0, z(18.0))).push(note);
-    c = c.push(row![left, right].spacing(z(18.0)));
-    with_note(a, c.into())
+    // its blocks (view::BLOCKS "parts"); as it was when nothing is
+    let items: Vec<(&'static str, E<Msg>)> = vec![("head", head.into()), ("intro", intro), ("filters", pills.into()), ("list", left.into()), ("services", right.into())];
+    let c = view::page_parts(a, "parts", z(1100.0), items, |ps| column![ps.take("head"), ps.take("intro"), ps.take("filters"), row![ps.take("list"), ps.take("services")].spacing(z(18.0))].into());
+    with_note(a, c)
 }
 
 // ------------------------------------------------------------------ Library › Hearth OS (store-everything/store-2)
@@ -1204,7 +1238,7 @@ pub fn system<'a>(a: &'a App) -> E<'a, Msg> {
         ui::hline(tn.line),
         safe_row(G::List, "Your settings, apps and parts stay", "Only the system underneath changes".into()),
     ];
-    let two = row![boxed(kinds.into(), 55), boxed(safe.into(), 45)].spacing(z(18.0));
+    let (kinds_el, safe_el) = (boxed(kinds.into(), 55), boxed(safe.into(), 45));
     // What's in this one, and the switch
     let all_shown = a.shown_new.contains("system-changes");
     let shown: Vec<String> = if all_shown { info.changes.clone() } else { info.changes.iter().take(4).cloned().collect() };
@@ -1227,8 +1261,12 @@ pub fn system<'a>(a: &'a App) -> E<'a, Msg> {
     .padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0)))
     .width(Length::Fill);
     let bottom = container(column![whats, ui::hline(tn.line), auto]).width(Length::Fill).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))));
-    let c = column![head, gap(1.0, z(18.0)), card, gap(1.0, z(18.0)), two, gap(1.0, z(18.0)), bottom];
-    with_note(a, c.into())
+    // its blocks (view::BLOCKS "system"); as it was when nothing is
+    let items: Vec<(&'static str, E<'a, Msg>)> = vec![("head", head.into()), ("card", card.into()), ("kinds", kinds_el), ("safe", safe_el), ("bottom", bottom.into())];
+    let c = view::page_parts(a, "system", z(1000.0), items, |ps| {
+        column![ps.take("head"), gap(1.0, z(18.0)), ps.take("card"), gap(1.0, z(18.0)), row![ps.take("kinds"), ps.take("safe")].spacing(z(18.0)), gap(1.0, z(18.0)), ps.take("bottom")].into()
+    });
+    with_note(a, c)
 }
 
 // ------------------------------------------------------------------ Library, updating (store-everything/store-3)

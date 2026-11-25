@@ -72,6 +72,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Go(&'static str),
     F(&'static str, String),
     Users(run::Output),
@@ -130,6 +132,12 @@ pub enum Msg {
     LscPicked(run::Output),
     /// Pictures read (pics.rs): drawn again with them.
     Pics,
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 const SYS: &str = "hearth-system";
@@ -197,6 +205,7 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Go(id) => sh.go(id),
         Msg::F(k, v) => {
             st.f.insert(k, v);
@@ -659,7 +668,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
 
 fn landing(a: &App) -> E<'_> {
     let p = a.sh.p;
-    let mut c = Column::new().spacing(8.0).push(container(t("You and the other people on this PC, and how you sign in.", sz(14.0), p.muted)).padding(iced::Padding { top: 0.0, right: 0.0, bottom: 8.0, left: 0.0 }));
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(8.0).push(container(t("You and the other people on this PC, and how you sign in.", sz(14.0), p.muted)).padding(iced::Padding { top: 0.0, right: 0.0, bottom: 8.0, left: 0.0 }));
     for (id, ic) in [("users", Ic::G(G::Users)), ("signin", Ic::Lock), ("online-accounts", Ic::Cloud), ("login-screen", Ic::Image)] {
         if let Some(pg) = crate::registry::page(id) {
             c = c.push(ilink(&p, ic, pg.label, pg.desc, "", Msg::Go(pg.id)));
@@ -690,7 +699,7 @@ fn avatar<'a>(p: &Pal, name: &str, pic: &str, s: f32) -> E<'a> {
 fn users(a: &App) -> E<'_> {
     let p = a.sh.p;
     let st = &a.accounts;
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     let Some(u) = st.users.as_ref() else {
         return column![small(&p, "Reading the accounts on this device…"), if st.msg.is_empty() { E::from(Space::new()) } else { said(&p, &st.msg, st.bad) }].into();
     };
@@ -793,7 +802,7 @@ fn password_fields<'a>(p: &Pal, st: &State) -> E<'a> {
 fn signin(a: &App) -> E<'_> {
     let p = a.sh.p;
     let st = &a.accounts;
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     c = c.push(head(&p, "Signing in"));
     if st.can_admin {
         c = c.push(irow(&p, Ic::G(G::User), "Sign in automatically", if st.busy == "autologin" { "Saving…" } else { "Off shows the login screen at start, with your password" }, switch(&p, st.autologin, Some(Msg::Autologin(!st.autologin)))));
@@ -876,7 +885,7 @@ fn signin(a: &App) -> E<'_> {
 fn online(a: &App) -> E<'_> {
     let p = a.sh.p;
     let st = &a.accounts;
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     if st.loaded && st.prov.get("secretService").and_then(Value::as_bool) == Some(false) {
         c = c.push(kit::banner(&p, Ic::Lock, "No keyring on this device", "Hearth keeps online accounts' passwords only in the system keyring, and it isn't running. Accounts can't be added until it is.", true, None));
     }
@@ -972,7 +981,7 @@ fn online(a: &App) -> E<'_> {
 fn login_screen(a: &App) -> E<'_> {
     let p = a.sh.p;
     let st = &a.accounts;
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     c = c.push(head(&p, "Picture"));
     let bgp = st.lsc.as_ref().map(|s| kit::s_of(s, "background")).unwrap_or_default();
     // The preview: the login screen as it shows: your picture's colour darkened, or Hearth's fireside.

@@ -128,7 +128,7 @@ fn info<'a>(a: &'a App, page: &'static str) -> El<'a> {
     let p = a.sh.p;
     let st = &a.system;
     let v = st.j(page);
-    let mut c = Column::new().spacing(10.0).push(tabs(&p, page));
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0).push(tabs(&p, page));
     if !st.has(page) {
         if !st.read(page) {
             c = c.push(info_row(&p, G::Info, "Reading…", ""));

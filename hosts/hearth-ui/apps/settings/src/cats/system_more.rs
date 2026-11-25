@@ -41,7 +41,7 @@ fn notifications(a: &App) -> El<'_> {
     let pl = plasma();
     let hub = st.file("notify.json");
     let pref = |key: &str, d: bool| -> bool { at(hub, key).as_bool().unwrap_or(d) };
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(head(&p, "Pop-ups and the list"));
     let dnd = if pl {
         let u = vs(k, "until");
@@ -374,7 +374,7 @@ fn storage(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let v = at(st.j("disk"), "value");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if v.is_null() {
         // Hearth's core couldn't be asked (the Hearth app isn't here, or it's still reading): the drives from df.
         if !st.read("disk") {
@@ -474,7 +474,7 @@ fn drives(a: &App) -> El<'_> {
     let st = &a.system;
     let pr = st.j("prefs");
     let pc = st.j("thispc");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "prefs", "Hearth Files' settings") {
         c = c.push(w);
     }
@@ -638,7 +638,7 @@ fn boot(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let b = st.j("boot");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(head(&p, if st.busy.is_empty() { "Boot splash" } else { "Boot splash · saving…" }));
     c = c.push(t("What the screen shows while Hearth OS starts. Pick one to see it play; it changes only when you choose Use this, and takes effect from the next start. If a splash can't be shown, Hearth OS starts in text as before.", sz(12.0), p.muted));
     if let Some(w) = waiting(a, "boot", "the boot splashes") {
@@ -705,7 +705,7 @@ fn remote(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let v = st.j("vnc");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "vnc", "Remote desktop") {
         c = c.push(w);
         if st.read("vnc") {

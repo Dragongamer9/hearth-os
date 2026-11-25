@@ -57,6 +57,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Got(run::Output),
     Did(String, run::Output),
     On(bool),
@@ -74,6 +76,12 @@ pub enum Msg {
     Tablet(tablet::M),
     Print(print::M),
     Usb(usb::M),
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 fn read() -> Task<Msg> {
@@ -104,6 +112,7 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Got(o) => {
             st.bt = data::bt(&o.out);
             st.read = true;
@@ -197,7 +206,7 @@ fn bluetooth(a: &App) -> Element<'_, Msg> {
     let paired: Vec<&data::BtDev> = b.devs.iter().filter(|d| d.paired).collect();
     let connected: Vec<String> = paired.iter().filter(|d| d.connected).map(|d| d.name.clone()).collect();
     let sub = if !b.on { "Off".to_string() } else if connected.is_empty() { "On".into() } else { format!("{} connected", connected.join(", ")) };
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(srow(&p, G::Bt, "Bluetooth", sub, switch(&p, b.on, Some(Msg::On(!b.on)))));
     c = c.push(said(&p, &st.say));
     if b.on {

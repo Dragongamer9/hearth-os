@@ -194,7 +194,7 @@ pub fn page(a: &App) -> E<'_> {
     let st = &a.pers;
     let p = a.sh.p;
     let ev = e(st);
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     if st.fonts.is_none() {
         c = c.push(small(&p, if st.msg.is_empty() { "Reading your fonts…" } else { "" }));
     }

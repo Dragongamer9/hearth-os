@@ -32,12 +32,12 @@ cat > "$BC/nimbus/apps/system-restore.json" <<'J'
   "list": {"x": 4, "y": 1, "w": 8, "h": 11}}}},
  "features": []}
 J
-# Hearth Store: the side on the right, the bar at the bottom moved to the top.
+# Hearth Store: the rail on the right, the title bar with the search at the bottom.
 cat > "$BC/nimbus/apps/store.json" <<'J'
 {"format": 1, "layout": {"blocks": {"window": {
-  "bottom": {"x": 0, "y": 0, "w": 12, "h": 1},
-  "page": {"x": 0, "y": 1, "w": 9, "h": 11},
-  "side": {"x": 9, "y": 1, "w": 3, "h": 11, "corners": 16, "seeThrough": 15}}}},
+  "title": {"x": 0, "y": 11, "w": 12, "h": 1},
+  "page": {"x": 0, "y": 0, "w": 11, "h": 11},
+  "rail": {"x": 11, "y": 0, "w": 1, "h": 11, "corners": 16, "seeThrough": 15}}}},
  "features": []}
 J
 # A file that can't be read: the app opens as it always looks (never a broken app).

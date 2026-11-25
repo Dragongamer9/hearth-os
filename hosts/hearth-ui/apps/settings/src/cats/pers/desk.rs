@@ -367,7 +367,7 @@ pub fn bar_dock(a: &App) -> E<'_> {
     let st = &a.pers;
     let p = sh.p;
     let plasma = kit::on_plasma();
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     c = c.push(t(if plasma { "On KDE Plasma the bar and dock are KDE's panel: set it here, and it stays whichever look you choose." } else { "Every look has its own bar and dock. Pick yours here and it stays, whichever look you choose." }, sz(14.0), p.muted));
     if !st.msg.is_empty() {
         c = c.push(kit::said(&p, &st.msg, st.msg_bad));
@@ -487,7 +487,7 @@ pub fn wallpaper_more(a: &App) -> E<'_> {
     let st = &a.pers;
     let p = sh.p;
     let plasma = kit::on_plasma();
-    let mut c = kit::Col::new(st.skip);
+    let mut c = crate::widgets::Secs::on(a, st.skip);
     if !st.msg.is_empty() {
         c = c.push(kit::said(&p, &st.msg, st.msg_bad));
     }

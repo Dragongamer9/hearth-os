@@ -198,6 +198,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Arrange this page's parts (Settings' sections as blocks, widgets.rs Secs; main.rs gives it to Describe it)
+    Arrange(hearth_ui::describe::DMsg),
     Got(run::Output),
     Props(run::Output),
     Did(String, run::Output),
@@ -221,6 +223,12 @@ pub enum Msg {
     Vpn(vpn::M),
     More(more::M),
     Det(details::M),
+}
+
+impl From<hearth_ui::describe::DMsg> for Msg {
+    fn from(d: hearth_ui::describe::DMsg) -> Msg {
+        Msg::Arrange(d)
+    }
 }
 
 fn read() -> Task<Msg> {
@@ -257,6 +265,7 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Arrange(_) => return Task::none(),
         Msg::Got(o) => {
             st.wifi = parse_wifi(&o.out);
             st.read = true;
@@ -405,7 +414,7 @@ fn wifi(a: &App) -> Element<'_, Msg> {
     let st = &a.net;
     st.live.seen();
     let w = &st.wifi;
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if !st.read {
         return column![note(&p, "Looking at your network…", false), more_links(&p)].spacing(10.0).into();
     }

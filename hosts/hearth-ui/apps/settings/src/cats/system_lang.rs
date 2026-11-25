@@ -74,7 +74,7 @@ fn datetime(a: &App) -> El<'_> {
     let tm = st.j("time");
     let kc = vs(st.j("k-clock"), "clock");
     let h24 = if plasma() && (kc == "0" || kc == "2") { kc == "2" } else { a.sh.d_bool("clock24", false) };
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "time", "the clock") {
         c = c.push(w);
     }
@@ -230,7 +230,7 @@ fn region(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let r = st.j("region");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "region", "the language and formats") {
         c = c.push(w);
         if !st.has("region") {
@@ -294,7 +294,7 @@ fn languages(a: &App) -> El<'_> {
     let locales: Vec<(String, String)> = va(st.j("region"), "locales").iter().filter(|l| !vb(l, "missing") && vs(l, "id") != "C.UTF-8").map(|l| (id_of(&vs(l, "id")), vs(l, "name"))).collect();
     let name_of = |id: &str| locales.iter().find(|x| x.0 == id).map(|x| x.1.clone()).unwrap_or_else(|| id.to_string());
     let save = |l: Vec<String>| Msg::Seq(vec![Msg::Flag("langchanged", true), Msg::Exec(Ex::new(py("hearth-region", &["languages-set"])).input(json!({"languages": l}).to_string()).store("languages").ok("Saved. Apps use it after you sign out and in.").fail("Couldn't save the languages"))]);
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(head(&p, if list.is_empty() { "Only the system's language" } else { "Apps try these in order" }));
     if list.is_empty() {
         c = c.push(info_row(&p, G::Wifi, "Apps use the language from Region & language", "Add languages below so an app without your first one uses the next, before falling back to English"));
@@ -333,7 +333,7 @@ fn spellcheck(a: &App) -> El<'_> {
     let st = &a.system;
     let sp = st.j("spell");
     let s = at(sp, "settings");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "spell", "spell check") {
         c = c.push(w);
         if !st.has("spell") {
@@ -381,7 +381,7 @@ fn langpacks(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let lp = st.j("langpacks");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "langpacks", "your languages") {
         c = c.push(w);
         if !st.has("langpacks") {
@@ -436,7 +436,7 @@ fn input_methods(a: &App) -> El<'_> {
     let st = &a.system;
     let im = st.j("im");
     let kwin = vb(im, "kwin") || plasma();
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if !kwin {
         c = c.push(card(&p, column![ts("Works with KWin", sz(15.0), p.text), t("fcitx5 types into apps through KWin (KDE Plasma's window manager).", sz(13.0), p.muted)].spacing(4.0)));
     }
@@ -573,7 +573,7 @@ fn search_plasma(a: &App) -> El<'_> {
     let k = st.j("k-search");
     let on = vs(k, "indexing") != "false" && !st.raw("baloo").to_lowercase().contains("disabled");
     let contents = vs(k, "basic") != "true";
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     c = c.push(head(&p, "File index"));
     c = c.push(srow(&p, G::Search, "Index my files", baloo_line(st.raw("baloo")), sw(&p, on, Msg::Exec(Ex::new(sv(&["balooctl6", if on { "disable" } else { "enable" }])).re("baloo").re("k-search").ok(if on { "The index is off. Searching still works, more slowly." } else { "The index is on. It's made in the background at the lowest priority." }).fail("Couldn't change the file index")))));
     if on {
@@ -641,7 +641,7 @@ fn search_hearth(a: &App) -> El<'_> {
     let st = &a.system;
     let s = st.j("hsearch");
     let pr = at(s, "prefs");
-    let mut c = Column::new().spacing(10.0);
+    let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
     if let Some(w) = waiting(a, "hsearch", "the file index") {
         c = c.push(w);
         if !st.has("hsearch") {
