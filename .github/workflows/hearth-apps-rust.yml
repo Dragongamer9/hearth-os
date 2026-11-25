@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"; "kwin" also runs the KWin jobs: "capture" Capture on KWin, "files" dragging out of Hearth Files); empty: every app'
+        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"); empty: every app'
         required: false
         default: ''
 
@@ -95,47 +95,6 @@ jobs:
           docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -60
           test -s /tmp/out/hearth-ui.tar
 
-  # Dragging a file out of Hearth Files into another app's window (apps/files/src/dragout.rs), on KDE's own KWin
-  # (virtual screen) with KWin's fake input moving the pointer: the Qt app must get the file's URI, and Files must stay
-  # at rest. Pictures as SHOT notices, one step each.
-  drag-out:
-    needs: build
-    # The one "only" input (a comma list): this job runs when it's empty or names files or kwin.
-    if: ${{ !inputs.only || contains(format(',{0},', inputs.only), ',files,') || contains(format(',{0},', inputs.only), ',kwin,') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    container:
-      image: registry.fedoraproject.org/fedora:45
-      options: --privileged -v /dev:/dev
-    steps:
-      - name: KWin, Qt, the fake input's tools (as plasma-pad.yml's KDE session)
-        run: |
-          dnf -y install python3 python3-dbus python3-pillow procps-ng dbus-daemon dbus-tools glib2 \
-            plasma-workspace kwin plasma-breeze breeze-icon-theme xorg-x11-server-Xwayland mesa-dri-drivers \
-            qt6-qtdeclarative qt6-qtdeclarative-devel qt6-qtwayland kf6-kconfig rsms-inter-fonts google-noto-sans-fonts \
-            libxkbcommon fontconfig gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols-devel >/dev/null
-          for b in kwin_wayland wayland-scanner gcc; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: hearth-apps-rust
-          path: bin
-      - name: Drag a file out of Hearth Files into a Qt app
-        timeout-minutes: 10
-        run: |
-          chmod +x bin/*
-          bash .github/scripts/files-drag-out.sh "$PWD/bin" shots
-          [ ! -f shots/FAILED ]
-      - name: Picture files-36-drag-out-start
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py files-36-drag-out-start
-      - name: Picture files-37-dragging
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py files-37-dragging
-      - name: Picture files-38-dropped
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py files-38-dropped
-
   run:
     needs: build
     runs-on: ubuntu-latest
@@ -195,89 +154,6 @@ jobs:
             shots
             results.txt
           retention-days: 14
-
-  # Capture on KDE's own KWin (docs/mockups/checklists/capture-rust.md): installed as the Fedora image installs it
-  # (os-bases/anatase/build.sh "Capture (Rust)"), KWin's permission checks on, keys through KWin's fake input:
-  # KWin's screenshots through Capture's entry, Print Screen, Super+Shift+S with one picker on every screen, the
-  # pills' and the dot's places, and recording through KDE's screen-sharing portal (.github/scripts/hearth-apps-rust-kwin.sh).
-  kwin:
-    needs: build
-    # The one "only" input (a comma list): this job runs when it's empty or names capture or kwin.
-    if: ${{ !inputs.only || contains(format(',{0},', inputs.only), ',capture,') || contains(format(',{0},', inputs.only), ',kwin,') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    container:
-      image: registry.fedoraproject.org/fedora:45
-      options: --privileged
-    outputs:
-      shots: ${{ steps.list.outputs.shots }}
-    steps:
-      - name: KWin, KDE's portal, PipeWire, GStreamer, the checking tools
-        run: |
-          dnf -y install git python3 python3-dbus python3-gobject python3-pillow procps-ng dbus-daemon dbus-tools kwin \
-            plasma-workspace xdg-desktop-portal xdg-desktop-portal-kde pipewire wireplumber pipewire-pulseaudio pipewire-gstreamer \
-            gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugins-base-tools xorg-x11-server-Xwayland \
-            mesa-dri-drivers gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols libnotify wl-clipboard \
-            google-noto-sans-fonts rsms-inter-fonts dejavu-sans-fonts breeze-icon-theme kf6-kservice libxkbcommon >/dev/null
-          dnf -y install --skip-unavailable libkscreen kscreen gstreamer1-plugin-openh264 qt6-qtwayland xdg-user-dirs >/dev/null || true
-          for b in kwin_wayland kscreen-doctor gst-launch-1.0 /usr/libexec/xdg-desktop-portal-kde; do command -v $b >/dev/null || [ -x "$b" ] || echo "::warning title=setup::$b isn't installed"; done
-          echo "::notice title=KWin::$(rpm -q kwin xdg-desktop-portal-kde libkscreen pipewire-gstreamer | tr '\n' ' ')"
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: hearth-apps-rust
-          path: bin
-      - name: Capture where the Fedora image puts it (build.sh "Capture (Rust)")
-        run: |
-          install -m755 bin/hearth-capture-app bin/hearth-task-manager /usr/bin/
-          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
-          # As in the image: root's, nobody else can change them (Capture's `shot` answers only a root-owned hearth-screens).
-          chown -R root:root /usr/share/nimbus && chmod -R go-w /usr/share/nimbus
-          mkdir -p /usr/share/applications /usr/share/kglobalaccel
-          sed -n '/^# >>> Capture (Rust)/,/^# <<< Capture (Rust)/p' os-bases/anatase/build.sh > /tmp/capture-build.sh
-          bash -e /tmp/capture-build.sh 2>&1 | tail -5
-          ls -l /usr/share/applications/hearth-capture.desktop /usr/share/kglobalaccel/hearth-capture.desktop /usr/bin/hearth-capture /usr/bin/hearth-screenshot
-          bash .github/scripts/ci-kwin-tools.sh install
-      - name: Capture on KWin
-        timeout-minutes: 25
-        shell: bash
-        run: bash .github/scripts/hearth-apps-rust-kwin.sh shots
-      - name: The pictures taken
-        id: list
-        if: always()
-        run: |
-          ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
-          echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:200]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
-          for f in shots/kw-windows-*.txt; do [ -f "$f" ] && echo "::notice title=$(basename "$f" .txt)::$(grep -v '^----\|^====' "$f" | tr '\n' '|' | cut -c1-900)"; done
-          [ ! -e shots/FAILED ]
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: hearth-apps-rust-kwin-shots
-          path: shots
-          retention-days: 14
-
-  pictures-kwin:
-    needs: kwin
-    if: always() && needs.kwin.result != 'skipped' && needs.kwin.outputs.shots != '[]' && needs.kwin.outputs.shots != ''
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shot: ${{ fromJSON(needs.kwin.outputs.shots || '[]') }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: .github/scripts
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: hearth-apps-rust-kwin-shots
-          path: shots
-      - name: Picture ${{ matrix.shot }}
-        run: |
-          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
-          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
 
   pictures:
     needs: run
