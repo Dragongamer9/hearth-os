@@ -117,7 +117,7 @@ class SettingsPagesAreTheirSections(unittest.TestCase):
         self.assertIn('let mut c = Column::new().spacing(spacing);', s)
         self.assertIn('Column::with_children(els).spacing(spacing)', s)
         # worked out once per new section, never per frame; at most the grid's 12 rows of blocks
-        self.assertIn('if list.len() >= 12', s)
+        self.assertIn('seen.into_iter().take(12)', s)
 
 
 class EditLayoutIsRightThere(unittest.TestCase):

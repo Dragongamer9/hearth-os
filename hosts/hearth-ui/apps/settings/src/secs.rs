@@ -135,7 +135,7 @@ impl<'a, M: Clone + From<DMsg> + 'a> From<Secs<'a, M>> for Element<'a, M> {
             let skip = skip.min(all.len().saturating_sub(1));
             Column::with_children(all.into_iter().skip(skip)).spacing(spacing).into()
         };
-        if skip > 0 || secs.is_empty() {
+        if skip > 0 {
             return flat(secs);
         }
         let first = DRAWN.with(|v| {
@@ -157,6 +157,9 @@ impl<'a, M: Clone + From<DMsg> + 'a> From<Secs<'a, M>> for Element<'a, M> {
             v.retain(|x| x.0 != page);
             v.push((page, named.clone()));
         });
+        if secs.is_empty() {
+            return flat(secs);
+        }
         let Some(def) = d.pages.iter().find(|p| p.id == page) else { return flat(secs) };
         let Some(first_block) = def.blocks.first() else { return flat(secs) };
         // each section to its block; one the page doesn't name (yet) stays with the one before
@@ -174,10 +177,13 @@ impl<'a, M: Clone + From<DMsg> + 'a> From<Secs<'a, M>> for Element<'a, M> {
             }
         }
         let ids: Vec<&'static str> = groups.iter().map(|g| g.0).collect();
+        // being arranged: each section's own content under its block's bar (drawn over the block's top)
+        let arranging = d.arr.as_ref().map(|x| x.page) == Some(page);
         let items: Vec<(&'static str, Element<'a, M>)> = groups
             .into_iter()
             .map(|(id, els)| {
                 let el: Element<'a, M> = Column::with_children(els).spacing(spacing).into();
+                let el: Element<'a, M> = if arranging { iced::widget::container(el).padding(iced::Padding { top: 26.0, right: 0.0, bottom: 0.0, left: 0.0 }).into() } else { el };
                 (id, hearth_ui::arrange::right_edit(el, M::from(DMsg::Pick(id))))
             })
             .collect();
@@ -211,18 +217,20 @@ pub fn sync(a: &mut App) {
     if crate::STATIC_BLOCKS.iter().any(|p| p.id == page) {
         return;
     }
-    let mut list: Vec<(String, String)> = a.describe.pages.iter().find(|p| p.id == page).map(|p| p.blocks.iter().map(|b| (b.id.to_string(), b.title.to_string())).collect()).unwrap_or_default();
-    let mut grew = false;
-    for (id, t) in seen {
-        if list.len() >= 12 {
-            break;
+    // the page as it shows now (its blocks follow its sections: a kept place for one that isn't there now is passed
+    // over, and comes back with it)
+    let list: Vec<(String, String)> = seen.into_iter().take(12).collect();
+    let have: Vec<&str> = a.describe.pages.iter().find(|p| p.id == page).map(|p| p.blocks.iter().map(|b| b.id).collect()).unwrap_or_default();
+    let grew = list.len() != have.len() || list.iter().zip(&have).any(|(x, h)| x.0 != *h);
+    if grew && list.is_empty() {
+        // nothing of its own on it now (a page that couldn't be read): no blocks
+        let all: Vec<PageDef> = a.describe.pages.iter().filter(|p| p.id != page).copied().collect();
+        a.describe.pages = Box::leak(all.into_boxed_slice());
+        if a.describe.arr.as_ref().map(|x| x.page == page && x.undo.is_empty()).unwrap_or(false) {
+            a.describe.arr = None;
         }
-        if !list.iter().any(|x| x.0 == id) {
-            list.push((id, t));
-            grew = true;
-        }
-    }
-    if grew {
+        let _ = a.describe.update(DMsg::Drop);
+    } else if grew {
         let places = rows(list.len());
         let blocks: Vec<BlockDef> = list
             .into_iter()
@@ -261,7 +269,7 @@ pub fn sync(a: &mut App) {
     // CI's pictures: HEARTH_ARRANGE_OPEN=settings:<page> opens Arrange on it once it's drawn
     if !OPENED.load(Ordering::Relaxed) {
         if let Ok(v) = std::env::var("HEARTH_ARRANGE_OPEN") {
-            if v == format!("settings:{page}") && a.describe.arr.is_none() {
+            if v == format!("settings:{page}") && a.describe.arr.is_none() && a.describe.pages.iter().any(|p| p.id == page) {
                 OPENED.store(true, Ordering::Relaxed);
                 let pick = std::env::var("HEARTH_ARRANGE_PICK").ok().and_then(|b| a.describe.pages.iter().find(|p| p.id == page).and_then(|p| p.blocks.iter().find(|x| x.id == b)).map(|x| x.id));
                 let _ = hearth_ui::arrange::edit_at(&mut a.describe, page, pick);
