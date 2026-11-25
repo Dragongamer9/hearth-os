@@ -13,7 +13,8 @@ import json, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAL = json.load(open(os.path.join(ROOT, 'hosts/linux/desktop/theme/palettes.json')))
-SITE_DEFAULT = 'steam'
+# The site's default look (the owner, Nov 25, 2026: "a Default Constaltion look"); Steam-style stays in the picker.
+SITE_DEFAULT = 'constellation'
 
 
 def rgb(h):
@@ -33,6 +34,14 @@ def rgba(h, a):
 # (hearth-workspace hearth/mockups/gold-theme, artboard 5): near-black, a gold dot grid with a soft glow, #ffb347, ◢ labels
 # in spaced capitals and gold corner marks on cards and panels. Its light mode is gold on cream (text at least 4.5:1).
 SITE_LOOKS = {
+    'constellation': {
+        'label': 'Constellation', 'desc': 'The Hearth fire in a night sky (the default)', 'order': 0, 'windowCorner': 10,
+        'wallpaper': 'anim:constellation', 'islandStyle': 'bar', 'frame': 'plain', 'deskClock': False,
+        'dark': {'bg': '#05060a', 'bg2': '#0a0c13', 'panel': '#0f121b', 'panel2': '#151a26', 'panel3': '#1b2130',
+                 'line': '#232a3a', 'text': '#eef2f7', 'muted': '#93a0ae', 'ember': '#ffb35c', 'flame': '#ffd166', 'ink': '#1a0d04'},
+        'light': {'bg': '#f3efe8', 'bg2': '#f9f6f1', 'panel': '#ffffff', 'panel2': '#f4eee5', 'panel3': '#ece3d6',
+                  'line': '#ddd2c2', 'text': '#1b1a22', 'muted': '#5d5a66', 'ember': '#b8561a', 'flame': '#c98a00', 'ink': '#ffffff'},
+    },
     'gold': {
         'label': 'Gold', 'desc': 'Black and gold, the Server look', 'order': 9, 'windowCorner': 6,
         'wallpaper': 'anim:gold', 'islandStyle': 'bar', 'frame': 'gold', 'deskClock': False,
@@ -75,16 +84,21 @@ def vars_for(p, mode):
 
 
 def block(sel, d):
+    # The default look's rules also cover the page with no look picked.
+    d_sel = f':root[data-look="{SITE_DEFAULT}"]'
+    if d_sel in sel:
+        sel = sel + ',' + sel.replace(d_sel, ':root:not([data-look])')
     return sel + '{' + ';'.join(f'{k}:{v}' for k, v in d.items()) + '}'
 
 
 def css():
     lines = ['/* Hearth OS\'s looks on the website: made by tools/site-looks.py from hosts/linux/desktop/theme/palettes.json.',
-             '   Don\'t edit by hand. Steam-style is the site\'s own colours (no data-look). */']
+             '   Don\'t edit by hand. The default look (SITE_DEFAULT) also applies when no look is picked. */']
     for k, v in looks():
-        if k == SITE_DEFAULT:
-            continue
         r = f':root[data-look="{k}"]'
+        if k == SITE_DEFAULT:
+            # the default look's colours also apply when nothing is picked (each rule is written for both selectors)
+            pass
         dark_b, dark_a = vars_for(v['dark'], 'dark')
         light_b, light_a = vars_for(v.get('light') or v['dark'], 'light')
         # Dark (and the site's default when the system doesn't ask for light). The accent stays the look's unless
@@ -382,6 +396,45 @@ WALL_JS = r"""
       for (var a = -14; a <= 14; a++) { c.beginPath(); c.moveTo(cx + a * W * .01, hz); c.lineTo(cx + a * W * .12, H); c.stroke(); }
       for (var j = 1; j < 14; j++) { var y = hz + (H - hz) * Math.pow(j / 13, 2.2); c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
       g = c.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, W * .7); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.4)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    },
+    constellation: function(){   // Constellation (the default): a night sky with the Hearth fire glowing in it, and two small constellations
+      c.fillStyle = lin(0, H, dark ? [[0, '#04050a'], [.6, '#070912'], [1, '#0c0a10']] : [[0, '#f6f2ec'], [1, '#efe8de']]); c.fillRect(0, 0, W, H);
+      var g = c.createRadialGradient(W * .74, H * .46, 0, W * .74, H * .46, H * .55); g.addColorStop(0, dark ? 'rgba(255,138,61,0.16)' : 'rgba(232,112,42,0.10)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      g = c.createRadialGradient(W * .12, H * .1, 0, W * .12, H * .1, H * .6); g.addColorStop(0, dark ? 'rgba(26,159,255,0.08)' : 'rgba(26,120,200,0.05)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+      for (var i = 0; i < 260; i++) { var x = ((i * .6180339) % 1) * W, y = ((i * .7548776 + i * i * .0001) % 1) * H, r = (i % 7 === 0 ? 1.6 : i % 3 === 0 ? 1.1 : .7) * Math.max(1, W / 1600);
+        c.globalAlpha = (dark ? .18 : .22) + ((i * 37) % 10) / (dark ? 16 : 30); c.fillStyle = dark ? (i % 11 === 0 ? '#ffd9a8' : '#ffffff') : '#5d5a66'; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill(); }
+      c.globalAlpha = 1;
+      function shape(pts, links, cx, cy, s, a){
+        c.strokeStyle = dark ? 'rgba(255,179,92,' + (.38 * a) + ')' : 'rgba(184,86,26,' + (.32 * a) + ')'; c.lineWidth = Math.max(1, s * 1.6);
+        links.forEach(function(l){ c.beginPath(); c.moveTo(cx + pts[l[0]][0] * s, cy + pts[l[0]][1] * s); c.lineTo(cx + pts[l[1]][0] * s, cy + pts[l[1]][1] * s); c.stroke(); });
+        pts.forEach(function(p, k){ var x = cx + p[0] * s, y = cy + p[1] * s, r = (k === 0 ? 9 : 5.5) * s;
+          var q = c.createRadialGradient(x, y, 0, x, y, r * 4); q.addColorStop(0, dark ? 'rgba(255,170,90,' + (.55 * a) + ')' : 'rgba(232,112,42,' + (.3 * a) + ')'); q.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = q; c.beginPath(); c.arc(x, y, r * 4, 0, 6.3); c.fill();
+          c.globalAlpha = a; c.fillStyle = k === 0 ? (dark ? '#fff1c4' : '#c98a00') : (dark ? '#ffb35c' : '#b8561a'); c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill(); c.globalAlpha = 1; });
+      }
+      // the Hearth fire (site/img/logo.svg's flame) glowing among the stars
+      var wide = W > 900, s = (wide ? H / 1000 : W / 1300) * 1.05, fs = s * 1.25, fx = (wide ? W * .76 : W * .5) - 256 * fs, fy = (wide ? H * .42 : H * .3) - 295 * fs;
+      c.save(); c.translate(fx, fy); c.scale(fs, fs); c.globalAlpha = wide ? (dark ? .95 : .8) : .35;
+      if (root.dataset.flame === 'stars') {   // the Hearth Organization page: the constellation flame (site/img/org.svg's stars and lines)
+        var P = [[512, 190], [600, 330], [680, 470], [660, 620], [560, 720], [464, 720], [364, 620], [344, 470], [420, 360], [470, 440]], R = [30, 24, 26, 24, 26, 26, 24, 26, 22, 16];
+        c.translate(256, 295); c.scale(.5, .5); c.translate(-512, -470);
+        c.strokeStyle = dark ? 'rgba(255,179,92,0.85)' : 'rgba(184,86,26,0.7)'; c.lineWidth = 10; c.lineCap = 'round'; c.lineJoin = 'round';
+        c.shadowColor = dark ? 'rgba(255,138,61,0.75)' : 'rgba(232,112,42,0.4)'; c.shadowBlur = 60 * fs;
+        c.beginPath(); c.moveTo(P[0][0], P[0][1]); [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].forEach(function(k){ c.lineTo(P[k][0], P[k][1]); }); c.stroke();
+        [1, 4, 5, 7, 2, 8].forEach(function(k){ c.beginPath(); c.moveTo(512, 470); c.lineTo(P[k][0], P[k][1]); c.stroke(); });
+        var sg = c.createLinearGradient(0, 160, 0, 750); sg.addColorStop(0, '#ffd166'); sg.addColorStop(.55, '#ff8a3d'); sg.addColorStop(1, '#e5483b'); c.fillStyle = sg;
+        P.forEach(function(p, k){ c.beginPath(); c.arc(p[0], p[1], R[k], 0, 6.3); c.fill(); });
+        var cc = c.createLinearGradient(0, 430, 0, 510); cc.addColorStop(0, '#fff6d6'); cc.addColorStop(1, '#ffc24f'); c.fillStyle = cc; c.beginPath(); c.arc(512, 470, 40, 0, 6.3); c.fill();
+        c.restore(); c.globalAlpha = 1; c.shadowBlur = 0;
+      } else {
+      var fg = c.createLinearGradient(0, 168, 0, 422); fg.addColorStop(0, '#ffd166'); fg.addColorStop(.55, '#ff8a3d'); fg.addColorStop(1, '#e5483b');
+      c.shadowColor = dark ? 'rgba(255,138,61,0.75)' : 'rgba(232,112,42,0.4)'; c.shadowBlur = 90 * fs;
+      c.fillStyle = fg; c.fill(new Path2D('M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z'));
+      var cg = c.createLinearGradient(0, 284, 0, 412); cg.addColorStop(0, '#fff6d6'); cg.addColorStop(1, '#ffc24f'); c.shadowBlur = 0;
+      c.fillStyle = cg; c.fill(new Path2D('M258 284 C280 314 300 338 300 368 C300 394 282 412 258 412 C234 412 216 394 216 368 C216 340 238 316 258 284 Z'));
+      c.restore(); c.globalAlpha = 1;
+      }
+      shape([[0, 0], [70, -40], [150, -20], [210, 30], [130, 70]], [[0, 1], [1, 2], [2, 3], [3, 4], [4, 2]], W * .08, H * .16, s * .9, .55);
+      shape([[0, 0], [60, 50], [130, 40], [170, 110]], [[0, 1], [1, 2], [2, 3]], W * .3, H * .82, s * .9, .45);
     },
     gold: function(){   // Gold: near-black, a gold dot grid every 26px and a soft gold glow up top right (gold-glow.png)
       c.fillStyle = dark ? '#030201' : '#f8f1e2'; c.fillRect(0, 0, W, H);

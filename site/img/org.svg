@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs>
+ <radialGradient id="bg" cx="50%" cy="55%" r="72%"><stop offset="0" stop-color="#2b1a16"/><stop offset=".55" stop-color="#141821"/><stop offset="1" stop-color="#0b0e14"/></radialGradient>
+ <radialGradient id="glow" cx="50%" cy="56%" r="36%"><stop offset="0" stop-color="#ff8a3d" stop-opacity=".45"/><stop offset=".6" stop-color="#e5483b" stop-opacity=".12"/><stop offset="1" stop-color="#e5483b" stop-opacity="0"/></radialGradient>
+ <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd166"/><stop offset=".55" stop-color="#ff8a3d"/><stop offset="1" stop-color="#e5483b"/></linearGradient>
+ <linearGradient id="core" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6d6"/><stop offset="1" stop-color="#ffc24f"/></linearGradient>
+ <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ece0"/><stop offset="1" stop-color="#bfa991"/></linearGradient>
+ <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe3a3"/><stop offset=".5" stop-color="#e9a94b"/><stop offset="1" stop-color="#b86a2a"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/><rect width="1024" height="1024" fill="url(#glow)"/>
+<g stroke="#ffb35c" stroke-width="10" stroke-linecap="round" opacity=".85" fill="none">
+<path d="M512 190 L600 330 L680 470 L660 620 L560 720 L464 720 L364 620 L344 470 L420 360 L470 440 L512 190"/>
+<path d="M512 470 L600 330 M512 470 L560 720 M512 470 L464 720 M512 470 L344 470 M512 470 L680 470 M512 470 L420 360"/>
+</g>
+<g fill="url(#core)"><circle cx="512" cy="470" r="40"/></g>
+<g fill="url(#flame)"><circle cx="512" cy="190" r="30"/><circle cx="600" cy="330" r="24"/><circle cx="680" cy="470" r="26"/><circle cx="660" cy="620" r="24"/><circle cx="560" cy="720" r="26"/><circle cx="464" cy="720" r="26"/><circle cx="364" cy="620" r="24"/><circle cx="344" cy="470" r="26"/><circle cx="420" cy="360" r="22"/><circle cx="470" cy="440" r="16"/></g>
+<path d="M300 820 H724" stroke="url(#stone)" stroke-width="26" stroke-linecap="round"/>
+</svg>

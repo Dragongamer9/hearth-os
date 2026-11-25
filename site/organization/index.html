@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en" data-flame="stars">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Organization</title>
+<meta name="description" content="Hearth Organization helps improve open-source projects: it builds on many of them and makes them better, starting with Hearth OS, the free gaming OS.">
+<meta property="og:title" content="Hearth Organization">
+<meta property="og:description" content="We make Hearth OS, its apps, and the games and tools around it. Open source, and yours.">
+<meta property="og:image" content="../img/org.svg">
+<meta name="theme-color" content="#171a21">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="../img/logo.svg" type="image/svg+xml">
+<link rel="preload" href="../fonts/anybody.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
+<script>try{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;var k=localStorage.getItem('hearth.look');if(/^[a-z]{2,20}$/.test(k||''))document.documentElement.dataset.look=k;}catch(e){}document.documentElement.classList.add('js');</script>
+<style>
+/* Hearth OS website, in the spirit of a game client at night: deep blue-slate, cool grey text, one bright blue for
+   what you can act on, and the Hearth flame as the only warm thing on the page.
+   Type: Anybody (wide and heavy, for headings) and Figtree (for reading), both SIL OFL and served from this site. */
+@font-face{font-family:"Anybody";src:url(../fonts/anybody.woff2) format("woff2");font-weight:100 900;font-stretch:50% 150%;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-regular.woff) format("woff");font-weight:400;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-semibold.woff) format("woff");font-weight:600;font-display:swap}
+@font-face{font-family:"Figtree";src:url(../fonts/figtree-bold.woff) format("woff");font-weight:700;font-display:swap}
+:root{
+  --deep:#171a21; --page:#1b2838; --panel:#213347; --raise:#2a475e; --rule:#2f4a63; --rule2:#3d5d7a;
+  --hi:#eef5fb; --text:#c7d5e0; --muted:#9ba5ae;
+  --acc:#66c0f4; --acc2:#1a9fff; --onacc:#06121c; --accsoft:rgba(102,192,244,.14);
+  --flame:#ffb35c; --ok:#7ccf8a; --focus:#9fd8ff;
+  --glow:radial-gradient(60% 70% at 70% 0%,rgba(26,159,255,.20),transparent 70%);
+  --display:"Anybody","Arial Black",system-ui,sans-serif;
+  --body:"Figtree","Segoe UI",system-ui,-apple-system,"Cantarell","Noto Sans",Roboto,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --max:1200px; --gut:clamp(16px,4vw,40px);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --deep:#dfe7ee; --page:#eef3f7; --panel:#ffffff; --raise:#dde8f1; --rule:#c9d6e2; --rule2:#a9bccd;
+    --hi:#0f1b27; --text:#26394b; --muted:#4f5f6e;
+    --acc:#0b67ad; --acc2:#0b67ad; --onacc:#ffffff; --accsoft:rgba(11,103,173,.10);
+    --flame:#a8530a; --ok:#17692b; --focus:#0b67ad;
+    --glow:radial-gradient(60% 70% at 70% 0%,rgba(26,159,255,.16),transparent 70%);
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --deep:#dfe7ee; --page:#eef3f7; --panel:#ffffff; --raise:#dde8f1; --rule:#c9d6e2; --rule2:#a9bccd;
+  --hi:#0f1b27; --text:#26394b; --muted:#4f5f6e;
+  --acc:#0b67ad; --acc2:#0b67ad; --onacc:#ffffff; --accsoft:rgba(11,103,173,.10);
+  --flame:#a8530a; --ok:#17692b; --focus:#0b67ad;
+  --glow:radial-gradient(60% 70% at 70% 0%,rgba(26,159,255,.16),transparent 70%);
+  color-scheme:light;
+}
+/* Accents to try (Mantel's accent colour, previewed on this page). Light mode gets a darker shade of each. */
+:root[data-accent="teal"]{--acc:#4fd6c0;--acc2:#2bbfa6;--accsoft:rgba(79,214,192,.14);--focus:#9ff0e2}
+:root[data-accent="violet"]{--acc:#b9a2ff;--acc2:#9a7dff;--accsoft:rgba(185,162,255,.15);--focus:#d6c9ff}
+:root[data-accent="green"]{--acc:#8fd96b;--acc2:#6cc444;--accsoft:rgba(143,217,107,.14);--focus:#c3f0ab}
+:root[data-accent="ember"]{--acc:#ffa25e;--acc2:#ff8a3d;--accsoft:rgba(255,162,94,.14);--focus:#ffd0a8}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"])[data-accent="teal"]{--acc:#0a7262;--acc2:#0a7262;--focus:#0a7262}
+  :root:not([data-theme="dark"])[data-accent="violet"]{--acc:#5b3fc4;--acc2:#5b3fc4;--focus:#5b3fc4}
+  :root:not([data-theme="dark"])[data-accent="green"]{--acc:#2d6e14;--acc2:#2d6e14;--focus:#2d6e14}
+  :root:not([data-theme="dark"])[data-accent="ember"]{--acc:#a8460a;--acc2:#a8460a;--focus:#a8460a}
+}
+:root[data-theme="light"][data-accent="teal"]{--acc:#0a7262;--acc2:#0a7262;--focus:#0a7262}
+:root[data-theme="light"][data-accent="violet"]{--acc:#5b3fc4;--acc2:#5b3fc4;--focus:#5b3fc4}
+:root[data-theme="light"][data-accent="green"]{--acc:#2d6e14;--acc2:#2d6e14;--focus:#2d6e14}
+:root[data-theme="light"][data-accent="ember"]{--acc:#a8460a;--acc2:#a8460a;--focus:#a8460a}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth;scroll-padding-top:76px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--text);font:17px/1.6 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+img{display:block;max-width:100%;height:auto}
+a{color:var(--acc);text-underline-offset:3px;text-decoration-thickness:1px}
+a:hover{color:var(--hi)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:4px;box-shadow:0 0 0 6px var(--accsoft)}
+h1,h2,h3{color:var(--hi);margin:0;text-wrap:balance}
+p{margin:0 0 14px}
+b,strong{color:var(--hi);font-weight:700}
+code{font:14px/1.5 var(--mono);color:var(--hi);background:var(--raise);border-radius:4px;padding:1px 6px;overflow-wrap:anywhere}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
+.skip{position:absolute;left:12px;top:-60px;z-index:100;background:var(--acc);color:var(--onacc);padding:8px 14px;border-radius:4px;font-weight:700}
+.skip:focus{top:12px}
+.ico{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* type */
+.h1{font:800 clamp(36px,4.9vw,66px)/1.02 var(--display);font-stretch:112%;letter-spacing:-.02em}
+.h2{font:800 clamp(30px,4vw,48px)/1.04 var(--display);font-stretch:118%;letter-spacing:-.015em}
+.h3{font:700 21px/1.3 var(--body)}
+.lede{font-size:clamp(18px,1.7vw,20px);line-height:1.55;color:var(--text);max-width:36em}
+.small{font-size:15px;color:var(--muted)}
+@media (max-width:560px){.h1{font-stretch:104%}.h2{font-stretch:106%}}
+
+/* status tags: what's out now and what's still coming, the same two everywhere */
+.tag{display:inline-flex;align-items:center;gap:6px;font:600 13px/1 var(--body);padding:6px 9px;border-radius:3px;white-space:nowrap;vertical-align:middle}
+.tag.now{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent)}
+.tag.next{color:var(--acc);background:var(--accsoft)}
+.tag.off{color:var(--muted);background:color-mix(in srgb,var(--muted) 14%,transparent)}
+.tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.tag.next::before{background:none;border:1.5px solid currentColor;width:5px;height:5px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:10px;font:700 16px/1 var(--body);padding:14px 20px;border-radius:3px;text-decoration:none;border:0;cursor:pointer;min-height:48px}
+.btn.go{color:var(--onacc);background:linear-gradient(180deg,color-mix(in srgb,var(--acc) 82%,#fff) 0%,var(--acc2) 100%)}
+.btn.go:hover{color:var(--onacc);filter:brightness(1.08)}
+.btn.line{color:var(--hi);background:var(--raise)}
+.btn.line:hover{color:var(--hi);background:color-mix(in srgb,var(--raise) 70%,var(--acc))}
+.btn small{font-weight:600;opacity:.8;font-size:14px}
+.ctas{display:flex;flex-wrap:wrap;gap:12px}
+
+/* top bar: always the deep slate */
+header.top{position:sticky;top:0;z-index:30;background:var(--deep);border-bottom:1px solid var(--rule)}
+header.top .wrap{display:flex;align-items:center;gap:8px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font:800 19px/1 var(--display);font-stretch:118%;color:var(--hi);text-decoration:none;white-space:nowrap;margin-right:auto}
+.brand:hover{color:var(--hi)}
+.brand img{width:30px;height:30px}
+header nav{display:flex;gap:2px;font-size:15px}
+header nav a{color:var(--text);text-decoration:none;padding:9px 11px;border-radius:3px}
+header nav a:hover{color:var(--hi);background:var(--raise)}
+.theme{display:grid;place-items:center;width:44px;height:44px;background:none;border:0;color:var(--text);border-radius:3px;cursor:pointer}
+.theme:hover{background:var(--raise);color:var(--hi)}
+.theme .sun{display:none}
+:root[data-theme="light"] .theme .sun{display:block}:root[data-theme="light"] .theme .moon{display:none}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .theme .sun{display:block}:root:not([data-theme="dark"]) .theme .moon{display:none}}
+header .dl{font-weight:700;font-size:15px;color:var(--onacc);background:var(--acc2);padding:10px 15px;border-radius:3px;text-decoration:none}
+:root:not([data-theme="light"]) header .dl{background:var(--acc)}
+header .dl:hover{color:var(--onacc);filter:brightness(1.08)}
+@media (max-width:1020px){header nav{display:none}}
+
+/* hero */
+.hero{position:relative;background:var(--glow),linear-gradient(180deg,var(--deep) 0%,var(--page) 100%);overflow:hidden}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:center;padding-top:clamp(48px,7vw,96px);padding-bottom:clamp(40px,6vw,80px)}
+.hero .lede{margin:26px 0 30px}
+.status{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:28px;font-size:15px;color:var(--muted)}
+.status span{display:inline-flex;align-items:center;gap:8px}
+.livecount{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font:600 14px/1 var(--body);color:var(--text);background:color-mix(in srgb,var(--ok) 12%,transparent);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent)}
+.livecount[hidden]{display:none}
+.livecount i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 60%,transparent);animation:livepulse 2s infinite}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.livecount i{animation:none}}
+.stack{width:100%;max-width:600px;justify-self:end}
+.stack svg{display:block;width:100%;height:auto;overflow:visible}
+.stack .plate{transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+.stack text{font-family:var(--body)}
+.js .stack:not(.in) .p1{transform:translateY(-46px)}
+.js .stack:not(.in) .p3{transform:translateY(40px)}
+@media (prefers-reduced-motion:reduce){.stack .plate{transition:none}.js .stack:not(.in) .plate{transform:none}}
+@media (max-width:860px){.hero .wrap{grid-template-columns:minmax(0,1fr)}.stack{justify-self:center;max-width:520px}}
+
+/* sections */
+section{padding:clamp(64px,8vw,112px) 0}
+section.deep{background:var(--deep)}
+.head{max-width:760px;margin-bottom:clamp(32px,4vw,52px)}
+.head .lede{margin-top:18px}
+.head .tag{margin-bottom:16px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,5vw,72px);align-items:start}
+@media (max-width:860px){.split{grid-template-columns:minmax(0,1fr)}}
+.points{list-style:none;padding:0;margin:0}
+.points li{position:relative;padding:12px 0 12px 28px;border-top:1px solid var(--rule)}
+.points li:last-child{border-bottom:1px solid var(--rule)}
+.points li::before{content:"";position:absolute;left:4px;top:22px;width:10px;height:2px;background:var(--acc)}
+
+/* Steam Game Mode: what starts when */
+.flow{background:var(--panel);border-radius:4px;padding:clamp(20px,3vw,32px);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.flow ol{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.flow li{position:relative;display:grid;grid-template-columns:40px minmax(0,1fr);gap:16px;padding-bottom:26px}
+.flow li:last-child{padding-bottom:0}
+.flow li::after{content:"";position:absolute;left:19px;top:40px;bottom:2px;width:2px;background:var(--rule2)}
+.flow li:last-child::after{display:none}
+.flow .n{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--raise);color:var(--hi);font:800 16px/1 var(--display)}
+.flow li.alt .n{background:none;border:2px dashed var(--rule2);color:var(--muted)}
+.flow h3{font:700 18px/1.3 var(--body);margin:8px 0 4px}
+.flow p{margin:0;font-size:16px}
+.mock{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 14px;border-radius:3px;background:var(--deep);font-size:15px;color:var(--text)}
+.mock .fake{font-weight:700;font-size:14px;color:var(--onacc);background:var(--acc);padding:7px 12px;border-radius:3px}
+.archived{margin-top:32px;padding:20px 22px;border-left:3px solid var(--rule2);background:color-mix(in srgb,var(--panel) 55%,transparent);border-radius:0 4px 4px 0}
+.archived h3{font:700 17px/1.3 var(--body);margin-bottom:6px}
+.archived p{margin:0;font-size:16px}
+
+/* Hearth Sync: sources become collections */
+.sync{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(28px,5vw,72px);align-items:center}
+@media (max-width:860px){.sync{grid-template-columns:minmax(0,1fr)}}
+.shelf{background:var(--panel);border-radius:4px;overflow:hidden}
+.shelf .bar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:14px 18px;background:var(--raise);font-size:14px;color:var(--text)}
+.shelf .bar b{font-size:15px}
+.shelf ul{list-style:none;margin:0;padding:6px 0}
+.shelf li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;align-items:center;padding:11px 18px}
+.shelf li+li{border-top:1px solid var(--rule)}
+.shelf .src{font-weight:700;color:var(--hi)}
+.shelf .via{grid-column:1;font-size:14px;color:var(--muted)}
+.shelf .col{grid-row:1 / span 2;grid-column:2;font-size:14px;color:var(--acc);white-space:nowrap}
+.shelf figcaption{padding:12px 18px;font-size:14px;color:var(--muted);border-top:1px solid var(--rule)}
+
+/* Mantel */
+.mantel-shot{border-radius:4px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(0,0,0,.6),0 0 0 1px var(--rule)}
+figcaption.cap{margin-top:12px;font-size:15px;color:var(--muted)}
+.feats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px);margin-top:clamp(36px,5vw,56px)}
+@media (max-width:860px){.feats{grid-template-columns:minmax(0,1fr)}}
+.feats h3{margin-bottom:8px}
+.feats p{margin:0;font-size:16px}
+.walls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.walls img{border-radius:3px;aspect-ratio:16/9;object-fit:cover}
+.srv-hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:center}
+@media (max-width:860px){.srv-hero{grid-template-columns:minmax(0,1fr)}}
+.srv-hero ul{margin:0;padding:0;list-style:none}
+.srv-hero li{padding:14px 0;border-top:1px solid var(--rule);font-size:16px}
+.srv-hero li b{display:block;color:var(--hi);font-size:17px;margin-bottom:2px}
+.srv-shots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(14px,2vw,24px);margin-top:clamp(36px,5vw,56px)}
+@media (max-width:860px){.srv-shots{grid-template-columns:minmax(0,1fr)}}
+.srv-shots figure{margin:0}
+.srv-shots img{border-radius:4px;box-shadow:0 0 0 1px var(--rule);width:100%;height:auto}
+.srv-shots figcaption{margin-top:10px;font-size:15px;color:var(--muted)}
+.srv-shots figcaption b{color:var(--hi)}
+.try{margin-top:18px}
+.try p{margin:0 0 10px;font-size:15px;color:var(--muted)}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatches button{width:44px;height:44px;border-radius:50%;border:3px solid var(--page);background:var(--c);cursor:pointer;box-shadow:0 0 0 1px var(--rule2)}
+.swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--hi)}
+.swatches button:focus-visible{outline-offset:4px}
+
+/* safety */
+.safe{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;background:var(--rule);border-radius:4px;overflow:hidden}
+.safe>div{background:var(--panel);padding:clamp(22px,3vw,32px)}
+.safe .k{font:800 15px/1 var(--display);font-stretch:118%;color:var(--acc);display:block;margin-bottom:14px}
+.safe h3{margin-bottom:8px}
+.safe p{margin:0;font-size:16px}
+@media (max-width:860px){.safe{grid-template-columns:minmax(0,1fr)}}
+
+/* everything else */
+.more{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 clamp(28px,5vw,72px)}
+.more>div{padding:20px 0;border-top:1px solid var(--rule)}
+.more h3{font:700 18px/1.3 var(--body);margin-bottom:6px}
+.more p{margin:0;font-size:16px}
+@media (max-width:700px){.more{grid-template-columns:minmax(0,1fr)}}
+.paused{margin-top:clamp(40px,5vw,64px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(18px,3vw,36px)}
+.paused>div{padding-top:14px;border-top:2px solid var(--rule2)}
+.paused h3{font:700 17px/1.3 var(--body);margin:10px 0 6px}
+.paused p{margin:0;font-size:15.5px}
+@media (max-width:860px){.paused{grid-template-columns:minmax(0,1fr)}}
+
+/* download */
+.get{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.get{grid-template-columns:minmax(0,1fr)}}
+.box{background:var(--panel);border-radius:4px;padding:clamp(22px,3vw,34px);display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.box.main{background:linear-gradient(160deg,color-mix(in srgb,var(--acc2) 18%,var(--panel)) 0%,var(--panel) 60%);box-shadow:inset 0 2px 0 var(--acc)}
+.box h3{font:800 clamp(24px,2.6vw,30px)/1.1 var(--display);font-stretch:115%;margin-bottom:8px}
+.box.alt h3{font:700 20px/1.3 var(--body)}
+.box p{font-size:16px;margin-bottom:10px}
+.box .v{font-size:14px;color:var(--muted);margin:0 0 14px;min-height:1px}
+.box .btn{margin-bottom:12px}
+.side{display:grid;gap:16px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 22px}
+.stats[hidden]{display:none}
+.stat{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);min-width:130px}
+.stat b{font:800 26px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.stat>span{font-size:13.5px;color:var(--muted)}
+.stat.live b{display:inline-flex;align-items:center;gap:8px}
+.stat.live b i{width:9px;height:9px;border-radius:50%;background:var(--ok);animation:livepulse 2s infinite}
+@media (prefers-reduced-motion:reduce){.stat.live b i{animation:none}}
+.ember{margin-top:clamp(40px,5vw,64px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:clamp(24px,4vw,56px);align-items:start;padding-top:clamp(32px,4vw,48px);border-top:1px solid var(--rule)}
+@media (max-width:860px){.ember{grid-template-columns:minmax(0,1fr)}}
+.cmd{position:relative;margin:8px 0 14px;background:var(--panel);border-radius:4px;box-shadow:0 0 0 1px var(--rule)}
+.ember .btn.line{background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.cmd pre{margin:0 72px 0 0;padding:14px 16px;overflow-x:auto;font:14px/1.6 var(--mono);color:var(--hi)}
+.cmd code{background:none;padding:0;white-space:pre}
+.cmd button{position:absolute;right:8px;top:8px;font:600 14px/1 var(--body);color:var(--hi);background:var(--raise);border:0;border-radius:3px;padding:9px 12px;cursor:pointer}
+
+/* questions */
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 clamp(28px,5vw,72px)}
+@media (max-width:760px){.faq{grid-template-columns:minmax(0,1fr)}}
+details{border-top:1px solid var(--rule)}
+summary{cursor:pointer;list-style:none;padding:18px 32px 18px 0;position:relative;font-weight:700;color:var(--hi)}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";position:absolute;right:6px;top:26px;width:9px;height:9px;border-right:2px solid var(--acc);border-bottom:2px solid var(--acc);transform:rotate(45deg);transition:transform .2s}
+details[open] summary::after{transform:rotate(-135deg);top:30px}
+details p{margin:0 0 18px;font-size:16px}
+
+/* footer */
+footer{background:var(--deep);padding:44px 0 56px;border-top:1px solid var(--rule)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}
+footer .brand{margin-right:12px;font-size:17px}
+footer a{color:var(--text);font-size:15px}
+footer .legal{flex-basis:100%;margin:18px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted);max-width:80em}
+footer .legal a{font-size:inherit;color:var(--muted)}
+
+.big{font:900 clamp(44px,6.2vw,88px)/.96 var(--display);font-stretch:125%;letter-spacing:-.01em;color:var(--hi)}
+.eyebrow{display:block;font:700 14px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--acc);margin-bottom:14px}
+.h2x{font:900 clamp(34px,4.4vw,60px)/1 var(--display);font-stretch:120%;letter-spacing:-.01em}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{padding:24px;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule)}
+.card h3{font:700 21px/1.25 var(--body);margin-bottom:8px;color:var(--hi)}
+.card p{margin:0;font-size:16px}
+.org-hero .wrap{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:clamp(24px,4vw,56px);align-items:center}
+.org-hero .mark{width:min(360px,80%);aspect-ratio:1;border-radius:50%;justify-self:center;box-shadow:0 0 0 1px var(--rule),0 30px 80px -30px rgba(255,138,61,.45)}
+.org-hero .ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
+#how .cards{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.proj{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.proj a,.proj .projcard{display:block;padding:18px 20px;border-radius:8px;background:var(--panel);box-shadow:0 0 0 1px var(--rule);text-decoration:none;color:var(--text)}
+.proj a:hover{box-shadow:0 0 0 1px var(--acc)}
+.proj b{display:flex;justify-content:space-between;gap:10px;color:var(--hi);font:700 18px/1.3 var(--body);margin-bottom:6px}
+.proj .tag{font-size:12px}
+.proj span.d{font-size:15px}
+
+.cmap{position:relative;overflow:hidden;background:radial-gradient(700px 520px at 50% 52%,rgba(255,138,61,.17),transparent 70%),#05060a;color:#c8d1db}
+.cmap svg.m{display:block;width:100%;height:auto}
+.cmap svg .st circle{fill:#fff}.cmap svg line{stroke:rgba(255,179,92,.35);stroke-width:1.5}.cmap svg line.o{stroke:rgba(255,255,255,.09);stroke-dasharray:4 6}
+.cmap svg circle.now{fill:#ffd166;filter:drop-shadow(0 0 10px #ff8a3d)}.cmap svg circle.next{fill:#05060a;stroke:#ffb35c;stroke-width:3}
+.cmap svg text{text-anchor:middle}.cmap svg text.n{font:700 17px var(--body);fill:#fff}.cmap svg text.s{font:600 12px var(--body);letter-spacing:.08em;text-transform:uppercase}.cmap svg text.s.now{fill:#8be39b}.cmap svg text.s.next{fill:#ffb35c}
+.cmap svg a:hover circle,.cmap svg a:focus circle{stroke:#fff;stroke-width:3}.cmap svg a:focus{outline:none}
+.cmap .core{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:14%;min-width:90px;border-radius:50%;box-shadow:0 0 120px rgba(255,138,61,.6)}
+.cmap .top{position:absolute;top:clamp(20px,3vw,40px);left:var(--gut);right:var(--gut);display:flex;justify-content:space-between;gap:30px;align-items:flex-start;pointer-events:none}
+.cmap .top>*{pointer-events:auto}.cmap h1{font:900 clamp(40px,4.6vw,66px)/.95 var(--display);font-stretch:125%;color:#fff}.cmap h1 span{color:#ffb35c}
+.cmap .top p{max-width:430px;font-size:15.5px;color:#a7b2bd;text-align:right;margin:0}
+.cmap .legend{position:absolute;bottom:18px;left:var(--gut);font-size:14px;color:#8b97a3;display:flex;gap:24px}.cmap .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+.cmap .ctas{position:absolute;bottom:14px;right:var(--gut);display:flex;gap:10px}
+.cmap .ctas a{padding:11px 18px;border-radius:999px;font-weight:700;font-size:15px;text-decoration:none}.cmap .ctas .p{background:linear-gradient(90deg,#ffd166,#ff8a3d);color:#180b04}.cmap .ctas .g{border:1px solid #2a2f3a;color:#fff}
+@media (max-width:900px){.cmap .top{position:static;flex-direction:column;padding:28px var(--gut) 0}.cmap .top p{text-align:left}.cmap .legend,.cmap .ctas{position:static;padding:8px var(--gut)}.cmap .ctas{padding-bottom:24px}}
+@media (max-width:600px){.brand .long{display:none}}
+@media (max-width:800px){.org-hero .wrap{grid-template-columns:1fr}.org-hero .mark{width:200px;order:-1}}
+</style>
+<link rel="stylesheet" href="../looks.css?v=991fb925bb">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-win" viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM13 4.2 21 3v8.5h-8zM3 13h7.5v7L3 19zM13 13h8v8l-8-1.2z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+</svg>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="../img/org.svg" alt="" width="30" height="30" style="border-radius:50%">Hearth<span class="long"> Organization</span></a>
+    <nav aria-label="Sections">
+      <a href="#map">Map</a>
+      <a href="#what">What we do</a>
+      <a href="#how">How we work</a>
+      <a href="#projects">Projects</a>
+      <a href="../">Hearth OS</a>
+    </nav>
+    <div class="looks"></div>
+    <button class="theme" id="theme" type="button" aria-label="Switch between light and dark"><svg class="ico moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="ico sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
+    <a class="dl" href="../#download">Get Hearth OS</a>
+  </div>
+</header>
+<main id="main">
+<div class="cmap" id="map">
+  <div class="top"><h1>We make<br><span>Hearth.</span></h1><p>We're an organization that helps improve open-source projects. We build on many of them, from Debian to gamescope, and make them better: a free gaming OS for PCs and handhelds, the apps that live in it, and the tools around it, all built so your PC stays yours.</p></div>
+  <div style="position:relative"><svg class="m" viewBox="0 0 1440 960" role="img" aria-label="Our projects as a constellation around the Hearth Organization emblem"><g class="st"><circle cx="0" cy="0" r="1.0" opacity="0.15"/><circle cx="137" cy="89" r="1.6" opacity="0.23"/><circle cx="274" cy="178" r="2.2" opacity="0.31"/><circle cx="411" cy="267" r="1.0" opacity="0.39"/><circle cx="548" cy="356" r="1.6" opacity="0.47"/><circle cx="685" cy="445" r="2.2" opacity="0.15"/><circle cx="822" cy="534" r="1.0" opacity="0.23"/><circle cx="959" cy="623" r="1.6" opacity="0.31"/><circle cx="1096" cy="712" r="2.2" opacity="0.39"/><circle cx="1233" cy="801" r="1.0" opacity="0.47"/><circle cx="1370" cy="890" r="1.6" opacity="0.15"/><circle cx="67" cy="19" r="2.2" opacity="0.23"/><circle cx="204" cy="108" r="1.0" opacity="0.31"/><circle cx="341" cy="197" r="1.6" opacity="0.39"/><circle cx="478" cy="286" r="2.2" opacity="0.47"/><circle cx="615" cy="375" r="1.0" opacity="0.15"/><circle cx="752" cy="464" r="1.6" opacity="0.23"/><circle cx="889" cy="553" r="2.2" opacity="0.31"/><circle cx="1026" cy="642" r="1.0" opacity="0.39"/><circle cx="1163" cy="731" r="1.6" opacity="0.47"/><circle cx="1300" cy="820" r="2.2" opacity="0.15"/><circle cx="1437" cy="909" r="1.0" opacity="0.23"/><circle cx="134" cy="38" r="1.6" opacity="0.31"/><circle cx="271" cy="127" r="2.2" opacity="0.39"/><circle cx="408" cy="216" r="1.0" opacity="0.47"/><circle cx="545" cy="305" r="1.6" opacity="0.15"/><circle cx="682" cy="394" r="2.2" opacity="0.23"/><circle cx="819" cy="483" r="1.0" opacity="0.31"/><circle cx="956" cy="572" r="1.6" opacity="0.39"/><circle cx="1093" cy="661" r="2.2" opacity="0.47"/><circle cx="1230" cy="750" r="1.0" opacity="0.15"/><circle cx="1367" cy="839" r="1.6" opacity="0.23"/><circle cx="64" cy="928" r="2.2" opacity="0.31"/><circle cx="201" cy="57" r="1.0" opacity="0.39"/><circle cx="338" cy="146" r="1.6" opacity="0.47"/><circle cx="475" cy="235" r="2.2" opacity="0.15"/><circle cx="612" cy="324" r="1.0" opacity="0.23"/><circle cx="749" cy="413" r="1.6" opacity="0.31"/><circle cx="886" cy="502" r="2.2" opacity="0.39"/><circle cx="1023" cy="591" r="1.0" opacity="0.47"/><circle cx="1160" cy="680" r="1.6" opacity="0.15"/><circle cx="1297" cy="769" r="2.2" opacity="0.23"/><circle cx="1434" cy="858" r="1.0" opacity="0.31"/><circle cx="131" cy="947" r="1.6" opacity="0.39"/><circle cx="268" cy="76" r="2.2" opacity="0.47"/><circle cx="405" cy="165" r="1.0" opacity="0.15"/><circle cx="542" cy="254" r="1.6" opacity="0.23"/><circle cx="679" cy="343" r="2.2" opacity="0.31"/><circle cx="816" cy="432" r="1.0" opacity="0.39"/><circle cx="953" cy="521" r="1.6" opacity="0.47"/><circle cx="1090" cy="610" r="2.2" opacity="0.15"/><circle cx="1227" cy="699" r="1.0" opacity="0.23"/><circle cx="1364" cy="788" r="1.6" opacity="0.31"/><circle cx="61" cy="877" r="2.2" opacity="0.39"/><circle cx="198" cy="6" r="1.0" opacity="0.47"/><circle cx="335" cy="95" r="1.6" opacity="0.15"/><circle cx="472" cy="184" r="2.2" opacity="0.23"/><circle cx="609" cy="273" r="1.0" opacity="0.31"/><circle cx="746" cy="362" r="1.6" opacity="0.39"/><circle cx="883" cy="451" r="2.2" opacity="0.47"/><circle cx="1020" cy="540" r="1.0" opacity="0.15"/><circle cx="1157" cy="629" r="1.6" opacity="0.23"/><circle cx="1294" cy="718" r="2.2" opacity="0.31"/><circle cx="1431" cy="807" r="1.0" opacity="0.39"/><circle cx="128" cy="896" r="1.6" opacity="0.47"/><circle cx="265" cy="25" r="2.2" opacity="0.15"/><circle cx="402" cy="114" r="1.0" opacity="0.23"/><circle cx="539" cy="203" r="1.6" opacity="0.31"/><circle cx="676" cy="292" r="2.2" opacity="0.39"/><circle cx="813" cy="381" r="1.0" opacity="0.47"/><circle cx="950" cy="470" r="1.6" opacity="0.15"/><circle cx="1087" cy="559" r="2.2" opacity="0.23"/><circle cx="1224" cy="648" r="1.0" opacity="0.31"/><circle cx="1361" cy="737" r="1.6" opacity="0.39"/><circle cx="58" cy="826" r="2.2" opacity="0.47"/><circle cx="195" cy="915" r="1.0" opacity="0.15"/><circle cx="332" cy="44" r="1.6" opacity="0.23"/><circle cx="469" cy="133" r="2.2" opacity="0.31"/><circle cx="606" cy="222" r="1.0" opacity="0.39"/><circle cx="743" cy="311" r="1.6" opacity="0.47"/><circle cx="880" cy="400" r="2.2" opacity="0.15"/><circle cx="1017" cy="489" r="1.0" opacity="0.23"/><circle cx="1154" cy="578" r="1.6" opacity="0.31"/><circle cx="1291" cy="667" r="2.2" opacity="0.39"/><circle cx="1428" cy="756" r="1.0" opacity="0.47"/><circle cx="125" cy="845" r="1.6" opacity="0.15"/><circle cx="262" cy="934" r="2.2" opacity="0.23"/><circle cx="399" cy="63" r="1.0" opacity="0.31"/><circle cx="536" cy="152" r="1.6" opacity="0.39"/><circle cx="673" cy="241" r="2.2" opacity="0.47"/><circle cx="810" cy="330" r="1.0" opacity="0.15"/><circle cx="947" cy="419" r="1.6" opacity="0.23"/><circle cx="1084" cy="508" r="2.2" opacity="0.31"/><circle cx="1221" cy="597" r="1.0" opacity="0.39"/><circle cx="1358" cy="686" r="1.6" opacity="0.47"/><circle cx="55" cy="775" r="2.2" opacity="0.15"/><circle cx="192" cy="864" r="1.0" opacity="0.23"/><circle cx="329" cy="953" r="1.6" opacity="0.31"/><circle cx="466" cy="82" r="2.2" opacity="0.39"/><circle cx="603" cy="171" r="1.0" opacity="0.47"/><circle cx="740" cy="260" r="1.6" opacity="0.15"/><circle cx="877" cy="349" r="2.2" opacity="0.23"/><circle cx="1014" cy="438" r="1.0" opacity="0.31"/><circle cx="1151" cy="527" r="1.6" opacity="0.39"/><circle cx="1288" cy="616" r="2.2" opacity="0.47"/><circle cx="1425" cy="705" r="1.0" opacity="0.15"/><circle cx="122" cy="794" r="1.6" opacity="0.23"/><circle cx="259" cy="883" r="2.2" opacity="0.31"/><circle cx="396" cy="12" r="1.0" opacity="0.39"/><circle cx="533" cy="101" r="1.6" opacity="0.47"/><circle cx="670" cy="190" r="2.2" opacity="0.15"/><circle cx="807" cy="279" r="1.0" opacity="0.23"/><circle cx="944" cy="368" r="1.6" opacity="0.31"/><circle cx="1081" cy="457" r="2.2" opacity="0.39"/><circle cx="1218" cy="546" r="1.0" opacity="0.47"/><circle cx="1355" cy="635" r="1.6" opacity="0.15"/><circle cx="52" cy="724" r="2.2" opacity="0.23"/><circle cx="189" cy="813" r="1.0" opacity="0.31"/><circle cx="326" cy="902" r="1.6" opacity="0.39"/><circle cx="463" cy="31" r="2.2" opacity="0.47"/><circle cx="600" cy="120" r="1.0" opacity="0.15"/><circle cx="737" cy="209" r="1.6" opacity="0.23"/><circle cx="874" cy="298" r="2.2" opacity="0.31"/><circle cx="1011" cy="387" r="1.0" opacity="0.39"/><circle cx="1148" cy="476" r="1.6" opacity="0.47"/><circle cx="1285" cy="565" r="2.2" opacity="0.15"/><circle cx="1422" cy="654" r="1.0" opacity="0.23"/><circle cx="119" cy="743" r="1.6" opacity="0.31"/><circle cx="256" cy="832" r="2.2" opacity="0.39"/><circle cx="393" cy="921" r="1.0" opacity="0.47"/><circle cx="530" cy="50" r="1.6" opacity="0.15"/><circle cx="667" cy="139" r="2.2" opacity="0.23"/><circle cx="804" cy="228" r="1.0" opacity="0.31"/><circle cx="941" cy="317" r="1.6" opacity="0.39"/><circle cx="1078" cy="406" r="2.2" opacity="0.47"/><circle cx="1215" cy="495" r="1.0" opacity="0.15"/><circle cx="1352" cy="584" r="1.6" opacity="0.23"/><circle cx="49" cy="673" r="2.2" opacity="0.31"/><circle cx="186" cy="762" r="1.0" opacity="0.39"/><circle cx="323" cy="851" r="1.6" opacity="0.47"/><circle cx="460" cy="940" r="2.2" opacity="0.15"/><circle cx="597" cy="69" r="1.0" opacity="0.23"/><circle cx="734" cy="158" r="1.6" opacity="0.31"/><circle cx="871" cy="247" r="2.2" opacity="0.39"/><circle cx="1008" cy="336" r="1.0" opacity="0.47"/><circle cx="1145" cy="425" r="1.6" opacity="0.15"/><circle cx="1282" cy="514" r="2.2" opacity="0.23"/><circle cx="1419" cy="603" r="1.0" opacity="0.31"/><circle cx="116" cy="692" r="1.6" opacity="0.39"/><circle cx="253" cy="781" r="2.2" opacity="0.47"/><circle cx="390" cy="870" r="1.0" opacity="0.15"/><circle cx="527" cy="959" r="1.6" opacity="0.23"/><circle cx="664" cy="88" r="2.2" opacity="0.31"/><circle cx="801" cy="177" r="1.0" opacity="0.39"/><circle cx="938" cy="266" r="1.6" opacity="0.47"/><circle cx="1075" cy="355" r="2.2" opacity="0.15"/><circle cx="1212" cy="444" r="1.0" opacity="0.23"/><circle cx="1349" cy="533" r="1.6" opacity="0.31"/><circle cx="46" cy="622" r="2.2" opacity="0.39"/><circle cx="183" cy="711" r="1.0" opacity="0.47"/><circle cx="320" cy="800" r="1.6" opacity="0.15"/><circle cx="457" cy="889" r="2.2" opacity="0.23"/><circle cx="594" cy="18" r="1.0" opacity="0.31"/><circle cx="731" cy="107" r="1.6" opacity="0.39"/><circle cx="868" cy="196" r="2.2" opacity="0.47"/><circle cx="1005" cy="285" r="1.0" opacity="0.15"/><circle cx="1142" cy="374" r="1.6" opacity="0.23"/><circle cx="1279" cy="463" r="2.2" opacity="0.31"/><circle cx="1416" cy="552" r="1.0" opacity="0.39"/><circle cx="113" cy="641" r="1.6" opacity="0.47"/></g><line x1="720" y1="480" x2="720" y2="180"/><line x1="720" y1="480" x2="934" y2="298"/><line x1="720" y1="480" x2="1182" y2="387"/><line x1="720" y1="480" x2="1067" y2="550"/><line x1="720" y1="480" x2="1006" y2="723"/><line x1="720" y1="480" x2="720" y2="705"/><line x1="720" y1="480" x2="434" y2="723"/><line x1="720" y1="480" x2="373" y2="550"/><line x1="720" y1="480" x2="258" y2="387"/><line x1="720" y1="480" x2="506" y2="298"/><line class="o" x1="720" y1="180" x2="934" y2="298"/><line class="o" x1="934" y1="298" x2="1182" y2="387"/><line class="o" x1="1182" y1="387" x2="1067" y2="550"/><line class="o" x1="1067" y1="550" x2="1006" y2="723"/><line class="o" x1="1006" y1="723" x2="720" y2="705"/><line class="o" x1="720" y1="705" x2="434" y2="723"/><line class="o" x1="434" y1="723" x2="373" y2="550"/><line class="o" x1="373" y1="550" x2="258" y2="387"/><line class="o" x1="258" y1="387" x2="506" y2="298"/><line class="o" x1="506" y1="298" x2="720" y2="180"/><a href="https://github.com/Dragongamer9/hearth-os" aria-label="Hearth OS: Out now"><circle cx="720" cy="180" r="13" class="now"/><text x="720" y="218" class="n">Hearth OS</text><text x="720" y="238" class="s now">Out now</text></a><a href="https://github.com/Hearth-Organization/hearth-ai-command-center" aria-label="AI Command Center: In the Store"><circle cx="934" cy="298" r="13" class="now"/><text x="934" y="336" class="n">AI Command Center</text><text x="934" y="356" class="s now">In the Store</text></a><a href="https://github.com/Hearth-Organization/hearth-capture-card" aria-label="Capture Card: In the Store"><circle cx="1182" cy="387" r="13" class="now"/><text x="1182" y="425" class="n">Capture Card</text><text x="1182" y="445" class="s now">In the Store</text></a><a href="https://github.com/Hearth-Organization/hearth-console-remote-play" aria-label="Console Remote Play: In the Store"><circle cx="1067" cy="550" r="13" class="now"/><text x="1067" y="588" class="n">Console Remote Play</text><text x="1067" y="608" class="s now">In the Store</text></a><a href="https://github.com/Hearth-Organization/beacon" aria-label="Beacon: Built in"><circle cx="1006" cy="723" r="13" class="now"/><text x="1006" y="761" class="n">Beacon</text><text x="1006" y="781" class="s now">Built in</text></a><a href="https://github.com/Hearth-Organization/Hearth-AI" aria-label="Ithil: Coming"><circle cx="720" cy="705" r="13" class="next"/><text x="720" y="743" class="n">Ithil</text><text x="720" y="763" class="s next">Coming</text></a><a href="../docs/" aria-label="Home server mode: In development"><circle cx="434" cy="723" r="13" class="next"/><text x="434" y="761" class="n">Home server mode</text><text x="434" y="781" class="s next">In development</text></a><g><circle cx="373" cy="550" r="13" class="next"/><text x="373" y="588" class="n">Mod Manager</text><text x="373" y="608" class="s next">In development</text></g><a href="https://github.com/Hearth-Organization/Hearth-OS-CAD-" aria-label="Hearth CAD: In development"><circle cx="258" cy="387" r="13" class="next"/><text x="258" y="425" class="n">Hearth CAD</text><text x="258" y="445" class="s next">In development</text></a><a href="https://github.com/Hearth-Organization/hearth-devices" aria-label="Hearth devices: In development"><circle cx="506" cy="298" r="13" class="next"/><text x="506" y="336" class="n">Hearth devices</text><text x="506" y="356" class="s next">In development</text></a></svg><img class="core" src="../img/org.svg" alt=""></div>
+  <div class="legend"><span><i style="background:#ffd166"></i>Out now / in the Store</span><span><i style="border:2px solid #ffb35c"></i>Coming / in development</span></div>
+  <div class="ctas"><a class="p" href="../#download">Get Hearth OS</a><a class="g" href="https://github.com/Hearth-Organization">Hearth Organization on GitHub ↗</a></div>
+</div>
+
+<section id="what" class="deep">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">What we do</span>
+      <h2 class="h2x">Everything Hearth</h2>
+      <p class="lede">Hearth Organization oversees every Hearth project. Each one is its own part, and each one connects to the rest.</p>
+    </div>
+    <div class="cards">
+      <div class="card"><h3>Hearth OS</h3><p>The free, Debian-based gaming OS: Steam Game Mode on the couch, the Mantel desktop on the desk, a home server mode when you're not playing, and every part of it yours to rebuild.</p></div>
+      <div class="card"><h3>Hearth apps</h3><p>The Hearth Store, Files, Settings, Notes, Task Manager, Capture Card, Console Remote Play, the AI Command Center and Ithil, each updating on its own through the Store.</p></div>
+      <div class="card"><h3>Games</h3><p>More to come soon.</p></div>
+      <div class="card"><h3>Tools</h3><p>Hearth CAD, a 3D design app with a slicer built in; the Beacon launcher for classic strategy games; and our Mod Manager, native on Linux.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap how">
+    <div class="head">
+      <span class="eyebrow">How we work</span>
+      <h2 class="h2x">Your PC comes first</h2>
+    </div>
+    <div class="cards">
+      <div class="card"><h3>Nothing changes by itself</h3><p>No surprise updates and no settings changing behind your back. Every update waits until you say so, and the version before it is always there to go back to.</p></div>
+      <div class="card"><h3>Small updates, often</h3><p>Apps and parts update through the Hearth Store, so fixes reach you in minutes instead of waiting for the next big release.</p></div>
+      <div class="card"><h3>Make it yours</h3><p>Your desktop, Game Mode, the lock screen and every Hearth app are made of blocks you can move, resize, hide or describe.</p></div>
+      <div class="card"><h3>Built with AI</h3><p>AI helps us with all our projects: writing and testing code, drawing mockups and checking our work. Every change is tested before it ships, and nothing ships until we say so.</p></div>
+      <div class="card"><h3>Better open source</h3><p>We take the open-source projects we use and make them better, like our Mod Manager, a native Linux mod manager still in the works. Every one of our own is open source on GitHub. Read it, build it, or send us an idea from inside Hearth.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="projects" class="deep">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Projects</span>
+      <h2 class="h2x">Our projects</h2>
+    </div>
+    <div class="proj">
+      <a href="https://github.com/Dragongamer9/hearth-os"><b>Hearth OS <span class="tag now">Out now</span></b><span class="d">The OS itself, its apps and the hearthos.fun website.</span></a>
+      <a href="https://github.com/Hearth-Organization/hearth-ai-command-center"><b>AI Command Center <span class="tag now">In the Store</span></b><span class="d">One place to run your AI helpers on your Hearth projects.</span></a>
+      <a href="https://github.com/Hearth-Organization/hearth-capture-card"><b>Capture Card <span class="tag now">In the Store</span></b><span class="d">Play and record from a capture card.</span></a>
+      <a href="https://github.com/Hearth-Organization/hearth-console-remote-play"><b>Console Remote Play <span class="tag now">In the Store</span></b><span class="d">Your console's games, streamed to your Hearth device.</span></a>
+      <a href="https://github.com/Hearth-Organization/Hearth-AI"><b>Ithil <span class="tag next">Coming</span></b><span class="d">Hearth AI: an AI that lives on your own PC.</span></a>
+      <a href="https://github.com/Hearth-Organization/Hearth-OS-CAD-"><b>Hearth CAD <span class="tag next">In development</span></b><span class="d">3D design with a slicer, for 3D printers.</span></a>
+      <a href="https://github.com/Hearth-Organization/beacon"><b>Beacon <span class="tag now">Built in</span></b><span class="d">A launcher for classic strategy games and their mods.</span></a>
+      <div class="projcard"><b>Home server mode <span class="tag next">In development</span></b><span class="d">Your Hearth PC as a home server between games: your media, files, backups and AI for every device. More server features are on the way.</span></div>
+      <div class="projcard"><b>Mod Manager <span class="tag next">In development</span></b><span class="d">Install and manage your game mods, native on Linux.</span></div>
+      <a href="https://github.com/Hearth-Organization/hearth-devices"><b>Hearth devices <span class="tag next">In development</span></b><span class="d">Hearth OS on more devices, starting with Android tablets.</span></a>
+    </div>
+  </div>
+</section>
+</main>
+<footer>
+  <div class="wrap">
+    <a class="brand" href="./"><img src="../img/org.svg" alt="" width="26" height="26" style="border-radius:50%">Hearth Organization</a>
+    <a href="../">Hearth OS</a>
+    <a href="../docs/">Documentation</a>
+    <a href="https://github.com/Hearth-Organization">GitHub</a>
+  </div>
+</footer>
+
+<script src="../looks.js?v=991fb925bb" defer></script>
+<script>
+document.getElementById('theme').addEventListener('click', function(){
+  var root = document.documentElement;
+  var now = root.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  var next = now === 'light' ? 'dark' : 'light'; root.dataset.theme = next;
+  try { localStorage.setItem('hearth.theme', next); } catch (e) {}
+});
+</script>
+</body>
+</html>

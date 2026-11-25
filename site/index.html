@@ -308,6 +308,14 @@ html.muted .player [data-show="loud"]{display:none}html.muted .player [data-show
 .hero2 .wrap.covers{display:block}
 @media (max-width:640px){header .dl{display:none}.player .next{display:none}.player input[type=range]{width:64px}}
 @media (max-width:420px){.brand .bt{display:none}}
+/* The top bar makes room by itself (script below): song name first, then the section links, then Next, then Download, then the volume slider
+   (Mute stays), and last the name beside the logo. */
+header.top.fit1 .player .meta{display:none}
+header.top.fit2 nav{display:none}
+header.top.fit3 .player .next{display:none}header.top.fit3 .player input[type=range]{width:64px}
+header.top.fit4 .dl{display:none}
+header.top.fit5 .player .vol{display:none}
+header.top.fit6 .brand .bt{display:none}
 .brand img{transform:scale(calc(1 + var(--beat,0) * .18))}
 .music-fx{position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none}
 html.has-wall.playing section{background:color-mix(in srgb,var(--page) 58%,transparent)}
@@ -315,6 +323,10 @@ html.has-wall.playing section.deep,html.has-wall.playing footer{background:color
 @media (prefers-color-scheme:light){html.has-wall.playing:not([data-theme="dark"]) section{background:color-mix(in srgb,var(--page) 74%,transparent)}}
 html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,var(--page) 74%,transparent)}
 
+.presents{display:inline-flex;align-items:center;gap:10px;font:700 14px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--flame);text-decoration:none;margin-bottom:18px}
+.presents img{width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 1px var(--rule)}
+.presents:hover{color:var(--hi)}
+.presents b{color:var(--hi);font-weight:800}
 .eyebrow{display:block;font:700 14px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--acc);margin-bottom:14px}
 .big{font:900 clamp(44px,6.2vw,88px)/.96 var(--display);font-stretch:125%;letter-spacing:-.01em;color:var(--hi)}
 .big em{font-style:normal;color:var(--acc)}
@@ -400,7 +412,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
 .music .ln{font-variant-numeric:tabular-nums}
 
 </style>
-<link rel="stylesheet" href="looks.css?v=b27d0924ac">
+<link rel="stylesheet" href="looks.css?v=991fb925bb">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -442,6 +454,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
 <div class="hero hero2" id="top">
   <div class="wrap">
     <div class="copy">
+      <a class="presents" href="organization/"><img src="img/org.svg" alt="" width="34" height="34"><span>Hearth Organization presents <b>Hearth OS</b></span></a>
       <h1 class="big">Your PC,<br><em>ready to play.</em></h1>
       <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, open source, and built on Debian.</p>
       <div class="ctas">
@@ -652,11 +665,12 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <p class="legal">Hearth OS is an independent project, not affiliated with or endorsed by Valve, Epic Games, GOG, Microsoft, Blizzard, ASUS, Lenovo, Debian, Fedora or Red Hat.
       Steam, Steam Deck, Epic Games, GOG, Xbox, Battle.net, ROG Ally and Legion Go are trademarks of their owners. Screenshots are of Hearth itself, taken by its automatic tests.
       The Anybody and Figtree typefaces are under the SIL Open Font License (<a href="fonts/OFL.txt">Anybody</a>, <a href="fonts/OFL-figtree.txt">Figtree</a>).</p>
+      <a href="organization/">Hearth Organization</a>
   </div>
 </footer>
 
 <script src="support-links.js"></script>
-<script src="looks.js?v=b27d0924ac" defer></script>
+<script src="looks.js?v=991fb925bb" defer></script>
 <script>
 // Support: only the links the owner filled in (https only); with none, the section stays hidden.
 (function(){
@@ -736,6 +750,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
 // paused it, and your volume, mute and pause stay as you left them (in this browser only).
 (function(){
   var TRACKS = [
+    ['Constellation', 'Hearth Organization and the Constellation look', '2:26', 'hearth-constellation'],
     ['New Horizons', 'Hearth OS 1.14 trailer (gold)', '2:03', 'hearth-new-horizons'],
     ['Never Frozen', 'Hearth OS 1.11 trailer', '2:21', 'hearth-1-11'],
     ['Four Weeks', 'Hearth OS: the story so far (to 1.11)', '3:00', 'hearth-story-1-11'],
@@ -750,7 +765,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
     ['Ember Glow', 'Hearth OS 1.8 trailer', '0:30', 'hearth-1-8']
   ];
   // A look can bring its own song: Gold plays The Story So Far, the music of the golden "why I build it with Claude" video.
-  var LOOK_TRACK = { gold: 'hearth-story' };
+  var LOOK_TRACK = { gold: 'hearth-story', constellation: 'hearth-constellation' };
   var root = document.documentElement, $ = function(id){ return document.getElementById(id); };
   var audio = $('mAudio'), bPlay = $('mPlay'), bNext = $('mNext'), bMute = $('mMute'), vol = $('mVol'), list = $('mList');
   if (!audio || !bPlay) return;
@@ -760,7 +775,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
   var S = { vol: v0 >= 0 && v0 <= 1 ? v0 : 0.25, muted: get('hearth.site.muted') === '1', off: get('hearth.site.music') === 'off',
             track: Math.max(0, Math.min(TRACKS.length - 1, parseInt(get('hearth.site.track'), 10) || 0)), playing: false, started: false };
   var ctx = null, an = null, gain = null, freq = null;
-  function lookTrack(){ var id = LOOK_TRACK[root.dataset.look || '']; for (var i = 0; id && i < TRACKS.length; i++) if (TRACKS[i][3] === id) return i; return -1; }
+  function lookTrack(){ var id = LOOK_TRACK[root.dataset.look || 'constellation']; for (var i = 0; id && i < TRACKS.length; i++) if (TRACKS[i][3] === id) return i; return -1; }
   var before = null, own = lookTrack();   // the song you had before picking a look with its own, to go back to after
   if (own >= 0 && own !== S.track) { before = S.track; S.track = own; }
 
@@ -968,6 +983,36 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
   }
   function kick(){ if (!raf && !still.matches && !document.hidden) raf = requestAnimationFrame(frame); }
   document.addEventListener('visibilitychange', kick);
+})();
+</script>
+<script>
+/* Keep the whole top bar on screen in every look and theme: when its parts would overlap, run off the edge or cut the
+   name short, it puts away the least needed part first (classes fit1..fit6 above), and tries again on every resize. */
+(function(){
+  var top = document.querySelector('header.top'); if (!top) return;
+  var SEL = 'header.top .brand, header.top nav, header.top .player, header.top .looks, header.top .theme, header.top .dl';
+  function bad(){
+    var els = [].slice.call(document.querySelectorAll(SEL)).filter(function(e){ return e.offsetParent !== null; });
+    var r = els.map(function(e){ return e.getBoundingClientRect(); }), W = document.documentElement.clientWidth;
+    for (var i = 0; i < r.length; i++) {
+      if (r[i].right > W + 0.5 || r[i].left < -0.5) return true;
+      for (var j = i + 1; j < r.length; j++) if (r[i].width && r[j].width && r[i].right > r[j].left + 0.5 && r[j].right > r[i].left + 0.5) return true;
+    }
+    var b = top.querySelector('.brand .bt');
+    return !!(b && b.offsetParent !== null && b.scrollWidth > b.clientWidth + 1) || top.querySelector('.brand').scrollWidth > top.querySelector('.brand').clientWidth + 1;
+  }
+  var busy = false;
+  function fit(){
+    if (busy) return; busy = true;
+    top.classList.remove('fit1', 'fit2', 'fit3', 'fit4', 'fit5', 'fit6');
+    for (var n = 1; n <= 6 && bad(); n++) top.classList.add('fit' + n);
+    busy = false;
+  }
+  fit();
+  addEventListener('resize', fit);
+  addEventListener('load', fit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+  new MutationObserver(fit).observe(document.documentElement, { attributes: true, attributeFilter: ['data-look', 'data-theme', 'data-bar', 'class'] });
 })();
 </script>
 </body>
