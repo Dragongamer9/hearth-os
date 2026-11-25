@@ -742,6 +742,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
 // paused it, and your volume, mute and pause stay as you left them (in this browser only).
 (function(){
   var TRACKS = [
+    ['Constellation', 'Hearth Organization and the Constellation look', '2:26', 'hearth-constellation'],
     ['New Horizons', 'Hearth OS 1.14 trailer (gold)', '2:03', 'hearth-new-horizons'],
     ['Never Frozen', 'Hearth OS 1.11 trailer', '2:21', 'hearth-1-11'],
     ['Four Weeks', 'Hearth OS: the story so far (to 1.11)', '3:00', 'hearth-story-1-11'],
@@ -756,7 +757,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
     ['Ember Glow', 'Hearth OS 1.8 trailer', '0:30', 'hearth-1-8']
   ];
   // A look can bring its own song: Gold plays The Story So Far, the music of the golden "why I build it with Claude" video.
-  var LOOK_TRACK = { gold: 'hearth-story' };
+  var LOOK_TRACK = { gold: 'hearth-story', constellation: 'hearth-constellation' };
   var root = document.documentElement, $ = function(id){ return document.getElementById(id); };
   var audio = $('mAudio'), bPlay = $('mPlay'), bNext = $('mNext'), bMute = $('mMute'), vol = $('mVol'), list = $('mList');
   if (!audio || !bPlay) return;
@@ -766,7 +767,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
   var S = { vol: v0 >= 0 && v0 <= 1 ? v0 : 0.25, muted: get('hearth.site.muted') === '1', off: get('hearth.site.music') === 'off',
             track: Math.max(0, Math.min(TRACKS.length - 1, parseInt(get('hearth.site.track'), 10) || 0)), playing: false, started: false };
   var ctx = null, an = null, gain = null, freq = null;
-  function lookTrack(){ var id = LOOK_TRACK[root.dataset.look || '']; for (var i = 0; id && i < TRACKS.length; i++) if (TRACKS[i][3] === id) return i; return -1; }
+  function lookTrack(){ var id = LOOK_TRACK[root.dataset.look || 'constellation']; for (var i = 0; id && i < TRACKS.length; i++) if (TRACKS[i][3] === id) return i; return -1; }
   var before = null, own = lookTrack();   // the song you had before picking a look with its own, to go back to after
   if (own >= 0 && own !== S.track) { before = S.track; S.track = own; }
 
