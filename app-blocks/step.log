@@ -1,0 +1,893 @@
+::notice title=App blocks::unit tests pass: Ran 14 tests in 1.243s  OK 
++ pkill -f labwc/autostart
++ true
++ pkill -x labwc
++ pkill -f quickshell
++ sleep 2
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ '[' -S /tmp/xdg/bus ']'
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\n# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds\' copies of the menu entries, with the\n# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages\' own (same ids).\nif [ -d /usr/share/hearth/app-kinds/applications ]; then\n  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac\nfi\n# Apps for hardware this PC doesn\'t have (NVIDIA Settings without an Nvidia card) are hidden from every menu: NoDisplay\n# copies in this sign-in\'s runtime folder, worked out again at every sign-in (a new card shows them at once). Never\n# holds the session up: 5 seconds at most, and nothing changes when it fails.\nhw_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-hw-apps"\nif [ -x /usr/libexec/hearth-app-kinds ] && XDG_DATA_DIRS="$data_dirs" timeout 5 python3 /usr/libexec/hearth-app-kinds hardware --out "$hw_dir" >/dev/null 2>&1 && [ -d "$hw_dir/applications" ]; then\n  case ":$data_dirs:" in *":$hw_dir:"*) ;; *) data_dirs="$hw_dir:$data_dirs" ;; esac\nfi\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d hw_dir\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ '[' -d /usr/share/hearth/app-kinds/applications ']'
+++ hw_dir=/tmp/xdg/hearth-hw-apps
+++ '[' -x /usr/libexec/hearth-app-kinds ']'
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d hw_dir
++ SH=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell
++ A=/tmp/home/.config/nimbus/apps
++ rm -rf /tmp/home/.config/nimbus/apps
++ rm -f '/tmp/xdg/wayland-*'
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-system labwc-config
++ CONF=/tmp/xdg/hearth-labwc
++ labwc -C /tmp/xdg/hearth-labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ mkdir -p /tmp/home/Documents/Reports
++ printf 'a,b\n1,2\n'
++ shoot files files ipc files open /tmp/home/Documents
++ local app=files name=files
++ shift 2
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/files-1-as-it-is.png
++ want files 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st files
+++ ipc appblocks state files
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state files
++ s=$'{"open":true,"page":"mantel-window","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"parts":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"hidden":[],"menus":["view","context"],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'files: nothing kept: as it is'
++ echo '::notice title=App blocks::files: nothing kept: as it is'
+::notice title=App blocks::files: nothing kept: as it is
++ ipc appblocks edit files
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit files
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/files-2-edit-layout.png
++ want files 'Edit layout opens in place' '"editing":true'
++ local s
+++ st files
+++ ipc appblocks state files
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state files
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-window","mode":"grid","editing":true,"picked":"tabs","unreadable":false,"blocks":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"parts":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"hidden":[],"menus":["view","context"],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'files: Edit layout opens in place'
++ echo '::notice title=App blocks::files: Edit layout opens in place'
+::notice title=App blocks::files: Edit layout opens in place
++ ipc appblocks done files
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done files
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks partMenu files ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu files ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/files-3-right-click-a-part.png
++ ipc appblocks done files
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done files
++ tail -n1
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/files.json ']'
++ say 'files: nothing written'
++ echo '::notice title=App blocks::files: nothing written'
+::notice title=App blocks::files: nothing written
++ ipc filemanager viewmenu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager viewmenu
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/files-4-view-menu-layout.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
++ tail -n1
+for more information.
++ sleep 1
++ ipc filemanager foldermenu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager foldermenu
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/files-5-empty-space-menu-layout.png
++ ipc filemanager close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager close
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks edit files
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit files
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks pick files sidebar
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks pick files sidebar
++ tail -n1
+for more information.
++ ipc appblocks menus files
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks menus files
+for more information.
++ sleep 2
++ grim shots/app-blocks/files-6-edit-layout-menus.png
++ ipc appblocks done files
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done files
+for more information.
++ sleep 1
++ ipc appblocks describe files
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks describe files
+for more information.
++ sleep 3
++ grim shots/app-blocks/files-7-describe-it.png
++ ipc describe close
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call describe close
+for more information.
++ sleep 1
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
++ tail -n1
+for more information.
++ sleep 2
++ mkdir -p /tmp/home/.config/nimbus/apps
++ printf %s '{"format":1,"layout":{"blocks":{"mantel-window":{"tabs":{"x":0,"y":0,"w":24,"h":2},"address":{"x":0,"y":2,"w":24,"h":2},"toolbar":{"x":0,"y":22,"w":24,"h":2},"sidebar":{"x":18,"y":4,"w":6,"h":18,"corners":16,"accent":"#5b8cff"},"folder":{"x":0,"y":4,"w":12,"h":16},"status":{"x":0,"y":20,"w":12,"h":2},"split":{"x":12,"y":4,"w":6,"h":18},"preview":{"x":12,"y":4,"w":6,"h":18,"hidden":true}}}},"features":[]}'
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/files-8-kept-on-the-grid.png
++ want files 'a kept layout is laid out on the grid' '"mode":"grid"'
++ local s
+++ st files
+++ ipc appblocks state files
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state files
++ s=$'{"open":true,"page":"mantel-window","mode":"grid","editing":false,"picked":"","unreadable":false,"blocks":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"parts":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"hidden":["preview"],"menus":["view","context"],"layoutItems":["Edit layout","Describe it\342\200\246","Back to the original"]}'
++ case "$s" in
++ say 'files: a kept layout is laid out on the grid'
++ echo '::notice title=App blocks::files: a kept layout is laid out on the grid'
+::notice title=App blocks::files: a kept layout is laid out on the grid
++ ipc appblocks edit files
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit files
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/files-9-kept-edit-layout.png
++ ipc appblocks done files
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done files
++ tail -n1
+for more information.
++ ipc files close
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+for more information.
++ sleep 2
++ printf %s '{"format":1,"layout":{"blocks":{"mantel-window":{"status":{"hidden":true}}}},"features":[]}'
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/files-10-status-bar-hidden.png
++ want files 'only a part hidden: Files'\'' own layout without it' '"mode":"natural"'
++ local s
+++ st files
+++ ipc appblocks state files
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state files
++ s=$'{"open":true,"page":"mantel-window","mode":"natural","editing":false,"picked":"","unreadable":false,"blocks":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"parts":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"hidden":["status"],"menus":["view","context"],"layoutItems":["Edit layout","Describe it\342\200\246","Back to the original"]}'
++ case "$s" in
++ say 'files: only a part hidden: Files'\'' own layout without it'
++ echo '::notice title=App blocks::files: only a part hidden: Files'\'' own layout without it'
+::notice title=App blocks::files: only a part hidden: Files' own layout without it
++ ipc files close
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+for more information.
++ sleep 2
++ printf %s '{"layout":'
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
++ tail -n1
+for more information.
++ sleep 4
++ want files 'a file that can'\''t be read: Files as it is, and it says so' '"unreadable":true'
++ local s
+++ st files
+++ ipc appblocks state files
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state files
++ s=$'{"open":true,"page":"mantel-window","mode":"own","editing":false,"picked":"","unreadable":true,"blocks":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"parts":["tabs","address","toolbar","sidebar","folder","status","split","preview"],"hidden":[],"menus":["view","context"],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'files: a file that can'\''t be read: Files as it is, and it says so'
++ echo '::notice title=App blocks::files: a file that can'\''t be read: Files as it is, and it says so'
+::notice title=App blocks::files: a file that can't be read: Files as it is, and it says so
+++ cat /tmp/home/.config/nimbus/apps/files.json
++ '[' '{"layout":' = '{"layout":' ']'
++ say 'files: the unreadable file was left as it was'
++ echo '::notice title=App blocks::files: the unreadable file was left as it was'
+::notice title=App blocks::files: the unreadable file was left as it was
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
++ tail -n1
+for more information.
++ sleep 2
++ rm -rf /tmp/home/.config/nimbus/apps
++ shoot task-manager task-manager ipc tasks tab processes
++ local app=task-manager name=task-manager
++ shift 2
++ ipc tasks tab processes
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call tasks tab processes
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/task-manager-1-as-it-is.png
++ want task-manager 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st task-manager
+++ ipc appblocks state task-manager
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state task-manager
++ s=$'{"open":true,"page":"mantel-processes","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["titlebar","rail","head","body"],"parts":["titlebar","rail","head","body"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'task-manager: nothing kept: as it is'
++ echo '::notice title=App blocks::task-manager: nothing kept: as it is'
+::notice title=App blocks::task-manager: nothing kept: as it is
++ ipc appblocks edit task-manager
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit task-manager
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/task-manager-2-edit-layout.png
++ want task-manager 'Edit layout opens in place' '"editing":true'
++ local s
+++ st task-manager
+++ ipc appblocks state task-manager
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state task-manager
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-processes","mode":"grid","editing":true,"picked":"titlebar","unreadable":false,"blocks":["titlebar","rail","head","body"],"parts":["titlebar","rail","head","body"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'task-manager: Edit layout opens in place'
++ echo '::notice title=App blocks::task-manager: Edit layout opens in place'
+::notice title=App blocks::task-manager: Edit layout opens in place
++ ipc appblocks done task-manager
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done task-manager
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks partMenu task-manager ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu task-manager ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/task-manager-3-right-click-a-part.png
++ ipc appblocks done task-manager
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done task-manager
++ tail -n1
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/task-manager.json ']'
++ say 'task-manager: nothing written'
++ echo '::notice title=App blocks::task-manager: nothing written'
+::notice title=App blocks::task-manager: nothing written
++ ipc tasks tab performance:cpu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call tasks tab performance:cpu
++ tail -n1
+for more information.
++ sleep 4
++ ipc appblocks edit task-manager
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit task-manager
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/task-manager-4-performance-edit-layout.png
++ want task-manager 'Performance'\''s own blocks' '"tiles","detail"'
++ local s
+++ st task-manager
+++ ipc appblocks state task-manager
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state task-manager
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-performance","mode":"grid","editing":true,"picked":"titlebar","unreadable":false,"blocks":["titlebar","rail","head","tiles","detail"],"parts":["titlebar","rail","head","tiles","detail"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'task-manager: Performance'\''s own blocks'
++ echo '::notice title=App blocks::task-manager: Performance'\''s own blocks'
+::notice title=App blocks::task-manager: Performance's own blocks
++ ipc appblocks done task-manager
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done task-manager
++ tail -n1
+for more information.
++ ipc tasks close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call tasks close
++ tail -n1
+for more information.
++ sleep 2
++ shoot capture capture ipc capture open
++ local app=capture name=capture
++ shift 2
++ ipc capture open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call capture open
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/capture-1-as-it-is.png
++ want capture 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st capture
+++ ipc appblocks state capture
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state capture
++ s=$'{"open":true,"page":"mantel-take","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["head","options","recent"],"parts":["head","options","recent"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'capture: nothing kept: as it is'
++ echo '::notice title=App blocks::capture: nothing kept: as it is'
+::notice title=App blocks::capture: nothing kept: as it is
++ ipc appblocks edit capture
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit capture
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/capture-2-edit-layout.png
++ want capture 'Edit layout opens in place' '"editing":true'
++ local s
+++ st capture
+++ ipc appblocks state capture
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state capture
++ s=$'{"open":true,"page":"mantel-take","mode":"grid","editing":true,"picked":"head","unreadable":false,"blocks":["head","options","recent"],"parts":["head","options","recent"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'capture: Edit layout opens in place'
++ echo '::notice title=App blocks::capture: Edit layout opens in place'
+::notice title=App blocks::capture: Edit layout opens in place
++ ipc appblocks done capture
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done capture
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks partMenu capture ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu capture ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/capture-3-right-click-a-part.png
++ ipc appblocks done capture
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done capture
++ tail -n1
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/capture.json ']'
++ say 'capture: nothing written'
++ echo '::notice title=App blocks::capture: nothing written'
+::notice title=App blocks::capture: nothing written
++ ipc capture close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call capture close
++ tail -n1
+for more information.
++ sleep 2
++ shoot settings settings ipc settings page display
++ local app=settings name=settings
++ shift 2
++ ipc settings page display
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page display
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/settings-1-as-it-is.png
++ want settings 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st settings
+++ ipc appblocks state settings
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state settings
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-window","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["side","page","hints"],"parts":["side","page","hints"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'settings: nothing kept: as it is'
++ echo '::notice title=App blocks::settings: nothing kept: as it is'
+::notice title=App blocks::settings: nothing kept: as it is
++ ipc appblocks edit settings
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit settings
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/settings-2-edit-layout.png
++ want settings 'Edit layout opens in place' '"editing":true'
++ local s
+++ st settings
+++ ipc appblocks state settings
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state settings
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-window","mode":"grid","editing":true,"picked":"side","unreadable":false,"blocks":["side","page","hints"],"parts":["side","page","hints"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'settings: Edit layout opens in place'
++ echo '::notice title=App blocks::settings: Edit layout opens in place'
+::notice title=App blocks::settings: Edit layout opens in place
++ ipc appblocks done settings
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done settings
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks partMenu settings ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu settings ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/settings-3-right-click-a-part.png
++ ipc appblocks done settings
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done settings
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/settings.json ']'
++ say 'settings: nothing written'
++ echo '::notice title=App blocks::settings: nothing written'
+::notice title=App blocks::settings: nothing written
++ ipc appblocks flowEdit
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks flowEdit
+for more information.
++ sleep 2
++ grim shots/app-blocks/settings-4-page-groups-editing.png
+++ ipc appblocks flowState
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks flowState
+++ tail -n1
++ fs='{"open":true,"page":"mantel-page-display","groups":["top","brightness-colour","hdr-colour-on-the-desktop","picture-signal","games-and-smoothness","scale-layout","several-screens","screen-power-saving","related","advanced"],"editing":true,"kept":false}'
++ case "$fs" in
+++ echo '{"open":true,"page":"mantel-page-display","groups":["top","brightness-colour","hdr-colour-on-the-desktop","picture-signal","games-and-smoothness","scale-layout","several-screens","screen-power-saving","related","advanced"],"editing":true,"kept":false}'
+++ cut -c1-200
++ say $'Settings \342\200\272 Display: its groups are blocks ({"open":true,"page":"mantel-page-display","groups":["top","brightness-colour","hdr-colour-on-the-desktop","picture-signal","games-and-smoothness","scale-layout","several-screens","screen-power-saving")'
++ echo $'::notice title=App blocks::Settings \342\200\272 Display: its groups are blocks ({"open":true,"page":"mantel-page-display","groups":["top","brightness-colour","hdr-colour-on-the-desktop","picture-signal","games-and-smoothness","scale-layout","several-screens","screen-power-saving")'
+::notice title=App blocks::Settings › Display: its groups are blocks ({"open":true,"page":"mantel-page-display","groups":["top","brightness-colour","hdr-colour-on-the-desktop","picture-signal","games-and-smoothness","scale-layout","several-screens","screen-power-saving")
++ ipc appblocks flowDone
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks flowDone
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks flowMenu
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks flowMenu
+for more information.
++ sleep 1
++ grim shots/app-blocks/settings-5-right-click-a-group.png
++ ipc appblocks flowDone
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks flowDone
++ tail -n1
+for more information.
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
++ tail -n1
+for more information.
++ sleep 2
++ shoot resmon resource-monitor ipc resmon open
++ local app=resmon name=resource-monitor
++ shift 2
++ ipc resmon open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call resmon open
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/resource-monitor-1-as-it-is.png
++ want resmon 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st resmon
+++ ipc appblocks state resmon
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state resmon
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-window","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["title","tabs","page","hints"],"parts":["title","tabs","page","hints"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'resmon: nothing kept: as it is'
++ echo '::notice title=App blocks::resmon: nothing kept: as it is'
+::notice title=App blocks::resmon: nothing kept: as it is
++ ipc appblocks edit resmon
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit resmon
+for more information.
++ sleep 2
++ grim shots/app-blocks/resource-monitor-2-edit-layout.png
++ want resmon 'Edit layout opens in place' '"editing":true'
++ local s
+++ st resmon
+++ ipc appblocks state resmon
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state resmon
++ s=$'{"open":true,"page":"mantel-window","mode":"grid","editing":true,"picked":"title","unreadable":false,"blocks":["title","tabs","page","hints"],"parts":["title","tabs","page","hints"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'resmon: Edit layout opens in place'
++ echo '::notice title=App blocks::resmon: Edit layout opens in place'
+::notice title=App blocks::resmon: Edit layout opens in place
++ ipc appblocks done resmon
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done resmon
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks partMenu resmon ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu resmon ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/resource-monitor-3-right-click-a-part.png
++ ipc appblocks done resmon
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done resmon
++ tail -n1
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/resmon.json ']'
++ say 'resmon: nothing written'
++ echo '::notice title=App blocks::resmon: nothing written'
+::notice title=App blocks::resmon: nothing written
++ ipc resmon close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call resmon close
++ tail -n1
+for more information.
++ sleep 2
++ shoot reliability reliability ipc reliability open
++ local app=reliability name=reliability
++ shift 2
++ ipc reliability open
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call reliability open
+for more information.
++ sleep 5
++ grim shots/app-blocks/reliability-1-as-it-is.png
++ want reliability 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st reliability
+++ ipc appblocks state reliability
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state reliability
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-window","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["title","header","chart","events"],"parts":["title","header","chart","events"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'reliability: nothing kept: as it is'
++ echo '::notice title=App blocks::reliability: nothing kept: as it is'
+::notice title=App blocks::reliability: nothing kept: as it is
++ ipc appblocks edit reliability
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit reliability
+for more information.
++ sleep 2
++ grim shots/app-blocks/reliability-2-edit-layout.png
++ want reliability 'Edit layout opens in place' '"editing":true'
++ local s
+++ st reliability
+++ ipc appblocks state reliability
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state reliability
++ s=$'{"open":true,"page":"mantel-window","mode":"grid","editing":true,"picked":"title","unreadable":false,"blocks":["title","header","chart","events"],"parts":["title","header","chart","events"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'reliability: Edit layout opens in place'
++ echo '::notice title=App blocks::reliability: Edit layout opens in place'
+::notice title=App blocks::reliability: Edit layout opens in place
++ ipc appblocks done reliability
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done reliability
+for more information.
++ sleep 1
++ ipc appblocks partMenu reliability ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu reliability ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/reliability-3-right-click-a-part.png
++ ipc appblocks done reliability
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done reliability
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/reliability.json ']'
++ say 'reliability: nothing written'
++ echo '::notice title=App blocks::reliability: nothing written'
+::notice title=App blocks::reliability: nothing written
++ ipc reliability close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call reliability close
++ tail -n1
+for more information.
++ sleep 2
++ shoot system-restore system-restore ipc restore open
++ local app=system-restore name=system-restore
++ shift 2
++ ipc restore open
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call restore open
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/system-restore-1-as-it-is.png
++ want system-restore 'nothing kept: as it is' '"mode":"own"'
++ local s
+++ st system-restore
+++ ipc appblocks state system-restore
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state system-restore
++ s=$'{"open":true,"page":"mantel-window","mode":"own","editing":false,"picked":"","unreadable":false,"blocks":["title","header","body","footer"],"parts":["title","header","body","footer"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'system-restore: nothing kept: as it is'
++ echo '::notice title=App blocks::system-restore: nothing kept: as it is'
+::notice title=App blocks::system-restore: nothing kept: as it is
++ ipc appblocks edit system-restore
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks edit system-restore
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/system-restore-2-edit-layout.png
++ want system-restore 'Edit layout opens in place' '"editing":true'
++ local s
+++ st system-restore
+++ ipc appblocks state system-restore
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks state system-restore
+++ tail -n1
++ s=$'{"open":true,"page":"mantel-window","mode":"grid","editing":true,"picked":"title","unreadable":false,"blocks":["title","header","body","footer"],"parts":["title","header","body","footer"],"hidden":[],"menus":[],"layoutItems":["Edit layout","Describe it\342\200\246"]}'
++ case "$s" in
++ say 'system-restore: Edit layout opens in place'
++ echo '::notice title=App blocks::system-restore: Edit layout opens in place'
+::notice title=App blocks::system-restore: Edit layout opens in place
++ ipc appblocks done system-restore
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done system-restore
++ tail -n1
+for more information.
++ sleep 1
++ ipc appblocks partMenu system-restore ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks partMenu system-restore ''
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/app-blocks/system-restore-3-right-click-a-part.png
++ ipc appblocks done system-restore
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call appblocks done system-restore
+for more information.
++ sleep 1
++ '[' -e /tmp/home/.config/nimbus/apps/system-restore.json ']'
++ say 'system-restore: nothing written'
++ echo '::notice title=App blocks::system-restore: nothing written'
+::notice title=App blocks::system-restore: nothing written
++ ipc restore close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call restore close
++ tail -n1
+for more information.
++ sleep 2
++ printf '%s\n' '#!/bin/sh' 'case "$1" in sort-ask) echo "{\"ok\":true,\"places\":{\"mystery-tool.qqq\":\"Installers\"}}" ;; *) echo "{\"ok\":false}"; exit 1 ;; esac'
++ chmod +x /tmp/fakebin/hearth-layout
+++ HOME=/tmp/home
+++ python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import hearth_files_sortdl as s; print(s.downloads())' /__w/hearth-os/hearth-os/hosts/linux/desktop/shell
++ DL=/tmp/home/Downloads
++ mkdir -p /tmp/home/Downloads
++ cd /tmp/home/Downloads
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso
++ printf 'same\n'
++ mkdir -p 'Old project'
++ python3 -c 'import sys,zlib,struct; c=lambda t,d: struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)); open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+c(b"IHDR",struct.pack(">IIBBBBB",1,1,8,2,0,0,0))+c(b"IDAT",zlib.compress(b"\x00\xe9\xa4\x3d"))+c(b"IEND",b""))' /tmp/home/Downloads/wallpaper.png
++ cp /tmp/home/Downloads/wallpaper.png '/tmp/home/Downloads/wallpaper (1).png'
++ cp /tmp/home/Downloads/wallpaper.png /tmp/home/Downloads/screenshot.png
+++ find /tmp/home/Downloads -mindepth 1 -maxdepth 1 '!' -name '.*' '!' -name Hearth '!' -name Installers '!' -name Media '!' -name Documents '!' -name _to_delete
+++ wc -l
++ top0=21
++ ipc files open /tmp/home/Downloads
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Downloads
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/app-blocks/files-sort-1-button.png
+++ sstate
+++ ipc filemanager sortstate
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortstate
+++ tail -n1
++ s1='{"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":false,"asking":false,"counts":[],"sorted":null,"note":""}'
++ case "$s1" in
+++ echo '{"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":false,"asking":false,"counts":[],"sorted":null,"note":""}'
+++ cut -c1-200
++ say 'Sort my Downloads: the button in Downloads, 21 loose ({"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":false,"asking":false,"counts":[],"sorted":null,"note":""})'
++ echo '::notice title=App blocks::Sort my Downloads: the button in Downloads, 21 loose ({"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":false,"asking":false,"counts":[],"sorted":null,"note":""})'
+::notice title=App blocks::Sort my Downloads: the button in Downloads, 21 loose ({"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":false,"asking":false,"counts":[],"sorted":null,"note":""})
++ ipc filemanager sortdl
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortdl
+for more information.
++ sleep 4
++ grim shots/app-blocks/files-sort-2-preview.png
+++ sstate
+++ ipc filemanager sortstate
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortstate
+++ tail -n1
++ s2='{"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":true,"asking":false,"counts":[4,7,4,4,2],"sorted":null,"note":""}'
++ case "$s2" in
+++ echo '{"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":true,"asking":false,"counts":[4,7,4,4,2],"sorted":null,"note":""}'
+++ python3 -c 'import json,sys; c=json.load(sys.stdin)["counts"]; print(sum(c), c[4] >= 2)'
++ n2='21 True'
++ '[' '21 True' = '21 True' ']'
+++ echo '{"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":true,"asking":false,"counts":[4,7,4,4,2],"sorted":null,"note":""}'
+++ cut -c1-260
++ say 'Sort my Downloads'\'' preview, every loose thing in a group, the copies to delete: {"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":true,"asking":false,"counts":[4,7,4,4,2],"sorted":null,"note":""}'
++ echo '::notice title=App blocks::Sort my Downloads'\'' preview, every loose thing in a group, the copies to delete: {"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":true,"asking":false,"counts":[4,7,4,4,2],"sorted":null,"note":""}'
+::notice title=App blocks::Sort my Downloads' preview, every loose thing in a group, the copies to delete: {"downloads":"/tmp/home/Downloads","here":true,"loose":21,"folders":{},"open":true,"asking":false,"counts":[4,7,4,4,2],"sorted":null,"note":""}
++ ipc filemanager sortevery
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortevery
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/app-blocks/files-sort-3-every-file.png
++ ipc filemanager sortevery
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortevery
++ tail -n1
+for more information.
++ ipc filemanager sortgo
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortgo
++ tail -n1
+for more information.
++ sleep 4
++ grim shots/app-blocks/files-sort-4-sorted.png
+++ sstate
+++ ipc filemanager sortstate
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortstate
+++ tail -n1
++ s4=$'{"downloads":"/tmp/home/Downloads","here":true,"loose":0,"folders":{"Hearth":4,"Installers":7,"Media":4,"Documents":3,"_to_delete":2},"open":false,"asking":false,"counts":[],"sorted":{"n":21,"folders":5,"skipped":0},"note":"\342\234\223 Sorted 21 items into 5 folders."}'
+++ wc -l
+++ find /tmp/home/Downloads -mindepth 1 -maxdepth 1 '!' -name Hearth '!' -name Installers '!' -name Media '!' -name Documents '!' -name _to_delete
++ left=0
++ case "$s4" in
++ '[' 0 = 0 ']'
+++ echo $'{"downloads":"/tmp/home/Downloads","here":true,"loose":0,"folders":{"Hearth":4,"Installers":7,"Media":4,"Documents":3,"_to_delete":2},"open":false,"asking":false,"counts":[],"sorted":{"n":21,"folders":5,"skipped":0},"note":"\342\234\223 Sorted 21 items into 5 folders."}'
+++ cut -c1-260
++ say $'sorted: {"downloads":"/tmp/home/Downloads","here":true,"loose":0,"folders":{"Hearth":4,"Installers":7,"Media":4,"Documents":3,"_to_delete":2},"open":false,"asking":false,"counts":[],"sorted":{"n":21,"folders":5,"skipped":0},"note":"\342\234\223 Sorted 21 items into 5 folders."'
++ echo $'::notice title=App blocks::sorted: {"downloads":"/tmp/home/Downloads","here":true,"loose":0,"folders":{"Hearth":4,"Installers":7,"Media":4,"Documents":3,"_to_delete":2},"open":false,"asking":false,"counts":[],"sorted":{"n":21,"folders":5,"skipped":0},"note":"\342\234\223 Sorted 21 items into 5 folders."'
+::notice title=App blocks::sorted: {"downloads":"/tmp/home/Downloads","here":true,"loose":0,"folders":{"Hearth":4,"Installers":7,"Media":4,"Documents":3,"_to_delete":2},"open":false,"asking":false,"counts":[],"sorted":{"n":21,"folders":5,"skipped":0},"note":"✓ Sorted 21 items into 5 folders."
++ '[' -f '/tmp/home/Downloads/_to_delete/Old copies/wallpaper (1).png' ']'
++ '[' -f /tmp/home/Downloads/Installers/mystery-tool.qqq ']'
++ '[' -f '/tmp/home/Downloads/Hearth/Hearth OS/hearth-os-1.18-x86_64.iso' ']'
++ say 'each in its place (copies in _to_delete, the AI'\''s pick, Hearth OS)'
++ echo '::notice title=App blocks::each in its place (copies in _to_delete, the AI'\''s pick, Hearth OS)'
+::notice title=App blocks::each in its place (copies in _to_delete, the AI's pick, Hearth OS)
++ ipc filemanager sortundo
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager sortundo
++ tail -n1
+for more information.
++ sleep 4
++ grim shots/app-blocks/files-sort-5-undone.png
+++ find /tmp/home/Downloads -mindepth 1 -maxdepth 1 '!' -name '.*' '!' -name Hearth '!' -name Installers '!' -name Media '!' -name Documents '!' -name _to_delete
+++ wc -l
++ back=21
++ '[' 21 = 21 ']'
++ '[' -d '/tmp/home/Downloads/Old project' ']'
++ say 'Undo put all 21 back'
++ echo '::notice title=App blocks::Undo put all 21 back'
+::notice title=App blocks::Undo put all 21 back
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
++ tail -n1
+for more information.
++ sleep 2
++ rm -f /tmp/fakebin/hearth-layout
++ cp /tmp/xdg/nimbus-shell.log shots/app-blocks/nimbus-shell.log
+++ grep -E '(AppBlocks|AppBlocksFlow|AppBlocksHub|EditLayoutButton|DescribeIt|FileManager|FilesIpc|FilesSortDownloads|FilesSortSheet|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)' /tmp/xdg/nimbus-shell.log
+++ sort -u
+++ head -12
+++ true
++ xbad=
++ '[' -z '' ']'
++ say 'no QML errors from the apps made of blocks'
++ echo '::notice title=App blocks::no QML errors from the apps made of blocks'
+::notice title=App blocks::no QML errors from the apps made of blocks
++ ls -la shots/app-blocks
+total 10072
+drwxr-xr-x  2 root root   4096 Nov 25 14:46 .
+drwxr-xr-x 29 root root  16384 Nov 25 14:43 ..
+-rw-r--r--  1 root root 260494 Nov 25 14:45 capture-1-as-it-is.png
+-rw-r--r--  1 root root 278503 Nov 25 14:45 capture-2-edit-layout.png
+-rw-r--r--  1 root root 264790 Nov 25 14:45 capture-3-right-click-a-part.png
+-rw-r--r--  1 root root 276053 Nov 25 14:44 files-1-as-it-is.png
+-rw-r--r--  1 root root 279520 Nov 25 14:45 files-10-status-bar-hidden.png
+-rw-r--r--  1 root root 282028 Nov 25 14:44 files-2-edit-layout.png
+-rw-r--r--  1 root root 279156 Nov 25 14:44 files-3-right-click-a-part.png
+-rw-r--r--  1 root root 303336 Nov 25 14:44 files-4-view-menu-layout.png
+-rw-r--r--  1 root root 307551 Nov 25 14:44 files-5-empty-space-menu-layout.png
+-rw-r--r--  1 root root 303147 Nov 25 14:44 files-6-edit-layout-menus.png
+-rw-r--r--  1 root root  73404 Nov 25 14:44 files-7-describe-it.png
+-rw-r--r--  1 root root 272216 Nov 25 14:44 files-8-kept-on-the-grid.png
+-rw-r--r--  1 root root 279876 Nov 25 14:44 files-9-kept-edit-layout.png
+-rw-r--r--  1 root root 300525 Nov 25 14:46 files-sort-1-button.png
+-rw-r--r--  1 root root 298609 Nov 25 14:46 files-sort-2-preview.png
+-rw-r--r--  1 root root 321534 Nov 25 14:46 files-sort-3-every-file.png
+-rw-r--r--  1 root root 258426 Nov 25 14:46 files-sort-4-sorted.png
+-rw-r--r--  1 root root 290562 Nov 25 14:46 files-sort-5-undone.png
+-rw-r--r--  1 root root    412 Nov 25 14:44 labwc.log
+-rw-r--r--  1 root root   5566 Nov 25 14:46 nimbus-shell.log
+-rw-r--r--  1 root root 228049 Nov 25 14:46 reliability-1-as-it-is.png
+-rw-r--r--  1 root root 258170 Nov 25 14:46 reliability-2-edit-layout.png
+-rw-r--r--  1 root root 234837 Nov 25 14:46 reliability-3-right-click-a-part.png
+-rw-r--r--  1 root root 424038 Nov 25 14:46 resource-monitor-1-as-it-is.png
+-rw-r--r--  1 root root 425980 Nov 25 14:46 resource-monitor-2-edit-layout.png
+-rw-r--r--  1 root root 405695 Nov 25 14:46 resource-monitor-3-right-click-a-part.png
+-rw-r--r--  1 root root 202960 Nov 25 14:45 settings-1-as-it-is.png
+-rw-r--r--  1 root root 223162 Nov 25 14:45 settings-2-edit-layout.png
+-rw-r--r--  1 root root 205907 Nov 25 14:45 settings-3-right-click-a-part.png
+-rw-r--r--  1 root root 222337 Nov 25 14:45 settings-4-page-groups-editing.png
+-rw-r--r--  1 root root 211699 Nov 25 14:45 settings-5-right-click-a-group.png
+-rw-r--r--  1 root root  49768 Nov 25 14:46 step.log
+-rw-r--r--  1 root root 312385 Nov 25 14:46 system-restore-1-as-it-is.png
+-rw-r--r--  1 root root 329837 Nov 25 14:46 system-restore-2-edit-layout.png
+-rw-r--r--  1 root root 311189 Nov 25 14:46 system-restore-3-right-click-a-part.png
+-rw-r--r--  1 root root 307739 Nov 25 14:45 task-manager-1-as-it-is.png
+-rw-r--r--  1 root root 314945 Nov 25 14:45 task-manager-2-edit-layout.png
+-rw-r--r--  1 root root 310775 Nov 25 14:45 task-manager-3-right-click-a-part.png
+-rw-r--r--  1 root root 281559 Nov 25 14:45 task-manager-4-performance-edit-layout.png
+-rw-r--r--  1 root root   4642 Nov 25 14:44 unit.log
++ pkill -x labwc
++ pkill -f quickshell

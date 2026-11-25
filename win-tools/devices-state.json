@@ -1,0 +1,7 @@
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call devices state
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+{"loaded":true,"error":"","count":6,"problems":1,"selected":"Microsoft device 1414:00ba","zone":"tree","actions":["Send logs","Network settings"],"groups":["Audio (0)","Bluetooth (0)","Cameras (0)","Controllers (1)","Disk drives (1)","Display adapters (0)","Keyboards and mice (1)","Monitors (1)","Network adapters (1)","Processors (1)","USB controllers (0)"]}
++ sleep 3
