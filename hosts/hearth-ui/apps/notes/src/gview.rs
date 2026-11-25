@@ -1246,11 +1246,19 @@ pub fn page(a: &App) -> E<'_, Msg> {
     });
     let _ = mode;
     let main: E<Msg> = container(body).width(Length::Fill).height(Length::Fill).style(bx(bg_of(&a.g.mode), 0.0, None)).into();
-    if a.g.customise {
-        row![main, ui::vline(tn.line), customise(a)].into()
-    } else {
-        main
+    let open = a.g.customise;
+    let mut items: Vec<(&'static str, E<Msg>)> = vec![("graph", main)];
+    if open {
+        items.push(("customise", customise(a)));
     }
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "graph",
+        items,
+        move |ps| if open { row![ps.take("graph"), ui::vline(tn.line), ps.take("customise")].into() } else { ps.take("graph") },
+        Msg::Describe,
+    )
 }
 
 fn top_bar(a: &App) -> E<'_, Msg> {
@@ -1544,12 +1552,26 @@ pub fn modes(a: &App) -> E<'_, Msg> {
         info("⏸", "Stays light", "Stops drawing when the window isn't visible or a game starts", look::chip(&p, "Always", look::Chip::Ok)),
     ]
     .spacing(z(16.0));
-    let page_: E<Msg> = scrollable(container(column![head, grid, bottom].spacing(z(24.0))).padding(pad(z(28.0), z(40.0), z(28.0), z(40.0)))).into();
-    if a.g.customise {
-        row![container(page_).width(Length::Fill), ui::vline(tn.line), customise(a)].into()
-    } else {
-        page_
+    let open = a.g.customise;
+    let mut items: Vec<(&'static str, E<Msg>)> = vec![("head", head.into()), ("grid", grid.into()), ("bottom", bottom.into())];
+    if open {
+        items.push(("customise", customise(a)));
     }
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "modes",
+        items,
+        move |ps| {
+            let page_: E<Msg> = scrollable(container(column![ps.take("head"), ps.take("grid"), ps.take("bottom")].spacing(z(24.0))).padding(pad(z(28.0), z(40.0), z(28.0), z(40.0)))).into();
+            if open {
+                row![container(page_).width(Length::Fill), ui::vline(tn.line), ps.take("customise")].into()
+            } else {
+                page_
+            }
+        },
+        Msg::Describe,
+    )
 }
 
 // ------------------------------------------------------------------ Customise the graph (3f)

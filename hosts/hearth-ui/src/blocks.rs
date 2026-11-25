@@ -269,6 +269,10 @@ pub fn catalog(pages: &[PageDef]) -> Value {
 pub enum Grip {
     Move,
     Size,
+    /// the right edge: wider or narrower only (Edit layout)
+    Wide,
+    /// the bottom edge: taller or shorter only (Edit layout)
+    Tall,
 }
 
 /// A held block moved or sized to the grid cell under the pointer: `start` is the block as it was picked up, `from` the
@@ -286,8 +290,26 @@ pub fn drag(start: &Placed, grip: Grip, from: (u8, u8), to: (u8, u8)) -> Placed 
             p.w = (to.0 as i16 - start.x as i16 + 1).clamp(1, (COLS - start.x) as i16) as u8;
             p.h = (to.1 as i16 - start.y as i16 + 1).clamp(1, (ROWS - start.y) as i16) as u8;
         }
+        Grip::Wide => p.w = (to.0 as i16 - start.x as i16 + 1).clamp(1, (COLS - start.x) as i16) as u8,
+        Grip::Tall => p.h = (to.1 as i16 - start.y as i16 + 1).clamp(1, (ROWS - start.y) as i16) as u8,
     }
     p
+}
+
+/// A block moved by whole cells (the keys and the controller in Edit layout), staying whole and on the grid.
+pub fn nudge(p: &Placed, dx: i8, dy: i8) -> Placed {
+    let mut n = p.clone();
+    n.x = (p.x as i16 + dx as i16).clamp(0, (COLS - p.w) as i16) as u8;
+    n.y = (p.y as i16 + dy as i16).clamp(0, (ROWS - p.h) as i16) as u8;
+    n
+}
+
+/// A block sized by whole cells from its top-left corner (never smaller than a cell, never off the grid).
+pub fn grow(p: &Placed, dw: i8, dh: i8) -> Placed {
+    let mut n = p.clone();
+    n.w = (p.w as i16 + dw as i16).clamp(1, (COLS - p.x) as i16) as u8;
+    n.h = (p.h as i16 + dh as i16).clamp(1, (ROWS - p.y) as i16) as u8;
+    n
 }
 
 /// Which part of the look a press in Arrange steps on.
@@ -434,6 +456,21 @@ mod tests {
         assert_eq!((z.w, z.h), (5, 5));
         let z = drag(&s, Grip::Size, (11, 11), (0, 0));
         assert_eq!((z.w, z.h), (1, 1), "never smaller than one cell");
+    }
+
+    #[test]
+    fn edges_size_one_way_and_keys_stay_on_the_grid() {
+        let s = Placed::of(&PAGE.blocks[1]); // 2, 0, 10 x 12
+        let w = drag(&s, Grip::Wide, (11, 3), (7, 9));
+        assert_eq!((w.w, w.h), (6, 12), "the right edge: only the width");
+        let t = drag(&s, Grip::Tall, (5, 11), (9, 5));
+        assert_eq!((t.w, t.h), (10, 6), "the bottom edge: only the height");
+        let n = nudge(&s, -5, 3);
+        assert_eq!((n.x, n.y), (0, 0), "a full-height block stays where it fits");
+        let g = grow(&s, 4, -20);
+        assert_eq!((g.w, g.h), (10, 1));
+        let g = grow(&grow(&s, -3, -6), 1, 1);
+        assert_eq!((g.x, g.w, g.h), (2, 8, 7));
     }
 
     #[test]

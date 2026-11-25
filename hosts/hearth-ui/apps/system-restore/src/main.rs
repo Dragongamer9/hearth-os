@@ -459,15 +459,20 @@ const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
     title: "System Restore",
     blocks: &[
         hearth_ui::blocks::bl("header", "Heading", 0, 0, 12, 2),
-        hearth_ui::blocks::bl("list", "Restore points", 0, 2, 8, 9),
-        hearth_ui::blocks::bl("aside", "What will change", 8, 2, 4, 9),
-        hearth_ui::blocks::bl("footer", "Buttons", 0, 11, 12, 1),
+        hearth_ui::blocks::bl("heads", "Column headings", 0, 2, 8, 1),
+        hearth_ui::blocks::bl("points", "Restore points", 0, 3, 8, 7),
+        hearth_ui::blocks::bl("older", "Show older restore points", 0, 10, 8, 1),
+        hearth_ui::blocks::bl("changes", "What will change", 8, 2, 4, 7),
+        hearth_ui::blocks::bl("see", "See every changed setting", 8, 9, 4, 2),
+        hearth_ui::blocks::bl("make", "Make a restore point now", 0, 11, 4, 1),
+        hearth_ui::blocks::bl("status", "What it will do", 4, 11, 4, 1),
+        hearth_ui::blocks::bl("go", "Restore and Cancel", 8, 11, 4, 1),
     ],
 }];
 
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
-    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Restore, "System Restore", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Restore, "System Restore", Some(hearth_ui::arrange::edit_button(&p, Msg::Describe(hearth_ui::arrange::edit_layout()))), TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
     let header = container(
         column![
             ts("Restore Hearth to an earlier point", 18.0, p.text),
@@ -516,13 +521,15 @@ fn view(a: &App) -> Element<'_, Msg> {
                 .interaction(mouse::Interaction::Pointer),
         );
     }
-    let mut left = column![heads, hline(p.line), gap(1.0, 4.0), scrollable(list).height(Length::Fill)].width(Length::Fill).height(Length::Fill);
+    let heads = column![heads, hline(p.line)];
+    let points = scrollable(list).height(Length::Fill);
+    let mut older = Column::new();
     if a.phase != Phase::Loading && a.points().is_empty() {
-        left = left.push(t("No restore points yet. Hearth makes one before each update and once a week, or make one now.", 12.0, p.muted));
+        older = older.push(t("No restore points yet. Hearth makes one before each update and once a week, or make one now.", 12.0, p.muted));
     }
     if a.has_older() {
-        left = left.push(gap(1.0, 10.0));
-        left = left.push(check(&p, a.show_older, "Show older restore points", a.zone == Zone::Older, Msg::ToggleOlder));
+        older = older.push(gap(1.0, 10.0));
+        older = older.push(check(&p, a.show_older, "Show older restore points", a.zone == Zone::Older, Msg::ToggleOlder));
     }
 
     // ---- What will change
@@ -532,40 +539,54 @@ fn view(a: &App) -> Element<'_, Msg> {
         aside = aside.push(row![dot, column![tm(c.t, 13.0, p.text), t(c.s, 12.0, p.muted)].spacing(2.0).width(Length::Fill)].spacing(10.0));
     }
     let can_see = a.cur().map(|c| n(&c, "changed") > 0).unwrap_or(false);
-    aside = aside.push(iced::widget::Space::new().height(Length::Fill));
-    aside = aside.push(container(btn(&p, "See every changed setting", Kind::Normal, a.zone == Zone::Aside, if can_see { Some(Msg::SeeChanges) } else { None })).center_x(Length::Fill));
-    let aside = container(aside).padding(16.0).width(Length::Fixed(300.0)).height(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), Some((p.line, 1.0))));
+    let see = container(btn(&p, "See every changed setting", Kind::Normal, a.zone == Zone::Aside, if can_see { Some(Msg::SeeChanges) } else { None })).center_x(Length::Fill);
 
 
     let make_label = if a.phase == Phase::Working { "Working…" } else { "Make a restore point now" };
-    let footer = container(
-        row![
-            btn(&p, make_label, Kind::Normal, a.zone == Zone::Footer && a.foot == 0, if a.phase == Phase::Idle { Some(Msg::MakePoint) } else { None }),
-            container(t1(a.footer(), 12.0, p.muted)).align_right(Length::Fill).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 0.0 }),
-            btn(&p, a.go_label(), Kind::Primary, a.zone == Zone::Footer && a.foot == 1, if a.can_restore() { Some(Msg::AskRestore) } else { None }),
-            btn(&p, "Cancel", Kind::Normal, a.zone == Zone::Footer && a.foot == 2, Some(Msg::Close)),
-        ]
-        .spacing(8.0)
-        .align_y(iced::Center)
-        .padding(Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 }),
-    )
-    .center_y(Length::Fixed(58.0))
-    .width(Length::Fill)
-    .style(ui::boxed(p.bg2, 0.0, None));
+    let make = btn(&p, make_label, Kind::Normal, a.zone == Zone::Footer && a.foot == 0, if a.phase == Phase::Idle { Some(Msg::MakePoint) } else { None });
+    let status = container(t1(a.footer(), 12.0, p.muted)).align_right(Length::Fill).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 0.0 });
+    let go = row![
+        btn(&p, a.go_label(), Kind::Primary, a.zone == Zone::Footer && a.foot == 1, if a.can_restore() { Some(Msg::AskRestore) } else { None }),
+        btn(&p, "Cancel", Kind::Normal, a.zone == Zone::Footer && a.foot == 2, Some(Msg::Close)),
+    ]
+    .spacing(8.0)
+    .align_y(iced::Center);
 
     // its blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is
     let blocks = hearth_ui::arrange::parts(
         &a.describe,
         &p,
         "main",
-        vec![("header", header.into()), ("list", left.into()), ("aside", aside.into()), ("footer", footer.into())],
+        vec![
+            ("header", header.into()),
+            ("heads", heads.into()),
+            ("points", points.into()),
+            ("older", older.into()),
+            ("changes", aside.into()),
+            ("see", see.into()),
+            ("make", make),
+            ("status", status.into()),
+            ("go", go.into()),
+        ],
         |ps| {
-            let body = row![ps.take("list"), ps.take("aside")].spacing(16.0).padding(Padding { top: 16.0, right: 22.0, bottom: 16.0, left: 22.0 }).height(Length::Fill);
+            let left = column![ps.take("heads"), gap(1.0, 4.0), ps.take("points"), ps.take("older")].width(Length::Fill).height(Length::Fill);
+            let aside = container(column![ps.take("changes"), iced::widget::Space::new().height(Length::Fill), ps.take("see")].spacing(12.0))
+                .padding(16.0)
+                .width(Length::Fixed(300.0))
+                .height(Length::Fill)
+                .style(ui::boxed(p.panel, p.r(10.0), Some((p.line, 1.0))));
+            let footer = container(
+                row![ps.take("make"), ps.take("status"), ps.take("go")].spacing(8.0).align_y(iced::Center).padding(Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 }),
+            )
+            .center_y(Length::Fixed(58.0))
+            .width(Length::Fill)
+            .style(ui::boxed(p.bg2, 0.0, None));
+            let body = row![left, aside].spacing(16.0).padding(Padding { top: 16.0, right: 22.0, bottom: 16.0, left: 22.0 }).height(Length::Fill);
             let mut page = column![ps.take("header"), hline(p.line), body];
             if !a.error.is_empty() {
                 page = page.push(container(t(a.error.clone(), 13.0, p.danger)).padding(Padding { top: 0.0, right: 22.0, bottom: 8.0, left: 22.0 }));
             }
-            page.push(hline(p.line)).push(ps.take("footer")).into()
+            page.push(hline(p.line)).push(footer).into()
         },
         Msg::Describe,
     );

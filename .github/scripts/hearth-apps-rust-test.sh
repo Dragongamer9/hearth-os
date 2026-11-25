@@ -128,6 +128,15 @@ bench() {
 # The workflow's "only" input (in /tmp/shots-only; the one filter, family-moonlight's and Hearth Notes' merged): only these shots.d files (comma list, no
 # .sh), without the other apps' runs, so one app's pictures cost one short run. Empty: everything, as always.
 ONLY=$(cat /tmp/shots-only 2>/dev/null | tr -d ' \n')
+# Every app's pages named as their real parts, and Edit layout's own rules (hosts/linux/test/test_app_blocks_b.py): read
+# from the sources, so it runs here once with the pictures of the blocks.
+if [ -z "$ONLY" ] || echo ",$ONLY," | grep -q ",app-blocks-b,"; then
+  if ! python3 -m unittest discover -s "$ROOT/hosts/linux/test" -p test_app_blocks_b.py >/tmp/app-blocks-b.log 2>&1; then
+    grep -E "^(FAIL|ERROR|AssertionError)" /tmp/app-blocks-b.log | head -8 | while read -r l; do echo "::error title=app blocks::$l"; done
+  else
+    echo "::notice title=app blocks::$(tail -3 /tmp/app-blocks-b.log | tr '\n' ' ')"
+  fi
+fi
 if [ -z "$ONLY" ]; then
 look steam dark
 # Measured runs (the first of each app), then the pictures of their other pages and dialogs.

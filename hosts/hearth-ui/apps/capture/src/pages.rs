@@ -127,10 +127,19 @@ pub fn main_view(a: &App) -> Element<'_, Msg> {
     let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Camera, "Capture", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, p.bg2, Msg::Describe(hearth_ui::describe::DMsg::Open));
     let body: Element<'_, Msg> = match a.page {
         Page::Take => take_page(a),
-        Page::Edit => crate::editor::view(&a.ed, &p, &a.tools, &a.scroll_note, &a.shot),
+        Page::Edit => edit_page(a),
         Page::Recent => recent_page(a),
     };
-    let inner = column![title, ui::hline(p.line), header(a), container(body).width(Length::Fill).height(Length::Fill)];
+    // its blocks (hearth_ui::blocks "window"): the header with the pages, and the page under it
+    let page = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "window",
+        vec![("header", header(a)), ("page", container(body).width(Length::Fill).height(Length::Fill).into())],
+        |ps| column![ps.take("header"), ps.take("page")].into(),
+        Msg::Describe,
+    );
+    let inner = column![title, ui::hline(p.line), page];
     let framed = container(inner).width(Length::Fill).height(Length::Fill).style(boxed(p.bg, 0.0, Some((p.line, 1.0))));
     ui::edges(framed.into(), Msg::Resize)
 }
@@ -149,6 +158,8 @@ fn header(a: &App) -> Element<'_, Msg> {
     r = r.push(Space::new().width(Length::Fill));
     let hint = if a.page == Page::Edit { "Ctrl+Z undo  ·  Ctrl+C copy  ·  Ctrl+S save" } else { "A choose  ·  B close" };
     r = r.push(label(hint, 13.0, p.muted, false));
+    // Edit layout, always findable (the owner, Nov 24): the page in front, edited in place
+    r = r.push(gap(6.0, 1.0)).push(hearth_ui::arrange::edit_button(&p, Msg::Describe(hearth_ui::arrange::edit_layout())));
     let bar = container(r).padding(Padding { top: 0.0, right: 22.0, bottom: 0.0, left: 22.0 }).center_y(Length::Fixed(63.0)).width(Length::Fill).style(boxed(p.bg2, 0.0, None));
     column![bar, ui::hline(p.line)].into()
 }
@@ -188,8 +199,8 @@ fn tile<'a>(a: &'a App, i: usize) -> Element<'a, Msg> {
 
 fn take_page(a: &App) -> Element<'_, Msg> {
     let p = a.p;
-    let mut left = Column::new().spacing(14.0).width(Length::Fixed(560.0)).height(Length::Fill);
-    left = left.push(label("What to capture", 17.0, p.text, true));
+    let mut kinds = Column::new().spacing(14.0);
+    kinds = kinds.push(label("What to capture", 17.0, p.text, true));
     let mut grid = Column::new().spacing(10.0).width(Length::Fill);
     for pair in [0usize, 2, 4] {
         let mut r = Row::new().spacing(12.0).width(Length::Fill);
@@ -201,8 +212,9 @@ fn take_page(a: &App) -> Element<'_, Msg> {
         }
         grid = grid.push(r);
     }
-    left = left.push(grid);
-    left = left.push(column![gap(1.0, 6.0), label("Wait before taking it", 15.0, p.text, true)]);
+    kinds = kinds.push(grid);
+    let mut wait = Column::new().spacing(14.0);
+    wait = wait.push(column![gap(1.0, 6.0), label("Wait before taking it", 15.0, p.text, true)]);
     let mut delays = Row::new().spacing(8.0);
     for (i, d) in DELAYS.iter().enumerate() {
         let t = if *d == 0 { "No wait".to_string() } else { format!("{d} s") };
@@ -212,19 +224,19 @@ fn take_page(a: &App) -> Element<'_, Msg> {
         }
         delays = delays.push(bt.view(&p, Msg::SetDelay(*d)));
     }
-    left = left.push(delays);
+    wait = wait.push(delays);
     if a.mode() == "scroll" {
         let t = if a.scroll_auto() { "Hearth scrolls it for me" } else { "I'll scroll it myself" };
-        left = left.push(b(t).glyph("scroll").selected(a.scroll_auto()).focus(a.focus == Fid::ScrollAuto).view(&p, Msg::ToggleScrollAuto));
+        wait = wait.push(b(t).glyph("scroll").selected(a.scroll_auto()).focus(a.focus == Fid::ScrollAuto).view(&p, Msg::ToggleScrollAuto));
     }
     let pt = if a.pointer() { "The pointer is in the picture" } else { "Leave the pointer out" };
-    left = left.push(column![gap(1.0, 4.0), b(pt).glyph("pointer").selected(a.pointer()).focus(a.focus == Fid::Pointer).view(&p, Msg::TogglePointer)]);
-    left = left.push(Space::new().height(Length::Fill));
+    let pointer = column![gap(1.0, 4.0), b(pt).glyph("pointer").selected(a.pointer()).focus(a.focus == Fid::Pointer).view(&p, Msg::TogglePointer)];
+    let mut take = Column::new().spacing(14.0);
     if !a.error.is_empty() {
-        left = left.push(label(a.error.clone(), 13.0, p.danger, false));
+        take = take.push(label(a.error.clone(), 13.0, p.danger, false));
     }
     let take_t = if a.delay() > 0 { format!("Take in {} s", a.delay()) } else { "Take a screenshot".to_string() };
-    left = left.push(
+    take = take.push(
         row![
             b(take_t).glyph(a.mode()).big().primary().focus(a.focus == Fid::Take).view(&p, Msg::Take),
             b("Record").glyph("record").big().dim(a.has_recorder()).focus(a.focus == Fid::Record).view(&p, Msg::Record)
@@ -254,26 +266,60 @@ fn take_page(a: &App) -> Element<'_, Msg> {
     if a.recent.is_empty() {
         right = right.push(label("Screenshots you save show up here. They're kept in Pictures › Screenshots.", 13.0, p.muted, false));
     }
-    right = right.push(Space::new().height(Length::Fill));
-    right = right.push(label("Print Screen saves the whole screen right away · Super+Shift+S picks an area", 12.0, p.muted, false));
-    let rpanel = container(right).padding(18.0).width(Length::Fill).height(Length::Fill).style(boxed(p.panel, p.r(16.0).max(8.0), Some((p.line, 1.0))));
-    // its blocks (hearth_ui::blocks): what to capture and Recent, moved, sized, hidden or restyled; as it was when nothing is
+    let tip = label("Print Screen saves the whole screen right away · Super+Shift+S picks an area", 12.0, p.muted, false);
+    // its blocks (hearth_ui::blocks): what to capture, the wait, the pointer, Take and Record, and Recent with its tip,
+    // moved, sized, hidden or restyled; as it was when nothing is
     hearth_ui::arrange::parts(
         &a.describe,
         &p,
         "take",
-        vec![("what", left.into()), ("recent", rpanel.into())],
-        |ps| container(row![ps.take("what"), ps.take("recent")].spacing(26.0)).padding(26.0).width(Length::Fill).height(Length::Fill).into(),
+        vec![("kinds", kinds.into()), ("wait", wait.into()), ("pointer", pointer.into()), ("take", take.into()), ("recent", right.into()), ("tip", tip.into())],
+        |ps| {
+            let left = column![ps.take("kinds"), ps.take("wait"), ps.take("pointer"), Space::new().height(Length::Fill), ps.take("take")].spacing(14.0).width(Length::Fixed(560.0)).height(Length::Fill);
+            let right = column![ps.take("recent"), Space::new().height(Length::Fill), ps.take("tip")].spacing(12.0).width(Length::Fill).height(Length::Fill);
+            let rpanel = container(right).padding(18.0).width(Length::Fill).height(Length::Fill).style(boxed(p.panel, p.r(16.0).max(8.0), Some((p.line, 1.0))));
+            container(row![left, rpanel].spacing(26.0)).padding(26.0).width(Length::Fill).height(Length::Fill).into()
+        },
         Msg::Describe,
     )
 }
 
-/// Capture's blocks (hearth_ui::blocks).
-pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "take",
-    title: "Take",
-    blocks: &[hearth_ui::blocks::bl("what", "What to capture", 0, 0, 6, 12), hearth_ui::blocks::bl("recent", "Recent", 6, 0, 6, 12)],
-}];
+/// The picture being edited: its tools along the top, the picture, and the side with what you can do with it.
+fn edit_page(a: &App) -> Element<'_, Msg> {
+    let p = a.p;
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "edit",
+        vec![
+            ("toolbar", crate::editor::toolbar(&a.ed, &p)),
+            ("stage", crate::editor::stage(&a.ed, &p)),
+            ("side", crate::editor::side(&a.ed, &p, &a.tools, &a.scroll_note, &a.shot)),
+        ],
+        |ps| column![ps.take("toolbar"), row![ps.take("stage"), ps.take("side")].height(Length::Fill)].into(),
+        Msg::Describe,
+    )
+}
+
+/// Capture's blocks (hearth_ui::blocks): the window, and each of its pages.
+use hearth_ui::blocks::{bl, PageDef};
+pub const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "The window", blocks: &[bl("header", "Capture and its pages", 0, 0, 12, 1), bl("page", "The page", 0, 1, 12, 11)] },
+    PageDef {
+        id: "take",
+        title: "Take",
+        blocks: &[
+            bl("kinds", "What to capture", 0, 0, 6, 5),
+            bl("wait", "Wait before taking it", 0, 5, 6, 2),
+            bl("pointer", "The pointer", 0, 7, 6, 1),
+            bl("take", "Take and Record", 0, 10, 6, 2),
+            bl("recent", "Recent", 6, 0, 6, 10),
+            bl("tip", "Print Screen tip", 6, 10, 6, 2),
+        ],
+    },
+    PageDef { id: "edit", title: "Edit", blocks: &[bl("toolbar", "The tools", 0, 0, 12, 1), bl("stage", "The picture", 0, 1, 9, 11), bl("side", "Copy, save and the rest", 9, 1, 3, 11)] },
+    PageDef { id: "recent", title: "Recent", blocks: &[bl("grid", "The pictures", 0, 0, 12, 11), bl("hint", "What the buttons do", 0, 11, 12, 1)] },
+];
 
 /// A recent picture: its thumbnail, its name, and (big) when, its size and what you can do with it.
 fn thumb<'a>(a: &'a App, it: &'a crate::Item, i: usize, big: bool, current: bool) -> Element<'a, Msg> {
@@ -345,7 +391,14 @@ fn recent_page(a: &App) -> Element<'_, Msg> {
         grid = grid.push(r);
     }
     let hint = container(label("A edit  ·  X show in folder  ·  Delete take off the list", 12.0, p.muted, false)).padding(12.0).align_right(Length::Fill);
-    column![scrollable(container(grid).padding(15.0)).height(Length::Fill), hint].into()
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "recent",
+        vec![("grid", scrollable(container(grid).padding(15.0)).height(Length::Fill).into()), ("hint", hint.into())],
+        |ps| column![ps.take("grid"), ps.take("hint")].into(),
+        Msg::Describe,
+    )
 }
 
 // ------------------------------------------------------------------ the small windows

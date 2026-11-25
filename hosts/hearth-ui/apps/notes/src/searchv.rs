@@ -171,7 +171,14 @@ pub fn content(a: &App) -> E<'_, Msg> {
         }
         None => container(t("Pick a match on the left", f(17.0), tn.muted)).center_x(Length::Fill).center_y(Length::Fill).into(),
     };
-    column![crate::editor::tabs(a), crate::editor::crumb(a, Some(right)), body].into()
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &a.p,
+        "search",
+        vec![("tabs", crate::editor::tabs(a)), ("crumb", crate::editor::crumb(a, Some(right))), ("doc", body)],
+        |ps| column![ps.take("tabs"), ps.take("crumb"), ps.take("doc")].into(),
+        Msg::Describe,
+    )
 }
 
 /// The quick switcher (Ctrl+O), over the page.

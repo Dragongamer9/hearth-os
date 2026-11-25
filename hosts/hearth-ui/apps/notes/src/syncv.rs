@@ -65,14 +65,30 @@ pub fn view(a: &App) -> E<'_, Msg> {
         ch = ch.push(t("Nothing changed on this PC since the last sync", f(15.0), tn.muted));
     }
     let changes = look::card(&p, ch, false);
-    let left = column![changes, check_card(a), commit_card(a)].spacing(z(18.0)).width(Length::FillPortion(1));
-    let right = column![diff_card(a), auto_card(a), tidy_card(a)].spacing(z(18.0)).width(Length::FillPortion(1));
-    let mut body = column![title].spacing(z(24.0));
-    if !s.secrets.is_empty() {
-        body = body.push(secrets_card(a));
+    let secrets = !s.secrets.is_empty();
+    let mut items: Vec<(&'static str, E<Msg>)> = vec![("title", title.into())];
+    if secrets {
+        items.push(("secrets", secrets_card(a)));
     }
-    body = body.push(row![left, right].spacing(z(26.0)));
-    scrollable(container(body).padding(pad(z(28.0), z(40.0), z(28.0), z(40.0)))).height(Length::Fill).into()
+    items.extend([("changes", changes), ("check", check_card(a)), ("commit", commit_card(a)), ("diff", diff_card(a)), ("auto", auto_card(a)), ("tidy", tidy_card(a))]);
+    // its blocks (hearth_ui::blocks "sync"): as it was when nothing is customised
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "sync",
+        items,
+        move |ps| {
+            let left = column![ps.take("changes"), ps.take("check"), ps.take("commit")].spacing(z(18.0)).width(Length::FillPortion(1));
+            let right = column![ps.take("diff"), ps.take("auto"), ps.take("tidy")].spacing(z(18.0)).width(Length::FillPortion(1));
+            let mut body = column![ps.take("title")].spacing(z(24.0));
+            if secrets {
+                body = body.push(ps.take("secrets"));
+            }
+            body = body.push(row![left, right].spacing(z(26.0)));
+            scrollable(container(body).padding(pad(z(28.0), z(40.0), z(28.0), z(40.0)))).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 fn check_card(a: &App) -> E<'_, Msg> {
@@ -255,6 +271,15 @@ pub fn conflict(a: &App) -> E<'_, Msg> {
     .padding(pad(z(18.0), z(22.0), z(18.0), z(22.0)))
     .width(Length::Fill)
     .style(bx(Color::from_rgb8(0x17, 0x26, 0x1d), 10.0, Some((look::GOOD_LINE, 1.0))));
-    let body = column![title, sub, panes, choices, safe].spacing(z(20.0));
-    scrollable(container(body).padding(pad(z(28.0), z(40.0), z(28.0), z(40.0)))).height(Length::Fill).into()
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "conflict",
+        vec![("title", title.into()), ("sub", sub.into()), ("panes", panes.into()), ("choices", choices.into()), ("safe", safe.into())],
+        |ps| {
+            let body = column![ps.take("title"), ps.take("sub"), ps.take("panes"), ps.take("choices"), ps.take("safe")].spacing(z(20.0));
+            scrollable(container(body).padding(pad(z(28.0), z(40.0), z(28.0), z(40.0)))).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }

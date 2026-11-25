@@ -162,8 +162,23 @@ pub fn view(a: &App) -> E<'_, Msg> {
     let tn = tone(&p);
     let c = a.central_now();
     let chip: E<'static, Msg> = container(t(format!("US Central · {}", day::clock(c.hour, c.min)), f(14.0), Pal::mix(tn.text, tn.muted, 0.2))).padding(pad(z(4.0), z(14.0), z(4.0), z(14.0))).style(bx(Color::TRANSPARENT, z(14.0), Some((tn.line, 1.0)))).into();
-    let left = column![crate::editor::tabs(a), crate::editor::crumb(a, Some(chip)), scrollable(container(dashboard(a)).padding(pad(z(22.0), z(30.0), z(30.0), z(30.0))).width(Length::Fill)).height(Length::Fill)];
-    row![container(left).width(Length::Fill).height(Length::Fill), hearth_ui::ui::vline(tn.line), crate::editor::right_column(a, true)].height(Length::Fill).into()
+    let items: Vec<(&'static str, E<Msg>)> = vec![
+        ("tabs", crate::editor::tabs(a)),
+        ("crumb", crate::editor::crumb(a, Some(chip))),
+        ("dashboard", scrollable(container(dashboard(a)).padding(pad(z(22.0), z(30.0), z(30.0), z(30.0))).width(Length::Fill)).height(Length::Fill).into()),
+        ("right", crate::editor::right_column(a, true)),
+    ];
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "today",
+        items,
+        move |ps| {
+            let left = column![ps.take("tabs"), ps.take("crumb"), ps.take("dashboard")];
+            row![container(left).width(Length::Fill).height(Length::Fill), hearth_ui::ui::vline(tn.line), ps.take("right")].height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 fn action_btn<'a>(a: &'a App, label: &str, on: bool, w: &'static str) -> E<'a, Msg> {

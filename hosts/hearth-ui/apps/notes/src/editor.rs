@@ -92,10 +92,27 @@ pub fn crumb<'a>(a: &'a App, right: Option<E<'static, Msg>>) -> E<'a, Msg> {
 pub fn view(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let left = column![tabs(a), crumb(a, None), container(note(a)).height(Length::Fill), status_bar(a)];
-    let pane = container(left).width(Length::Fixed(z(640.0))).height(Length::Fill).style(bx(tn.page, 0.0, None));
-    let graph = crate::gview::pane(a);
-    row![pane, ui::vline(tn.line), container(graph).width(Length::Fill).height(Length::Fill), ui::vline(tn.line), right_column(a, false)].height(Length::Fill).into()
+    let items: Vec<(&'static str, E<Msg>)> = vec![
+        ("tabs", tabs(a)),
+        ("crumb", crumb(a, None)),
+        ("note", container(note(a)).height(Length::Fill).into()),
+        ("status", status_bar(a)),
+        ("graph", container(crate::gview::pane(a)).width(Length::Fill).height(Length::Fill).into()),
+        ("right", right_column(a, false)),
+    ];
+    // its blocks (hearth_ui::blocks "files", side.rs): as it was when nothing is customised
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "files",
+        items,
+        move |ps| {
+            let left = column![ps.take("tabs"), ps.take("crumb"), ps.take("note"), ps.take("status")];
+            let pane = container(left).width(Length::Fixed(z(640.0))).height(Length::Fill).style(bx(tn.page, 0.0, None));
+            row![pane, ui::vline(tn.line), ps.take("graph"), ui::vline(tn.line), ps.take("right")].height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 /// The note: live preview, Source or Read.

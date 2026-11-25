@@ -363,8 +363,11 @@ const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
     id: "main",
     title: "Reliability history",
     blocks: &[
-        hearth_ui::blocks::bl("header", "Heading", 0, 0, 12, 2),
-        hearth_ui::blocks::bl("chart", "The chart", 0, 2, 12, 5),
+        hearth_ui::blocks::bl("heading", "Heading", 0, 0, 9, 1),
+        hearth_ui::blocks::bl("toggle", "Days / Weeks", 9, 0, 3, 1),
+        hearth_ui::blocks::bl("stability", "The stability line", 0, 1, 12, 2),
+        hearth_ui::blocks::bl("marks", "Problems and changes", 0, 3, 12, 3),
+        hearth_ui::blocks::bl("days", "The days", 0, 6, 12, 1),
         hearth_ui::blocks::bl("events", "The day's events", 0, 7, 12, 5),
     ],
 }];
@@ -372,7 +375,7 @@ const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let rows = a.rows();
-    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Reliability, "Reliability history", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Reliability, "Reliability history", Some(hearth_ui::arrange::edit_button(&p, Msg::Describe(hearth_ui::arrange::edit_layout()))), TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
 
     // ---- header with Days / Weeks
     let toggle_btn = |label: &'static str, w: bool| -> Element<'static, Msg> {
@@ -388,23 +391,12 @@ fn view(a: &App) -> Element<'_, Msg> {
     };
     let toggle = ui::ring(p, a.zone == Zone::Toggle, 6.0, row![toggle_btn("Days", false), toggle_btn("Weeks", true)].spacing(4.0).into());
     let what = if a.weeks { ("week by week", "week") } else { ("day by day", "day") };
-    let header = container(
-        row![
-            column![
-                ts("How Hearth has been running", 16.0, p.text),
-                t1(format!("Problems and changes on this PC, {}. Click a {} to see what happened.", what.0, what.1), 13.0, p.muted)
-            ]
-            .spacing(2.0)
-            .width(Length::Fill),
-            toggle
-        ]
-        .align_y(iced::Center)
-        .spacing(16.0),
-    )
-    .padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 20.0 })
-    .center_y(Length::Fixed(64.0))
-    .width(Length::Fill)
-    .style(ui::boxed(p.bg2, 0.0, None));
+    let heading = column![
+        ts("How Hearth has been running", 16.0, p.text),
+        t1(format!("Problems and changes on this PC, {}. Click a {} to see what happened.", what.0, what.1), 13.0, p.muted)
+    ]
+    .spacing(2.0)
+    .width(Length::Fill);
 
     // ---- the chart: stability line, the four rows of marks, the days. Each column is one day (or week).
     let grid = Pal::mix(p.panel, p.line, 0.5);
@@ -452,7 +444,11 @@ fn view(a: &App) -> Element<'_, Msg> {
         let txt: Element<'static, Msg> = if i == a.sel { ts(l, 11.0, p.text).wrapping(text::Wrapping::None).into() } else { t1(l, 11.0, p.muted).into() };
         days = days.push(col_cell(i, txt, 26.0));
     }
-    let chart = container(column![line_row, gap(1.0, 10.0), marks, hline(grid), days]).padding(Padding { top: 12.0, right: 20.0, bottom: 12.0, left: 20.0 });
+    // the chart's three parts, each with the chart's sides (so they line up wherever they go)
+    let sides = Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 20.0 };
+    let stability = container(line_row).padding(sides);
+    let marks = container(marks).padding(sides);
+    let days = container(column![hline(grid), days]).padding(sides);
 
     // ---- the day's events
     let evs = a.events();
@@ -504,8 +500,16 @@ fn view(a: &App) -> Element<'_, Msg> {
         &a.describe,
         &p,
         "main",
-        vec![("header", header.into()), ("chart", chart.into()), ("events", events.into())],
-        |ps| column![ps.take("header"), hline(p.line), ps.take("chart"), container(ps.take("events")).padding(Padding { top: 0.0, right: 20.0, bottom: 16.0, left: 20.0 }).height(Length::Fill)].into(),
+        vec![("heading", heading.into()), ("toggle", toggle), ("stability", stability.into()), ("marks", marks.into()), ("days", days.into()), ("events", events.into())],
+        |ps| {
+            let header = container(row![ps.take("heading"), ps.take("toggle")].align_y(iced::Center).spacing(16.0))
+                .padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 20.0 })
+                .center_y(Length::Fixed(64.0))
+                .width(Length::Fill)
+                .style(ui::boxed(p.bg2, 0.0, None));
+            let chart = container(column![ps.take("stability"), gap(1.0, 10.0), ps.take("marks"), ps.take("days")]).padding(Padding { top: 12.0, right: 0.0, bottom: 12.0, left: 0.0 });
+            column![header, hline(p.line), chart, container(ps.take("events")).padding(Padding { top: 0.0, right: 20.0, bottom: 16.0, left: 20.0 }).height(Length::Fill)].into()
+        },
         Msg::Describe,
     );
     let page = column![title, blocks];

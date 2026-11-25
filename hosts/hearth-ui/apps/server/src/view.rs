@@ -107,10 +107,23 @@ fn panel<'a>(k: f32, title: &str, inner: E<'a>, h: Length) -> E<'a> {
 }
 
 /// Server mode's blocks (hearth_ui::blocks).
+use hearth_ui::blocks::bl;
 pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
     id: "dashboard",
     title: "Server mode",
-    blocks: &[hearth_ui::blocks::bl("left", "Status and services", 0, 0, 9, 12), hearth_ui::blocks::bl("right", "Play and the rest", 9, 0, 3, 12)],
+    blocks: &[
+        bl("top", "The top line", 0, 0, 12, 1),
+        bl("pc", "This PC", 0, 1, 9, 2),
+        bl("ais", "The AIs on this PC", 0, 3, 9, 3),
+        bl("services", "Services", 0, 6, 9, 5),
+        bl("play", "Play", 9, 1, 3, 1),
+        bl("next", "Next", 9, 2, 3, 1),
+        bl("vram", "Graphics memory by app", 9, 3, 3, 2),
+        bl("running", "Running", 9, 5, 3, 2),
+        bl("alerts", "Alerts", 9, 7, 3, 2),
+        bl("phone", "Your phone", 9, 9, 3, 2),
+        bl("hints", "The buttons along the bottom", 0, 11, 12, 1),
+    ],
 }];
 
 /// Server mode with Describe it's box under it while it's open.
@@ -159,23 +172,9 @@ pub fn view(a: &App) -> E<'_> {
         hline(G::line())
     ];
 
-    // its blocks (hearth_ui::blocks): the status and tiles, and Play with the rest, moved, sized, hidden or restyled;
-    // as it was when nothing is
-    let body = hearth_ui::arrange::parts(
-        &a.describe,
-        &a.pal,
-        "dashboard",
-        vec![("left", left_column(a, &d, k)), ("right", right_column(a, &d, k))],
-        move |ps| {
-            row![ps.take("left"), ps.take("right")]
-                .spacing(22.0 * k)
-                .padding(Padding { top: 14.0 * k, right: 36.0 * k, bottom: 12.0 * k, left: 36.0 * k })
-                .height(Length::Fill)
-                .into()
-        },
-        Msg::Describe,
-    );
-    // a right-click on the top line opens Describe it (and from it, Move and resize blocks)
+    let left = left_column(a, &d, k);
+    let right = right_column(a, &d, k);
+    // a right-click on the top line opens Describe it (and from it, Edit layout; ☰ › Edit layout too)
     let top = iced::widget::mouse_area(top).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
 
     // ---- the buttons along the bottom
@@ -210,7 +209,35 @@ pub fn view(a: &App) -> E<'_> {
         .style(boxed(Color::from_rgba(0.008, 0.004, 0.0, 0.92), 0.0, None))
     ];
 
-    let mut page = column![top, body, hints].width(Length::Fill).height(Length::Fill);
+    // its blocks (hearth_ui::blocks): the top line, each panel and the buttons along the bottom, moved, sized, hidden
+    // or restyled; as it was when nothing is
+    let lids: Vec<&'static str> = left.iter().map(|x| x.0).collect();
+    let rids: Vec<&'static str> = right.iter().map(|x| x.0).collect();
+    let mut items: Vec<(&'static str, E)> = vec![("top", top.into())];
+    items.extend(left);
+    items.extend(right);
+    items.push(("hints", hints.into()));
+    let blocks = hearth_ui::arrange::parts(
+        &a.describe,
+        &a.pal,
+        "dashboard",
+        items,
+        move |ps| {
+            let mut lc = Column::new().spacing(12.0 * k).width(Length::Fill).height(Length::Fill);
+            for id in lids {
+                lc = lc.push(ps.take(id));
+            }
+            let mut rc = Column::new().spacing(12.0 * k).width(Length::Fixed(430.0 * k)).height(Length::Fill);
+            for id in rids {
+                rc = rc.push(ps.take(id));
+            }
+            let rc: E = container(rc.push(vfill())).width(Length::Fixed(430.0 * k)).height(Length::Fill).clip(true).into();
+            let body = row![lc, rc].spacing(22.0 * k).padding(Padding { top: 14.0 * k, right: 36.0 * k, bottom: 12.0 * k, left: 36.0 * k }).height(Length::Fill);
+            column![ps.take("top"), body, ps.take("hints")].width(Length::Fill).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    );
+    let mut page = column![blocks].width(Length::Fill).height(Length::Fill);
     // CI's frame counter (HEARTH_UI_FRAMES; nothing without it)
     if let Some(m) = hearth_ui::ui::frame_meter() {
         page = page.push(m);
@@ -263,7 +290,7 @@ pub fn view(a: &App) -> E<'_> {
 }
 
 // ---------------------------------------------------------------- the left column: this PC, the AIs, the services
-fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
+fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> Vec<(&'static str, E<'a>)> {
     let status = d.get("status").cloned().unwrap_or(Value::Null);
     let sc = if a.d.is_some() && s(&status, "level") != "ok" { G::warn() } else { G::ok() };
     let title = if a.back_info.is_some() && a.overlay == Overlay::Back { "Coming back".to_string() } else if a.d.is_some() { s(&status, "title") } else { "Starting…".into() };
@@ -330,7 +357,7 @@ fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
         Length::Fixed(178.0 * k),
     );
 
-    let mut col = Column::new().spacing(12.0 * k).width(Length::Fill).height(Length::Fill).push(this_pc);
+    let mut col: Vec<(&'static str, E<'a>)> = vec![("pc", this_pc)];
     let cores = arr(d, "cores");
     let mut used = 178.0 * k;
     if !cores.is_empty() {
@@ -377,15 +404,14 @@ fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
                 Msg::SmoothAgain,
             ));
         }
-        col = col.push(panel(
-            k,
-            "The AIs on this PC · the same as in your Command Center",
-            column![crow, hline(G::line()), trow].spacing(6.0 * k).into(),
-            Length::Fixed(214.0 * k),
+        col.push((
+            "ais",
+            panel(k, "The AIs on this PC · the same as in your Command Center", column![crow, hline(G::line()), trow].spacing(6.0 * k).into(), Length::Fixed(214.0 * k)),
         ));
         used += 214.0 * k + 12.0 * k;
     }
-    col.push(services(a, k, used)).into()
+    col.push(("services", services(a, k, used)));
+    col
 }
 
 fn fact<'a>(k: f32, label: String, value: String, sub: String, pts: Vec<f32>, line: Color) -> E<'a> {
@@ -549,7 +575,7 @@ fn tile<'a>(t: &Value, k: f32, focused: bool, a: &'a App) -> E<'a> {
 }
 
 // ---------------------------------------------------------------- the right column
-fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
+fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> Vec<(&'static str, E<'a>)> {
     let play = container(
         stack![
             container(
@@ -569,7 +595,7 @@ fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
     .width(Length::Fill)
     .height(Length::Fixed(108.0 * k))
     .style(boxed(G::acc(), 18.0 * k, if a.sel == 0 { Some((rgb(0xffe2b0), 4.0 * k)) } else { None }));
-    let mut col = Column::new().spacing(12.0 * k).width(Length::Fixed(430.0 * k)).height(Length::Fill).push(click(play.into(), Msg::Play));
+    let mut col: Vec<(&'static str, E<'a>)> = vec![("play", click(play.into(), Msg::Play))];
 
     // Next: the schedule's next switch.
     let idle = d.get("idle").cloned().unwrap_or(Value::Null);
@@ -580,7 +606,7 @@ fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
         Some(n) => (s(n, "text"), format!("Your {} schedule{}", if wd % 6 == 0 { "weekend" } else { "weekday" }, if dim > 0.0 { format!(" · the screen dims after {dim} min") } else { String::new() })),
         None => ("No schedule".into(), if dim > 0.0 { format!("The screen dims after {dim} min with nothing pressed") } else { "Make one in Settings › System › Startup".into() }),
     };
-    col = col.push(panel(k, "Next", column![txs(n1, 19.0 * k, G::hi()), tx(n2, 14.0 * k, G::muted())].spacing(4.0 * k).into(), Length::Fixed(104.0 * k)));
+    col.push(("next", panel(k, "Next", column![txs(n1, 19.0 * k, G::hi()), tx(n2, 14.0 * k, G::muted())].spacing(4.0 * k).into(), Length::Fixed(104.0 * k))));
 
     // Graphics memory by app.
     let vt = f(d, "vramTotal").unwrap_or(0.0);
@@ -604,7 +630,7 @@ fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
             legend = legend.push(rich(vec![sp("● ", 14.0 * k, p.1, false), sp(format!("{} {} GB", p.0, p.2), 14.0 * k, G::muted(), false)]));
         }
         legend = legend.push(tx(format!("free {:.1} GB", (vt - f(d, "vramUsed").unwrap_or(0.0)).max(0.0)), 14.0 * k, G::muted()));
-        col = col.push(panel(k, "Graphics memory by app", column![bar, legend.wrap().vertical_spacing(4.0 * k)].spacing(8.0 * k).into(), Length::Fixed(116.0 * k)));
+        col.push(("vram", panel(k, "Graphics memory by app", column![bar, legend.wrap().vertical_spacing(4.0 * k)].spacing(8.0 * k).into(), Length::Fixed(116.0 * k))));
     }
 
     // Running: every service in a word.
@@ -621,7 +647,7 @@ fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
         pf = pf.push(container(r).padding(Padding { top: 0.0, right: 12.0 * k, bottom: 0.0, left: 12.0 * k }).center_y(Length::Fixed(32.0 * k)).style(boxed(Color::TRANSPARENT, 16.0 * k, Some((alpha(dc, 0.4), 1.0)))));
     }
     let lines = ((pills.len() as f32) / 3.0).ceil().max(1.0);
-    col = col.push(panel(k, "Running", pf.wrap().vertical_spacing(8.0 * k).into(), Length::Fixed((lines * 40.0 + 52.0) * k)));
+    col.push(("running", panel(k, "Running", pf.wrap().vertical_spacing(8.0 * k).into(), Length::Fixed((lines * 40.0 + 52.0) * k))));
 
     // Alerts.
     let mut alerts = arr(d, "alerts");
@@ -649,7 +675,7 @@ fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
         ].spacing(10.0 * k));
     }
     let n = alerts.len().min(3) as f32;
-    col = col.push(panel(k, "Alerts", ac.into(), Length::Fixed((n * 48.0 + 50.0) * k)));
+    col.push(("alerts", panel(k, "Alerts", ac.into(), Length::Fixed((n * 48.0 + 50.0) * k))));
 
     // Your phone: the web page's address and its QR code.
     if d.get("web").map(|w| truthy(w, "on")).unwrap_or(false) {
@@ -659,9 +685,9 @@ fn right_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
             r = r.push(draw::canvas(draw::QrCode { qr: q.clone(), fg: rgb(0xffe9c7), bg: rgb(0x0c0702) }, Length::Fixed(72.0 * k), Length::Fixed(72.0 * k)));
         }
         r = r.push(column![txs(url, 16.0 * k, G::hi()), txw(format!("{}Tailscale only · your PIN", if a.qr.is_some() { "Scan to open this dashboard on your phone · " } else { "Open it on your phone · " }), 13.5 * k, G::muted())].spacing(3.0 * k).width(Length::Fill));
-        col = col.push(panel(k, "Your phone", r.into(), Length::Fixed(128.0 * k)));
+        col.push(("phone", panel(k, "Your phone", r.into(), Length::Fixed(128.0 * k))));
     }
-    container(col.push(vfill())).width(Length::Fixed(430.0 * k)).height(Length::Fill).clip(true).into()
+    col
 }
 
 // ---------------------------------------------------------------- the countdown (Play / Guide, or the web page's)

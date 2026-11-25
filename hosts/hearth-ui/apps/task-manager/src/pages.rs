@@ -58,11 +58,28 @@ fn heat_bg(p: &Pal, level: usize) -> Color {
 }
 
 // ------------------------------------------------------------------ the blocks (hearth_ui::blocks: moved, sized, hidden, restyled)
-use hearth_ui::blocks::{bl, PageDef};
+use hearth_ui::blocks::{bl, bls, BlockDef, PageDef};
+/// A list page: its title, its buttons and its table (Details, App history, Startup apps, Services, Scheduled tasks).
+const LIST: &[BlockDef] = &[bl("title", "Title", 0, 0, 8, 1), bl("buttons", "The buttons", 8, 0, 4, 1), bl("table", "The table", 0, 1, 12, 11)];
 pub const BLOCKS: &[PageDef] = &[
     PageDef { id: "window", title: "The window", blocks: &[bl("rail", "Pages down the side", 0, 0, 2, 12), bl("page", "The page", 2, 0, 10, 12)] },
-    PageDef { id: "processes", title: "Processes", blocks: &[bl("head", "Title and buttons", 0, 0, 12, 1), bl("table", "The processes", 0, 1, 12, 11)] },
-    PageDef { id: "performance", title: "Performance", blocks: &[bl("head", "Title", 0, 0, 12, 1), bl("devices", "The devices", 0, 1, 3, 11), bl("graph", "The picked device", 3, 1, 9, 11)] },
+    PageDef {
+        id: "processes",
+        title: "Processes",
+        blocks: &[bl("title", "Title", 0, 0, 5, 1), bl("tabs", "Apps & groups / All processes", 5, 0, 3, 1), bl("buttons", "The buttons", 8, 0, 4, 1), bl("table", "The processes", 0, 1, 12, 11)],
+    },
+    PageDef {
+        id: "performance",
+        title: "Performance",
+        blocks: &[bl("title", "Title", 0, 0, 12, 1), bl("devices", "The devices", 0, 1, 3, 11), bl("device", "The picked device's name and tabs", 3, 1, 9, 1), bls("detail", "Its graphs and numbers", 3, 2, 9, 10)],
+    },
+    PageDef { id: "history", title: "App history", blocks: LIST },
+    PageDef { id: "startup", title: "Startup apps", blocks: LIST },
+    PageDef { id: "users", title: "Users", blocks: &[bl("title", "Title", 0, 0, 12, 1), bl("table", "The table", 0, 1, 12, 11)] },
+    PageDef { id: "details", title: "Details", blocks: LIST },
+    PageDef { id: "services", title: "Services", blocks: LIST },
+    PageDef { id: "tasks", title: "Scheduled tasks", blocks: LIST },
+    PageDef { id: "settings", title: "Settings", blocks: &[bl("title", "Title", 0, 0, 12, 1), bl("settings", "The settings", 0, 1, 12, 11)] },
 ];
 fn dm(m: hearth_ui::describe::DMsg) -> Msg {
     Msg::Describe(m)
@@ -165,6 +182,7 @@ fn rail(a: &App) -> Element<'_, Msg> {
         ("services".into(), item(Page::Services, G::Cog)),
         ("tasks".into(), item(Page::Tasks, G::Clock)),
         ("spacer".into(), Space::new().height(Length::Fill).into()),
+        ("edit-layout".into(), edit_item(a, folded)),
         ("settings".into(), item(Page::Settings, G::Gear)),
     ];
     let mut col = Column::new().spacing(2.0).padding(6.0);
@@ -172,6 +190,69 @@ fn rail(a: &App) -> Element<'_, Msg> {
         col = col.push(e);
     }
     container(col).width(Length::Fixed(if folded { 64.0 } else { 210.0 })).height(Length::Fill).style(ui::boxed(Pal::mix(p.bg, p.panel, 0.4), 0.0, None)).into()
+}
+
+/// Edit layout in the rail, over Settings (the owner, Nov 24: always findable): the page in front, edited in place.
+fn edit_item(a: &App, folded: bool) -> Element<'static, Msg> {
+    let p = a.p;
+    let inner: Element<'static, Msg> = if folded {
+        container(glyph(G::Pencil, p.muted, 18.0, 2.0)).center_x(Length::Fixed(40.0)).into()
+    } else {
+        row![glyph(G::Pencil, p.muted, 18.0, 2.0), gap(12.0, 1.0), t1("Edit layout", 13.0, p.muted)].align_y(iced::Center).into()
+    };
+    let mark = container(Space::new()).width(Length::Fixed(3.0)).height(Length::Fixed(16.0));
+    mouse_area(container(row![mark, gap(9.0, 1.0), inner].align_y(iced::Center)).center_y(Length::Fixed(38.0)).width(Length::Fill))
+        .on_press(Msg::Describe(hearth_ui::arrange::edit_layout()))
+        .interaction(mouse::Interaction::Pointer)
+        .into()
+}
+
+/// A page's head as blocks: its title (with the line under it), its tabs and its buttons (as Describe it's zone "bar"
+/// left them), and whether it has tabs and buttons; [`head_join`] puts them together as [`head`] does.
+fn head_items<'a>(a: &'a App, title: &'a str, sub: String, tabs: Option<Element<'a, Msg>>, buttons: Vec<(String, Element<'a, Msg>)>) -> (Vec<(&'static str, Element<'a, Msg>)>, bool, bool) {
+    let p = a.p;
+    let mut left = Column::new().spacing(2.0).push(ts(title, 20.0, p.text));
+    if !sub.is_empty() {
+        left = left.push(t1(sub, 12.0, p.muted));
+    }
+    let mut items: Vec<(&'static str, Element<'a, Msg>)> = vec![("title", container(left).width(Length::Fill).into())];
+    let has_tabs = tabs.is_some();
+    if let Some(tb) = tabs {
+        items.push(("tabs", tb));
+    }
+    let mut r = Row::new().spacing(6.0).align_y(iced::Center);
+    let mut n = 0;
+    for b in hearth_ui::describe::arrange(&a.describe, "bar", buttons) {
+        r = r.push(b);
+        n += 1;
+    }
+    if n > 0 {
+        items.push(("buttons", r.into()));
+    }
+    (items, has_tabs, n > 0)
+}
+
+/// The head put together the app's own way (exactly as [`head`] draws it).
+fn head_join<'a>(ps: &mut hearth_ui::arrange::Parts<'a, Msg>, tabs: bool, buttons: bool) -> Element<'a, Msg> {
+    let mut r = Row::new().spacing(6.0).align_y(iced::Center).push(ps.take("title"));
+    if tabs {
+        r = r.push(ps.take("tabs"));
+        r = r.push(gap(12.0, 1.0));
+    }
+    if buttons {
+        r = r.push(ps.take("buttons"));
+    }
+    container(r).padding(Padding { top: 14.0, right: 20.0, bottom: 10.0, left: 22.0 }).width(Length::Fill).into()
+}
+
+/// A page made of its head and one more block (its table or its card), as blocks.
+fn head_and<'a>(a: &'a App, page: &'static str, head: (Vec<(&'static str, Element<'a, Msg>)>, bool, bool), id: &'static str, body: Element<'a, Msg>) -> Element<'a, Msg> {
+    let (mut items, ht, hb) = head;
+    items.push((id, body));
+    hearth_ui::arrange::parts(&a.describe, &a.p, page, items, move |ps| {
+        let h = head_join(ps, ht, hb);
+        column![h, ps.take(id)].into()
+    }, dm)
 }
 
 /// A page's button with its id (its label's: "End task" is end-task), for Describe it's zone "bar".
@@ -568,14 +649,7 @@ fn processes(a: &App) -> Element<'_, Msg> {
         list = list.push(row_view(a, r.key, &PROC_COLS[..10], r.cells, Some(r.lead), 34.0));
     }
     let table: Element<Msg> = column![heads(a, "procs", &PROC_COLS[..10], a.sample.as_deref()), scrollable(list).height(Length::Fill)].into();
-    hearth_ui::arrange::parts(
-        &a.describe,
-        &p,
-        "processes",
-        vec![("head", head(a, "Processes", String::new(), Some(tabs_el), buttons)), ("table", table)],
-        |ps| column![ps.take("head"), ps.take("table")].into(),
-        dm,
-    )
+    head_and(a, "processes", head_items(a, "Processes", String::new(), Some(tabs_el), buttons), "table", table)
 }
 
 // ------------------------------------------------------------------ Details (mockup tm-2)
@@ -680,12 +754,8 @@ fn details(a: &App) -> Element<'_, Msg> {
         let cells = cells.into_iter().zip(show.iter()).filter(|(_, s)| **s).map(|(c, _)| c).collect();
         list = list.push(row_view(a, r.pid.to_string(), &cols, cells, None, 30.0));
     }
-    column![
-        head(a, "Details", "every process with its number, the Windows way".into(), None, buttons),
-        heads(a, "details", &cols, None),
-        scrollable(list).height(Length::Fill)
-    ]
-    .into()
+    let table: Element<Msg> = column![heads(a, "details", &cols, None), scrollable(list).height(Length::Fill)].into();
+    head_and(a, "details", head_items(a, "Details", "every process with its number, the Windows way".into(), None, buttons), "table", table)
 }
 
 // ------------------------------------------------------------------ App history, Startup apps, Users, Services, Scheduled tasks
@@ -846,7 +916,8 @@ fn list_page(a: &App) -> Element<'_, Msg> {
         list = list.push(row_view(a, id, &cols, cells, None, 32.0));
     }
     let table: &'static str = a.page.id();
-    column![head(a, a.page.label(), sub, None, buttons), heads(a, table, &cols, None), scrollable(list).height(Length::Fill)].into()
+    let body: Element<Msg> = column![heads(a, table, &cols, None), scrollable(list).height(Length::Fill)].into();
+    head_and(a, a.page.id(), head_items(a, a.page.label(), sub, None, buttons), "table", body)
 }
 
 // ------------------------------------------------------------------ Performance (mockups tm-3…tm-7, task-manager-memory)
@@ -1061,19 +1132,22 @@ fn performance(a: &App) -> Element<'_, Msg> {
         .spacing(14.0)
         .into()
     };
-    let right = scrollable(container(column![head, detail].spacing(14.0)).padding(Padding { top: 12.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill);
+    let (mut items, ht, hb) = head_items(a, "Performance", String::new(), None, vec![]);
+    items.push(("devices", container(scrollable(tiles)).width(Length::Fixed(240.0)).height(Length::Fill).into()));
+    items.push(("device", head.into()));
+    items.push(("detail", detail));
     hearth_ui::arrange::parts(
         &a.describe,
         &p,
         "performance",
-        vec![("head", head_bar(a)), ("devices", container(scrollable(tiles)).width(Length::Fixed(240.0)).height(Length::Fill).into()), ("graph", right.into())],
-        |ps| column![ps.take("head"), row![ps.take("devices"), ui::vline(p.line), ps.take("graph")].height(Length::Fill)].into(),
+        items,
+        move |ps| {
+            let h = head_join(ps, ht, hb);
+            let right = scrollable(container(column![ps.take("device"), ps.take("detail")].spacing(14.0)).padding(Padding { top: 12.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill);
+            column![h, row![ps.take("devices"), ui::vline(p.line), right].height(Length::Fill)].into()
+        },
         dm,
     )
-}
-
-fn head_bar(a: &App) -> Element<'_, Msg> {
-    head(a, "Performance", String::new(), None, vec![])
 }
 
 fn cpu_detail<'a>(a: &'a App, s: &Sample) -> Element<'a, Msg> {
@@ -1160,7 +1234,8 @@ fn settings(a: &App) -> Element<'_, Msg> {
             line("Theme", "Task Manager follows your Hearth look and accent (Hearth Settings › Appearance)", t1("Hearth's look", 13.0, p.muted).into()),
         ],
     );
-    column![head(a, "Settings", String::new(), None, vec![]), scrollable(container(card).padding(Padding { top: 4.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill)].into()
+    let body: Element<Msg> = scrollable(container(card).padding(Padding { top: 4.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill).into();
+    head_and(a, "settings", head_items(a, "Settings", String::new(), None, vec![]), "settings", body)
 }
 
 // ------------------------------------------------------------------ the menu and the sheets

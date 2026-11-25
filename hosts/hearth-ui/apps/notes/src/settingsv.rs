@@ -87,18 +87,32 @@ pub fn view(a: &App) -> E<'_, Msg> {
     let gm_line = format!("{} now · still when Reduce motion is on", crate::gview::name_of(&a.g.mode));
     let gm_row = look::srow(&p, look::sym(&p, "⏸"), "Graph modes", sub(gm_line), look::btn(&p, "Graph modes ›", look::B::Normal, false, false, Some(Msg::Rail(Page::Modes))), false, None);
     let about = look::srow(&p, look::sym(&p, "?"), "About Hearth Notes", sub(format!("Pure Rust, part of Hearth OS. Your notes are plain Markdown in {}; the app's own files are in {}.", hearth_notes::paths::tilde(&a.root), hearth_notes::paths::tilde(&hearth_notes::paths::data()))), gap(1.0, 1.0), false, None);
-    let mut c = column![title, head(&p, "GitHub"), gh, repo, commits, head(&p, "Sync"), auto, warn].spacing(z(10.0));
-    c = c.push(row![
-        column![head(&p, "Editor"), font_row, size_row, open_row].spacing(z(10.0)).width(Length::FillPortion(1)),
-        column![head(&p, "Looks and Today"), theme_row, today_row, ds_row, tr_row, gm_row].spacing(z(10.0)).width(Length::FillPortion(1)),
-    ]
-    .spacing(z(18.0)));
-    c = c.push(head(&p, "About")).push(about);
-    if a.prefs.unreadable {
-        c = c.push(t("Hearth Notes' settings file couldn't be read, so nothing is written over it; it's kept as it was.", f(15.0), look::BAD));
-    }
+    let unreadable = a.prefs.unreadable;
+    let items: Vec<(&'static str, E<Msg>)> = vec![
+        ("title", title.into()),
+        ("github", column![head(&p, "GitHub"), gh, repo, commits].spacing(z(10.0)).into()),
+        ("sync", column![head(&p, "Sync"), auto, warn].spacing(z(10.0)).into()),
+        ("editor", column![head(&p, "Editor"), font_row, size_row, open_row].spacing(z(10.0)).width(Length::FillPortion(1)).into()),
+        ("looks", column![head(&p, "Looks and Today"), theme_row, today_row, ds_row, tr_row, gm_row].spacing(z(10.0)).width(Length::FillPortion(1)).into()),
+        ("about", column![head(&p, "About"), about].spacing(z(10.0)).into()),
+        ("unreadable", t("Hearth Notes' settings file couldn't be read, so nothing is written over it; it's kept as it was.", f(15.0), look::BAD).into()),
+    ];
     let _ = accent2;
-    scrollable(container(c).padding(pad(z(28.0), z(44.0), z(30.0), z(44.0)))).id(SCROLL).height(Length::Fill).into()
+    // its blocks (hearth_ui::blocks "settings"): as it was when nothing is customised
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "settings",
+        items,
+        move |ps| {
+            let mut c = column![ps.take("title"), ps.take("github"), ps.take("sync"), row![ps.take("editor"), ps.take("looks")].spacing(z(18.0)), ps.take("about")].spacing(z(10.0));
+            if unreadable {
+                c = c.push(ps.take("unreadable"));
+            }
+            scrollable(container(c).padding(pad(z(28.0), z(44.0), z(30.0), z(44.0)))).id(SCROLL).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 #[allow(dead_code)]
