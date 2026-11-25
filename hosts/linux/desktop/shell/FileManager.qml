@@ -61,6 +61,9 @@ Scope {
     // 1.14's extras (Dolphin's): tags, git badges, Act as administrator, disc images, phones and cameras, apps'
     // right-click actions, sharing a folder (FilesExtras.qml, hearth_files_extras.py).
     FilesExtras { id: extras; app: filesApp }
+    // Sort my Downloads (FilesSortDownloads.qml, hearth_files_sortdl.py; its sheet and note: FilesSortSheet.qml)
+    FilesSortDownloads { id: sortDl; app: filesApp }
+    readonly property var sdl: sortDl
     readonly property var fx: extras
     function propsAt(paths, tab) { properties(paths); if (tab) propsWin.tab = tab; }
 
@@ -1305,6 +1308,7 @@ Scope {
         if (!picking) for (const c of ["new", "cut", "copy", "paste", "rename", "copypath", "delete"]) t.push({ t: c });
         t.push({ t: "sort" }, { t: "view" }, { t: "hidden" });
         if (!picking) for (const c of ["bc-update-all", "bc-unlock", "bc-lock", "bc-customize"]) if (briefcase.toolShown(c)) t.push({ t: c });
+        if (!picking && sortDl.here) t.push({ t: "sortdl" });
         if (!picking) t.push({ t: "undo" }, { t: "redo" }, { t: "details" });
         return t;
     }
@@ -1656,6 +1660,7 @@ Scope {
         if (t.startsWith("bc-")) return briefcase.command(t, x, y);
         switch (t) {
         case "refresh": reload(); refreshPlaces(); break;
+        case "sortdl": sortDl.openSheet(); break;
         case "new":
             if (!writable) return say("You can't make anything here");
             menuOnFolder = true;
@@ -1710,7 +1715,7 @@ Scope {
     function opName(op) {
         const n = op.items || op.paths || [op.path || op.to];
         const what = n.length === 1 ? "“" + base(n[0]) + "”" : n.length + " items";
-        return ({ rename: "Rename", create: "New " + what, trash: "Trash " + what, copy: "Copy " + what, move: "Move " + what, link: "Link " + what })[op.kind] || "";
+        return ({ rename: "Rename", create: "New " + what, trash: "Trash " + what, copy: "Copy " + what, move: "Move " + what, link: "Link " + what, sortdl: "Sort my Downloads" })[op.kind] || "";
     }
     function undo() { runUndo(true); }
     function redo() { runUndo(false); }
@@ -1736,6 +1741,10 @@ Scope {
         } else if (k === "create" || k === "copy" || k === "link") {
             const list = op.items || [op.path];
             call([isUndo ? "trash" : "untrash"].concat(list), (r, err) => err ? failed(err) : done());
+        } else if (k === "sortdl") {
+            // Sort my Downloads: everything back where it was (only where nothing of that name is now)
+            call([isUndo ? "sort-undo" : "sort-redo", JSON.stringify(op.moves)], (r, err) => err ? failed(err)
+                : done(null, "Sort my Downloads (" + plural(r && r.moved !== undefined ? r.moved : op.moves.length, "item", "items") + ")"));
         } else if (k === "move") {
             if (isUndo) startJob({ verb: "move", paths: op.items, dest: op.back, decide: {}, undoOp: op, undoMode: "undo" });
             else startJob({ verb: "move", paths: op.srcs, dest: op.dest, decide: {}, undoOp: op, undoMode: "redo" });
@@ -1836,11 +1845,43 @@ Scope {
 
     // ================================================ the actions menu (X)
     function sep() { return { sep: true }; }
+    // A heading in a menu (View › LAYOUT): a line with a name; moved over like a line.
+    function heading(t) { return { sep: true, head: t }; }
+    // Files made of blocks (AppBlocks.qml, in the window): its LAYOUT items, and the menus as Edit layout › Menus… left them
+    property var blocks: null
+    readonly property var blockPages: {
+        const own = [
+            { id: "tabs", title: "The tabs", x: 0, y: 0, w: 24, h: 2 },
+            { id: "address", title: "The address bar", x: 0, y: 2, w: 24, h: 2 },
+            { id: "toolbar", title: "The command bar", x: 0, y: 4, w: 24, h: 2 },
+            { id: "sidebar", title: "The navigation pane", x: 0, y: 6, w: 4, h: 18 },
+            { id: "folder", title: "The folder", x: 4, y: 6, w: 10, h: 16 },
+            { id: "status", title: "The status bar", x: 4, y: 22, w: 10, h: 2 },
+            { id: "split", title: "Split view", x: 14, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 },
+            { id: "preview", title: "The details pane", x: 19, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 }
+        ];
+        return [{ id: "window", title: "Hearth Files", blocks: own }, { id: "chooser", title: "The file chooser", blocks: own.filter(b => b.id !== "tabs" && b.id !== "split") }];
+    }
+    property string menuKind: ""               // which menu showMenu is showing (Edit layout › Menus… puts its items in order)
+    property var dryItems: null                // a menu's items, made without opening it (Edit layout › Menus…)
+    function dryMenu(fn) {
+        dryItems = [];
+        const keep = { overlay: overlay, title: menuTitle, items: menuItems, onFolder: menuOnFolder };
+        try { fn(); } catch (e) { console.warn("Files: " + e); }
+        const out = dryItems || [];
+        dryItems = null;
+        overlay = keep.overlay; menuOnFolder = keep.onFolder;
+        return out;
+    }
     function showMenu(title, items, x, y) {
-        // No separator first, last or twice in a row.
+        if (menuKind !== "" && blocks) items = blocks.arrange(menuKind, items);
+        menuKind = "";
+        if (dryItems !== null) { dryItems = items.filter(i => !i.sep); return; }
+        // No separator first, last or twice in a row (a heading takes the place of a line before it).
         const out = [];
         for (const it of items) {
-            if (it.sep && (!out.length || out[out.length - 1].sep)) continue;
+            if (it.head && out.length && out[out.length - 1].sep && !out[out.length - 1].head) out.pop();
+            if (it.sep && !it.head && (!out.length || out[out.length - 1].sep)) continue;
             out.push(it);
         }
         while (out.length && out[out.length - 1].sep) out.pop();
@@ -1946,6 +1987,7 @@ Scope {
             for (const it of extras.menuItems(e, n, t)) q.push(it);
             q.push(sep(), { id: "props", label: "Properties", key: "Alt+Enter", icon: "info" }, { id: "more", label: "Show more options", icon: "menu" });
             lastMenuX = x === undefined ? -1 : x; lastMenuY = y === undefined ? -1 : y;
+            menuKind = "context";
             return showMenu(n > 1 ? plural(n, "item") + " selected" : e.name, q, lastMenuX, lastMenuY);
         }
         menuFull = false;
@@ -2007,7 +2049,11 @@ Scope {
                                            { id: "splitview", label: splitView ? "Close split view" : "Split view", key: "F9", icon: "grid", group: "View" });
             if (e || !onHome) items.push(sep(), { id: "props", label: e ? "Properties" : "Folder properties", key: "Alt+Enter", icon: "info" });
         }
+        // Describe it and Edit layout are here too (at the bottom of empty space's menu), so a Files whose View button
+        // was moved away or hidden can always be changed back
+        if (!e && !picking) for (const it of layoutItems()) items.push(it);
         const title = e ? (n > 1 ? plural(n, "item") + " selected" : e.name) : (listing ? (listing.name || "Folder") : "Folder");
+        menuKind = "context";
         showMenu(title, items.filter(i => !i.off), x === undefined ? -1 : x, y === undefined ? -1 : y);
     }
     // ================================================ This PC and Installed apps: their menus
@@ -2346,18 +2392,21 @@ Scope {
                                { id: "cset:copyPath=linux", label: ck(cCopyLinux) + "Copy path: Linux path" });
         return out;
     }
+    // LAYOUT (Edit layout, Describe it…, Back to the original once something's kept): AppBlocks.qml's
+    function layoutItems() { return blocks ? [heading("LAYOUT")].concat(blocks.menuItems()) : []; }
     function viewMenu(mx, my) {
+        menuKind = "view";
         const ck = on => on ? "✓  " : "     ";
         // Where Files opens, like File Explorer's "Open File Explorer to" (kept only when you pick one).
         const start = picking ? [] : [sep(), { id: "tp-start:home", label: ck(startPage === homePage) + "Open Files to: Home" },
                                       { id: "tp-start:thispc", label: ck(startPage === thisPcPage) + "Open Files to: This PC" }].concat(cViewItems());
-        if (onCView) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
+        if (onCView) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start, layoutItems()), mx, my);
         if (onThisPc) return showMenu("View", [
             { id: "tp-view:grid", label: ck(pcView === "grid") + "Tiles", key: "Ctrl+1" },
             { id: "tp-view:details", label: ck(pcView === "details") + "Details", key: "Ctrl+3" },
             sep(), { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }
-        ].concat(start), mx, my);
-        if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start), mx, my);
+        ].concat(start, layoutItems()), mx, my);
+        if (onApps) return showMenu("View", [{ id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" }].concat(start, layoutItems()), mx, my);
         showMenu("View", [
             { id: "view:xlarge", label: ck(view === "xlarge") + "Extra large icons", key: "Ctrl+7" },
             { id: "view:large", label: ck(view === "large") + "Large icons", key: "Ctrl+4" },
@@ -2371,12 +2420,13 @@ Scope {
             { id: "detailspane", label: ck(detailsPane) + "Details pane", key: "Alt+P" },
             { id: "exts", label: ck(showExt) + "File name extensions" },
             { id: "hidden", label: ck(hidden) + "Hidden files", key: "Ctrl+H" }
-        ].concat(start), mx, my);
+        ].concat(layoutItems(), start), mx, my);
     }
     function runMenu(id) {
         const it = menuItems.find(i => i.id === id);
         if (it && it.sep) return;
         overlay = "";
+        if (id.startsWith("ab-")) { if (blocks) blocks.runMenu(id); return; }
         const onFolder = menuOnFolder;
         menuOnFolder = false;
         const t = onFolder ? [] : targets();
@@ -3650,6 +3700,7 @@ Scope {
                 spacing: 0
                 // Tabs, along the top like a title bar (always there; + or Ctrl+T opens one, middle-click closes one).
                 Rectangle {
+                    id: tabsBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: app.picking ? 0 : 46
                     visible: !app.picking
@@ -3757,10 +3808,14 @@ Scope {
                 }
 
                 // Back, forward, up, the path (click the empty part, Ctrl+L or / to type one), search, view, sort, hidden.
-                RowLayout {
+                // (in an Item of its own, the same size it always had, so it can be a block: AppBlocks, "address")
+                Item {
+                    id: addressBar
                     Layout.fillWidth: true
-                    Layout.margins: 14
-                    Layout.bottomMargin: 8
+                    implicitHeight: addrRow.implicitHeight + 22
+                RowLayout {
+                    id: addrRow
+                    anchors { fill: parent; leftMargin: 14; rightMargin: 14; topMargin: 14; bottomMargin: 8 }
                     spacing: 6
                     Chip { icon: "back"; label: ""; flat: true; dim: !app.back.length; focused: app.toolLit("back"); onClicked: { keys.forceActiveFocus(); app.goBack(); } }
                     Chip { icon: "forward"; label: ""; flat: true; dim: !app.fwd.length; focused: app.toolLit("forward"); onClicked: { keys.forceActiveFocus(); app.goForward(); } }
@@ -3911,10 +3966,12 @@ Scope {
                         }
                     }
                 }
+                }
 
                 // ------------------------------------------------ the command bar: New, Cut, Copy, Paste, Rename, Copy path,
                 // Delete | Sort, View, Show | Undo, Redo, Details. Up from the files reaches it with the controller.
                 Rectangle {
+                    id: cmdBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: 52
                     color: Theme.bg
@@ -3936,6 +3993,8 @@ Scope {
                                 { t: "bc-update-all", icon: "sync", label: "Update All", bc: true }, { t: "bc-unlock", icon: "lock", label: "Unlock", bc: true },
                                 { t: "bc-lock", icon: "lock", label: "Lock", bc: true }, { t: "bc-customize", icon: "bc-briefcase", label: "Customize", bc: true },
                                 { fill: true },
+                                // Sort my Downloads (only in Downloads; accent while anything is loose)
+                                { t: "sortdl", icon: "", label: "✦  Sort my Downloads" }, { sep: true, sortdl: true },
                                 { t: "undo", icon: "undo", label: "Undo" }, { t: "redo", icon: "", label: "Redo" },
                                 { sep: true }, { t: "details", icon: "info", label: "Details" }
                             ]
@@ -3954,6 +4013,7 @@ Scope {
                                 // Choosing a file for an app: only Sort, View and Show.
                                 visible: (!app.picking || !!modelData.fill || ["sort", "view", "hidden"].indexOf(modelData.t) >= 0)
                                     && (!modelData.bc || (modelData.t ? briefcase.toolShown(modelData.t) : briefcase.inBriefcase))
+                                    && ((modelData.t !== "sortdl" && !modelData.sortdl) || sortDl.here)
                                 Layout.fillWidth: !!modelData.fill
                                 implicitWidth: modelData.sep ? 13 : modelData.fill ? 0 : cmdChip.implicitWidth
                                 implicitHeight: 40
@@ -3971,6 +4031,8 @@ Scope {
                                     icon: cmd.modelData.icon || ""
                                     label: cmdRow.narrow && cmd.modelData.icon ? "" : (cmd.modelData.label || "") + (cmd.modelData.more && !cmdRow.narrow ? "  ⌄" : "")
                                     dim: !cmd.on
+                                    primary: cmd.modelData.t === "sortdl" && sortDl.loose > 0
+                                    strong: cmd.modelData.t === "sortdl" && sortDl.loose > 0
                                     dot: (cmd.modelData.t === "details" && app.detailsPane) || (cmd.modelData.t === "hidden" && app.hidden)
                                     focused: !!cmd.modelData.t && app.toolLit(cmd.modelData.t)
                                     onClicked: {
@@ -4165,6 +4227,7 @@ Scope {
 
                     // ------------------------------------------------ folder
                     ColumnLayout {
+                        id: folderCol
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         spacing: 0
@@ -4367,6 +4430,7 @@ Scope {
                                             link: cell.modelData.isLink
                                             bc: cell.modelData.briefcase || null
                                             bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                            tint: sortDl.colourOf(cell.modelData)
                                             badge: briefcase.badgeFor(cell.modelData)
                                             size: app.view === "xlarge" ? 180 : app.view === "large" ? 112 : app.view === "small" ? 42 : 64
                                         }
@@ -4421,6 +4485,7 @@ Scope {
                                                 link: cell.modelData.isLink
                                                 bc: cell.modelData.briefcase || null
                                                 bcColor: briefcase.colorOf(cell.modelData.briefcase)
+                                                tint: sortDl.colourOf(cell.modelData)
                                                 badge: briefcase.badgeFor(cell.modelData)
                                                 size: cell.tiles ? 48 : 24
                                             }
@@ -4563,6 +4628,7 @@ Scope {
                                                     link: rowItem.modelData.isLink
                                                     bc: rowItem.modelData.briefcase || null
                                                     bcColor: briefcase.colorOf(rowItem.modelData.briefcase)
+                                                    tint: sortDl.colourOf(rowItem.modelData)
                                                     size: 28
                                                 }
                                                 Image {
@@ -4606,7 +4672,7 @@ Scope {
                                             Text {
                                                 Layout.preferredWidth: 100
                                                 horizontalAlignment: Text.AlignRight
-                                                text: rowItem.modelData.dir ? "" : app.fmtSize(rowItem.modelData.size)
+                                                text: rowItem.modelData.dir ? (sortDl.countOf(rowItem.modelData) >= 0 ? app.plural(sortDl.countOf(rowItem.modelData), "item", "items") : "") : app.fmtSize(rowItem.modelData.size)
                                                 color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                                             }
                                             Text {
@@ -4827,6 +4893,7 @@ Scope {
                         // ------------------------------------------------ bottom bar: status, search, or progress
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.line }
                         Rectangle {
+                            id: statusBar
                             Layout.fillWidth: true
                             Layout.preferredHeight: app.job ? 66 : 44
                             color: Theme.panel
@@ -4839,6 +4906,10 @@ Scope {
                                     Layout.fillWidth: true
                                     text: {
                                         if (app.note !== "") return app.note;
+                                        // Downloads (Sort my Downloads' mockups): what's loose, or the folders and "nothing loose"
+                                        if (sortDl.here && !app.markCount && app.found === null)
+                                            return sortDl.loose > 0 ? app.plural(sortDl.loose, "item", "items") + " loose in Downloads"
+                                                                    : app.plural(app.entries.length, "folder", "folders") + " · nothing loose";
                                         let s = app.found !== null ? (app.searching ? "Searching… " : "") + app.plural(app.entries.length, "match", "matches") + " for “" + app.foundQuery + "”"
                                             : app.plural(app.entries.length, app.onApps ? "app" : "item");
                                         if (app.markCount) {
@@ -5214,6 +5285,26 @@ Scope {
                 if (last >= 0) app.cur = last;
             }
 
+            // ------------------------------------------------ Files made of blocks (AppBlocks.qml): right-click a part, or
+            // View › Edit layout, to move, size, hide and restyle its parts; Describe it beside it. Nothing kept: Files
+            // exactly as it is. Under the menus and dialogs, so they stay on top.
+            AppBlocks {
+                id: blocks
+                anchors.fill: parent
+                app: "files"
+                appName: "Hearth Files"
+                page: filesApp.picking ? "chooser" : "window"
+                background: Theme.bg
+                focusBack: keys
+                // (filesApp: inside AppBlocks, "app" is its own app id)
+                pages: filesApp.blockPages
+                parts: ({ tabs: tabsBar, address: addressBar, toolbar: cmdBar, sidebar: navPane, folder: folderCol, status: statusBar, split: splitPane, preview: detailsBox })
+                menus: [{ id: "view", title: "View", items: () => filesApp.dryMenu(() => filesApp.viewMenu(-1, -1)) },
+                        { id: "context", title: "Right-click (empty space)", items: () => filesApp.dryMenu(() => filesApp.openMenu(true, -1, -1)) }]
+                Component.onCompleted: filesApp.blocks = blocks
+                Component.onDestruction: if (filesApp.blocks === blocks) filesApp.blocks = null
+            }
+
             // ------------------------------------------------ overlays: actions menu and dialogs
             Rectangle {
                 anchors.fill: parent
@@ -5308,12 +5399,18 @@ Scope {
                             required property int index
                             readonly property bool lit: app.menuIndex === index && !modelData.sep
                             width: ListView.view.width
-                            height: modelData.sep ? 11 : modelData.sub ? 52 : 40
+                            height: modelData.head ? 30 : modelData.sep ? 11 : modelData.sub ? 52 : 40
                             Rectangle {
-                                visible: !!mi.modelData.sep
+                                visible: !!mi.modelData.sep && !mi.modelData.head
                                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 10; rightMargin: 10 }
                                 height: 1
                                 color: Theme.line
+                            }
+                            Text {
+                                visible: !!mi.modelData.head
+                                anchors { left: parent.left; leftMargin: 14; bottom: parent.bottom; bottomMargin: 4 }
+                                text: mi.modelData.head || ""
+                                color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.2
                             }
                             Rectangle {
                                 visible: !mi.modelData.sep
@@ -5680,6 +5777,9 @@ Scope {
                     }
                 }
             }
+
+            // ------------------------------------------------ Sort my Downloads' sheet and note (over everything)
+            FilesSortSheet { sd: sortDl; z: 60 }
         }
     }
 
@@ -5772,6 +5872,8 @@ Scope {
         property var bc: null                   // a Briefcase folder: {icon, color, badge, locked} (hearth-files list)
         property var badge: null                // an item in a Briefcase: its status {color, glyph}
         property color bcColor: Theme.accent
+        property string tint: ""                // Sort my Downloads' five folders, each in its colour
+        readonly property color folderColor: tint !== "" ? tint : Theme.accent
         readonly property bool isBc: !!bc
         readonly property color band: ({ image: "#5fb98f", video: "#b36ad9", audio: "#4f9dde", archive: "#b98a5a", disc: "#8c7ae6",
             app: Theme.ember, doc: "#e06666", text: "#a69484", file: "#7d6a5c" })[kind] || "#7d6a5c"
@@ -5799,19 +5901,19 @@ Scope {
             x: g.size * 0.06; y: g.size * 0.14
             width: g.size * 0.42; height: g.size * 0.2
             radius: g.size * 0.06
-            color: Qt.darker(Theme.accent, 1.35)
+            color: Qt.darker(g.folderColor, 1.35)
         }
         Rectangle {
             visible: g.kind === "folder" && !g.isBc
             x: g.size * 0.06; y: g.size * 0.24
             width: g.size * 0.88; height: g.size * 0.62
             radius: g.size * 0.08
-            color: Theme.accent
+            color: g.folderColor
             Rectangle {
                 anchors { left: parent.left; right: parent.right; top: parent.top }
                 height: Math.max(1, g.size * 0.03)
                 radius: height / 2
-                color: Qt.lighter(Theme.accent, 1.18)
+                color: Qt.lighter(g.folderColor, 1.18)
             }
         }
         // File: a card with a folded corner and the kind's band.

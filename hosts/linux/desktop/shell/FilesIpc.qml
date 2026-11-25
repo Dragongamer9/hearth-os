@@ -14,6 +14,9 @@ Scope {
         // Forwarded to Hearth Files (the shell's Files, or the file chooser's).
         function view(v: string): void { ipc.get().setView(v); }
         function menu(): void { ipc.get().viaPad = false; ipc.get().openMenu(!ipc.get().current, -1, -1); }
+        // View (with LAYOUT: Edit layout, Describe it…) and the empty space's right-click menu (LAYOUT at its bottom)
+        function viewmenu(): void { ipc.get().viewMenu(-1, -1); }
+        function foldermenu(): void { ipc.get().viaPad = false; ipc.get().openMenu(true, -1, -1); }
         function search(q: string): void { ipc.get().runSearch(q); }
         function tab(p: string): void { ipc.get().open(""); ipc.get().newTab(p); }
         function select(name: string): void { const i = ipc.get().entries.findIndex(e => e.name === name); if (i >= 0) ipc.get().cur = i; }
@@ -34,6 +37,16 @@ Scope {
         function letter(l: string): void { const r = ipc.get().fromLetters(l + ":\\"); if (r && r.path) { ipc.get().open(""); ipc.get().navigate(r.path, ""); } }
         function details(on: string): void { ipc.get().detailsPane = on === "on"; ipc.get().rememberView(); }
         function undo(): void { ipc.get().undo(); }
+        // Sort my Downloads (the Desktop Mode test's pictures): open the sheet, Show every file, Sort, Undo, and what it knows.
+        function sortdl(): void { ipc.get().sdl.openSheet(); }
+        function sortevery(): void { ipc.get().sdl.every = !ipc.get().sdl.every; }
+        function sortgo(): void { ipc.get().sdl.go(); }
+        function sortundo(): void { ipc.get().sdl.undo(); }
+        function sortstate(): string {
+            const s = ipc.get().sdl;
+            return JSON.stringify({ downloads: s.downloads, here: s.here, loose: s.loose, folders: s.folders, open: s.open, asking: s.asking,
+                                    counts: s.plan ? [0, 1, 2, 3, 4].map(g => s.count(g)) : [], sorted: s.sorted, note: s.noteText });
+        }
         // The terminal panel (F4) and split view (F9) on or off; Compare two items of this folder ("a.txt/b.txt").
         function terminal(on: string): void { ipc.get().showTerminal(on === "on"); }
         function split(on: string): void { ipc.get().splitView = on === "on"; }

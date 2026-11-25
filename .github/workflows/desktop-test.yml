@@ -2677,6 +2677,147 @@ jobs:
           ls -la $o
           pkill -x labwc || true; pkill -f quickshell || true
 
+      # Every Mantel app made of blocks (AppBlocks.qml, AppBlocksFlow.qml): each app as it is (nothing kept: nothing
+      # moves, nothing is written), with Edit layout open in place, its part menu (right-click), Files' View menu with
+      # LAYOUT, Edit layout › Menus…, Describe it opened for an app, a kept layout (on the grid, and only a part hidden),
+      # Settings' page groups being edited. Pictures in shots/app-blocks.
+      - name: Apps made of blocks (Edit layout, Describe it)
+        if: always()
+        shell: bash
+        run: |
+          o=shots/app-blocks; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          say() { echo "::notice title=App blocks::$*"; }
+          bad() { echo "::error title=App blocks::$*"; touch shots/FAILED; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_app_blocks.py' -v > $o/unit.log 2>&1 && python3 -m unittest discover -s hosts/linux/test -p 'test_files_sort_downloads.py' -v >> $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -5 | tr '\n' ' ')"
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          SH="$PWD/hosts/linux/desktop/shell"
+          A="$HOME/.config/nimbus/apps"; rm -rf "$A"
+          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          CONF=$(python3 $SH/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | tail -n1 || echo "ipc $* failed"; }
+          st() { ipc appblocks state "$1"; }
+          want() {  # want APP WHAT PATTERN
+            local s; s=$(st "$1")
+            case "$s" in *$3*) say "$1: $2" ;; *) bad "$1: $2 — state: $(echo "$s" | cut -c1-400)" ;; esac
+          }
+          mkdir -p "$HOME/Documents/Reports" && printf 'a,b\n1,2\n' > "$HOME/Documents/data.csv"
+          # each app: as it is, then Edit layout in place, its part menu, Done (nothing changed: nothing written)
+          shoot() {  # shoot APP NAME OPEN… ; the window is opened by the rest of the line
+            local app=$1 name=$2; shift 2
+            "$@"; sleep 5
+            grim "$o/$name-1-as-it-is.png" || true
+            want "$app" "nothing kept: as it is" '"mode":"own"'
+            ipc appblocks edit "$app"; sleep 2
+            grim "$o/$name-2-edit-layout.png" || true
+            want "$app" "Edit layout opens in place" '"editing":true'
+            ipc appblocks done "$app"; sleep 1
+            ipc appblocks partMenu "$app" ""; sleep 1
+            grim "$o/$name-3-right-click-a-part.png" || true
+            ipc appblocks done "$app"; sleep 1
+            [ -e "$A/$app.json" ] && bad "$app: opening it and Edit layout without a change wrote $A/$app.json" || say "$app: nothing written"
+          }
+          shoot files files ipc files open "$HOME/Documents"
+          ipc filemanager viewmenu; sleep 2; grim $o/files-4-view-menu-layout.png || true; ipc filemanager close; sleep 1
+          ipc filemanager foldermenu; sleep 2; grim $o/files-5-empty-space-menu-layout.png || true; ipc filemanager close; sleep 1
+          ipc appblocks edit files; sleep 1; ipc appblocks pick files sidebar; ipc appblocks menus files; sleep 2
+          grim $o/files-6-edit-layout-menus.png || true
+          ipc appblocks done files; sleep 1
+          ipc appblocks describe files; sleep 3; grim $o/files-7-describe-it.png || true
+          ipc describe close; sleep 1
+          ipc files close; sleep 2
+          # a layout kept for Files (as hearth-layout app-keep writes it): on the grid, then only the status bar hidden
+          mkdir -p "$A"
+          printf '%s' '{"format":1,"layout":{"blocks":{"mantel-window":{"tabs":{"x":0,"y":0,"w":24,"h":2},"address":{"x":0,"y":2,"w":24,"h":2},"toolbar":{"x":0,"y":22,"w":24,"h":2},"sidebar":{"x":18,"y":4,"w":6,"h":18,"corners":16,"accent":"#5b8cff"},"folder":{"x":0,"y":4,"w":12,"h":16},"status":{"x":0,"y":20,"w":12,"h":2},"split":{"x":12,"y":4,"w":6,"h":18},"preview":{"x":12,"y":4,"w":6,"h":18,"hidden":true}}}},"features":[]}' > "$A/files.json"
+          ipc files open "$HOME/Documents"; sleep 5
+          grim $o/files-8-kept-on-the-grid.png || true
+          want files "a kept layout is laid out on the grid" '"mode":"grid"'
+          ipc appblocks edit files; sleep 2; grim $o/files-9-kept-edit-layout.png || true; ipc appblocks done files
+          ipc files close; sleep 2
+          printf '%s' '{"format":1,"layout":{"blocks":{"mantel-window":{"status":{"hidden":true}}}},"features":[]}' > "$A/files.json"
+          ipc files open "$HOME/Documents"; sleep 5
+          grim $o/files-10-status-bar-hidden.png || true
+          want files "only a part hidden: Files' own layout without it" '"mode":"natural"'
+          ipc files close; sleep 2
+          printf '%s' '{"layout":' > "$A/files.json"
+          ipc files open "$HOME/Documents"; sleep 4
+          want files "a file that can't be read: Files as it is, and it says so" '"unreadable":true'
+          [ "$(cat "$A/files.json")" = '{"layout":' ] && say "files: the unreadable file was left as it was" || bad "files: the unreadable file was changed"
+          ipc files close; sleep 2
+          rm -rf "$A"
+          shoot task-manager task-manager ipc tasks tab processes
+          ipc tasks tab performance:cpu; sleep 4; ipc appblocks edit task-manager; sleep 2; grim $o/task-manager-4-performance-edit-layout.png || true
+          want task-manager "Performance's own blocks" '"tiles","detail"'
+          ipc appblocks done task-manager; ipc tasks close; sleep 2
+          shoot capture capture ipc capture open
+          ipc capture close; sleep 2
+          shoot settings settings ipc settings page display
+          ipc appblocks flowEdit; sleep 2; grim $o/settings-4-page-groups-editing.png || true
+          fs=$(ipc appblocks flowState); case "$fs" in *'"editing":true'*) say "Settings › Display: its groups are blocks ($(echo "$fs" | cut -c1-200))" ;; *) bad "Settings' page groups: $fs" ;; esac
+          ipc appblocks flowDone; sleep 1
+          ipc appblocks flowMenu; sleep 1; grim $o/settings-5-right-click-a-group.png || true
+          ipc appblocks flowDone
+          ipc settings close; sleep 2
+          shoot resmon resource-monitor ipc resmon open
+          ipc resmon close; sleep 2
+          shoot reliability reliability ipc reliability open
+          ipc reliability close; sleep 2
+          shoot system-restore system-restore ipc restore open
+          ipc restore close; sleep 2
+          # Sort my Downloads in Mantel's Files (FilesSortDownloads.qml, FilesSortSheet.qml, hearth_files_sortdl.py; mockups
+          # docs/mockups/1.17-sort-downloads): the button in Downloads (accent while anything is loose), the preview,
+          # Show every file, sorted (the note with Undo, the five folders in their colours), and Undo putting it all back.
+          # Its AI is a stand-in hearth-layout here (sort-ask only: names in, a place out), made just for this part.
+          printf '%s\n' '#!/bin/sh' 'case "$1" in sort-ask) echo "{\"ok\":true,\"places\":{\"mystery-tool.qqq\":\"Installers\"}}" ;; *) echo "{\"ok\":false}"; exit 1 ;; esac' > /tmp/fakebin/hearth-layout
+          chmod +x /tmp/fakebin/hearth-layout
+          DL=$(HOME=$HOME python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import hearth_files_sortdl as s; print(s.downloads())' "$SH")
+          mkdir -p "$DL"
+          ( cd "$DL" && for f in hearth-os-1.18-x86_64.iso hearth-ai-command-center_1.2.AppImage console-remote-play_0.4.deb Krita-5.2.AppImage \
+              steam_latest.deb mods.tar.zst wallpaper.png "wallpaper (1).png" clip.mp4 song.mp3 notes.pdf budget-2026.ods fix-audio.sh \
+              mystery-tool.qqq AppImage.zip "AppImage(2).zip" ubuntu-24.04.iso; do printf 'same\n' > "$f"; done; mkdir -p "Old project" )
+          # real (tiny) pictures, so Files' thumbnails read them; the copy is the same size as the first
+          python3 -c 'import sys,zlib,struct; c=lambda t,d: struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)); open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+c(b"IHDR",struct.pack(">IIBBBBB",1,1,8,2,0,0,0))+c(b"IDAT",zlib.compress(b"\x00\xe9\xa4\x3d"))+c(b"IEND",b""))' "$DL/wallpaper.png"
+          cp "$DL/wallpaper.png" "$DL/wallpaper (1).png"; cp "$DL/wallpaper.png" "$DL/screenshot.png"
+          # what was already loose in Downloads (earlier steps' downloads) is sorted too
+          top0=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
+          sstate() { ipc filemanager sortstate; }
+          ipc files open "$DL"; sleep 5
+          grim $o/files-sort-1-button.png || true
+          s1=$(sstate); case "$s1" in *'"here":true'*"\"loose\":$top0,"*) say "Sort my Downloads: the button in Downloads, $top0 loose ($(echo "$s1" | cut -c1-200))" ;; *) bad "Sort my Downloads in Downloads: $s1" ;; esac
+          ipc filemanager sortdl; sleep 4
+          grim $o/files-sort-2-preview.png || true
+          s2=$(sstate); case "$s2" in *'"open":true'*'"counts":['*) n2=$(echo "$s2" | python3 -c 'import json,sys; c=json.load(sys.stdin)["counts"]; print(sum(c), c[4] >= 2)'); [ "$n2" = "$top0 True" ] && say "Sort my Downloads' preview, every loose thing in a group, the copies to delete: $(echo "$s2" | cut -c1-260)" || bad "Sort my Downloads' preview counts ($n2, wanted $top0 True): $s2" ;; *) bad "Sort my Downloads' preview: $s2" ;; esac
+          ipc filemanager sortevery; sleep 2
+          grim $o/files-sort-3-every-file.png || true
+          ipc filemanager sortevery; ipc filemanager sortgo; sleep 4
+          grim $o/files-sort-4-sorted.png || true
+          s4=$(sstate); left=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
+          case "$s4" in *'"loose":0'*"Sorted $top0 items into 5 folders"*) [ "$left" = 0 ] && say "sorted: $(echo "$s4" | cut -c1-260)" || bad "sorted, but $left things are still loose" ;; *) bad "Sort my Downloads didn't sort: $s4" ;; esac
+          [ -f "$DL/_to_delete/Old copies/wallpaper (1).png" ] && [ -f "$DL/Installers/mystery-tool.qqq" ] && [ -f "$DL/Hearth/Hearth OS/hearth-os-1.18-x86_64.iso" ] && say "each in its place (copies in _to_delete, the AI's pick, Hearth OS)" || bad "not where they go: $(cd "$DL" && find . -type f | sort | tr '\n' ' ')"
+          ipc filemanager sortundo; sleep 4
+          grim $o/files-sort-5-undone.png || true
+          back=$(find "$DL" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name Hearth ! -name Installers ! -name Media ! -name Documents ! -name _to_delete | wc -l)
+          [ "$back" = "$top0" ] && [ -d "$DL/Old project" ] && say "Undo put all $top0 back" || bad "Undo put $back of $top0 back at the top of Downloads: $(cd "$DL" && find . | sort | tr '\n' ' ')"
+          ipc files close; sleep 2
+          rm -f /tmp/fakebin/hearth-layout
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(AppBlocks|AppBlocksFlow|AppBlocksHub|EditLayoutButton|DescribeIt|FileManager|FilesIpc|FilesSortDownloads|FilesSortSheet|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)" "$LOG" 2>/dev/null | sort -u | head -12 || true)
+          [ -z "$xbad" ] && say "no QML errors from the apps made of blocks" || bad "$(echo "$xbad" | cut -c1-300 | tr '\n' ' ')"
+          ls -la $o
+          pkill -x labwc || true; pkill -f quickshell || true
+
       # The screenshots and logs also go to the ci/desktop-shots branch, so they can be looked at without
       # downloading the artifact.
       # A run started by hand on another branch publishes to ci/desktop-shots-<branch> instead.

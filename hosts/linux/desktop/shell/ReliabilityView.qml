@@ -184,6 +184,7 @@ FocusScope {
         spacing: 0
         // title bar
         Rectangle {
+            id: relTitle
             Layout.fillWidth: true; Layout.preferredHeight: 40; color: v.cTitle
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 14; spacing: 10
@@ -192,6 +193,7 @@ FocusScope {
                     onPaint: { const c = getContext("2d"); c.reset(); c.scale(width / 24, height / 24); c.strokeStyle = v.cAccent; c.lineWidth = 2; c.lineCap = "round"; c.lineJoin = "round"; c.path = "M3 17l5-6 4 3 5-8 4 5"; c.stroke(); }
                 }
                 Text { Layout.fillWidth: true; text: "Reliability history"; color: v.cText; font.family: v.font; font.pixelSize: 13; font.weight: Font.Medium }
+                EditLayoutButton { blocks: relBlocks }
                 Item {
                     Layout.preferredWidth: 46; Layout.fillHeight: true
                     Text { anchors.centerIn: parent; text: "✕"; color: v.cMuted; font.pixelSize: 12 }
@@ -201,6 +203,7 @@ FocusScope {
         }
         // header
         Rectangle {
+            id: relHead
             Layout.fillWidth: true; Layout.preferredHeight: 64; color: v.cHead
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: v.cLine }
             RowLayout {
@@ -320,6 +323,7 @@ FocusScope {
         }
         // the day's events
         Rectangle {
+            id: relEvents
             Layout.fillWidth: true; Layout.fillHeight: true
             Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 16; Layout.topMargin: 0
             radius: 10; color: v.cPanel; border.width: 1; border.color: v.cLine
@@ -378,6 +382,25 @@ FocusScope {
                 }
             }
         }
+    }
+
+
+    // ---- made of blocks (AppBlocks.qml): right-click a part, or the Edit layout button in the title bar. Nothing
+    // kept: as it is.
+    AppBlocks {
+        id: relBlocks
+        anchors.fill: parent
+        app: "reliability"
+        appName: "Reliability history"
+        page: "window"
+        background: v.cBg
+        focusBack: v
+        pages: [{ id: "window", title: "Reliability history", blocks: [
+            { id: "title", title: "The title bar", x: 0, y: 0, w: 24, h: 1 },
+            { id: "header", title: "The header", x: 0, y: 1, w: 24, h: 2 },
+            { id: "chart", title: "The chart", x: 0, y: 3, w: 24, h: 7 },
+            { id: "events", title: "The day's events", x: 0, y: 10, w: 24, h: 14 }] }]
+        parts: ({ title: relTitle, header: relHead, chart: chart, events: relEvents })
     }
 
     // ---- Details

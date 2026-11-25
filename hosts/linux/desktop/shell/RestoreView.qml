@@ -260,11 +260,13 @@ FocusScope {
         spacing: 0
         // title bar
         Rectangle {
+            id: rsTitle
             Layout.fillWidth: true; Layout.preferredHeight: 40; color: v.cTitle
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 14; spacing: 10
                 Glyph { Layout.preferredWidth: 16; Layout.preferredHeight: 16; d: "M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 2"; c: v.cAccent; w: 2 }
                 Text { Layout.fillWidth: true; text: "System Restore"; color: v.cText; font.family: v.font; font.pixelSize: 13; font.weight: Font.Medium }
+                EditLayoutButton { blocks: rsBlocks }
                 Item {
                     Layout.preferredWidth: 46; Layout.fillHeight: true
                     Glyph { anchors.centerIn: parent; width: 10; height: 10; d: "M0 0l24 24M24 0L0 24"; c: v.cMuted; w: 2.4 }
@@ -274,6 +276,7 @@ FocusScope {
         }
         // header
         Rectangle {
+            id: rsHead
             Layout.fillWidth: true; Layout.preferredHeight: hdr.implicitHeight + 32; color: v.cHead
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: v.cLine }
             ColumnLayout {
@@ -286,6 +289,7 @@ FocusScope {
         }
         // body
         RowLayout {
+            id: rsBody
             Layout.fillWidth: true; Layout.fillHeight: true
             Layout.margins: 16; Layout.leftMargin: 22; Layout.rightMargin: 22
             spacing: 16
@@ -409,6 +413,7 @@ FocusScope {
         }
         // footer
         Rectangle {
+            id: rsFoot
             Layout.fillWidth: true; Layout.preferredHeight: 58; color: v.cHead
             Rectangle { width: parent.width; height: 1; color: v.cLine }
             RowLayout {
@@ -419,6 +424,25 @@ FocusScope {
                 Btn { label: "Cancel"; focused: v.zone === "footer" && v.footIdx === 2; onClicked: v.closeAll() }
             }
         }
+    }
+
+
+    // ---- made of blocks (AppBlocks.qml): right-click a part, or the Edit layout button in the title bar. Nothing
+    // kept: as it is.
+    AppBlocks {
+        id: rsBlocks
+        anchors.fill: parent
+        app: "system-restore"
+        appName: "System Restore"
+        page: "window"
+        background: v.cBg
+        focusBack: v
+        pages: [{ id: "window", title: "System Restore", blocks: [
+            { id: "title", title: "The title bar", x: 0, y: 0, w: 24, h: 1 },
+            { id: "header", title: "The header", x: 0, y: 1, w: 24, h: 3 },
+            { id: "body", title: "The restore points and what changes", x: 0, y: 4, w: 24, h: 18 },
+            { id: "footer", title: "The buttons", x: 0, y: 22, w: 24, h: 2 }] }]
+        parts: ({ title: rsTitle, header: rsHead, body: rsBody, footer: rsFoot })
     }
 
     // ---- dialogs: confirm, every changed setting, working, done

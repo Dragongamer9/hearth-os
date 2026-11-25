@@ -21,3 +21,20 @@ next to the mockups on Nov 21. Only moves, never deletes or overwrites; one Undo
 - [x] The button back to plain (not accent) once nothing is loose — hosts/hearth-ui/apps/files/src/view.rs: "let lit = crate::sortdl::loose(a) > 0;"
 - [x] The status bar: "5 folders · nothing loose" — hosts/hearth-ui/apps/files/src/view.rs: "· nothing loose"
 - [x] The note: "✓ Sorted N items into 5 folders." with Undo, and "Ctrl+Z also puts them back" — hosts/hearth-ui/apps/files/src/sortdl.rs: "Ctrl+Z also puts them back"
+
+## 3. In Mantel's Hearth Files (Debian's Desktop Mode; the owner, Nov 25: the same in Mantel's Files)
+The rules are hearth_files_sortdl.py's (sortdl.rs's, tests mirrored in hosts/linux/test/test_files_sort_downloads.py).
+Pictured in CI (Desktop Mode test, shots/app-blocks): files-sort-1-button, files-sort-2-preview, files-sort-3-every-file,
+files-sort-4-sorted, files-sort-5-undone.
+- [x] Mantel: ✦ Sort my Downloads on the command bar's right, only in Downloads (accent while anything is loose) — hosts/linux/desktop/shell/FileManager.qml: "primary: cmd.modelData.t === \"sortdl\" && sortDl.loose > 0"
+- [x] Mantel: the status bar: "N items loose in Downloads" — hosts/linux/desktop/shell/FileManager.qml: " loose in Downloads\""
+- [x] Mantel: the dialog over a dimmed window, title and "The N things loose in Downloads go into folders…" — hosts/linux/desktop/shell/FilesSortSheet.qml: "go into folders by what they are. Nothing is deleted or overwritten, and one click puts everything back."
+- [x] Mantel: a row per folder, its colour, what goes in it and how many — hosts/linux/desktop/shell/FilesSortDownloads.qml: "AppImages, .rpm, .deb and Flatpaks · disc images in ISOs · archives in Archives"
+- [x] Mantel: To delete (red-tinted): old copies, "kept for you to empty yourself" — hosts/linux/desktop/shell/FilesSortSheet.qml: "· kept for you to empty yourself"
+- [x] Mantel: Show every file, Cancel, Sort N items — hosts/linux/desktop/shell/FilesSortSheet.qml: "\"Show every file\", \"Cancel\""
+- [x] Mantel: unknown names asked of the AI while the sheet is open (names only), else the rules' place — hosts/linux/desktop/shell/hearth_files_sortdl.py: "'sort-ask', json.dumps({'names': ns})"
+- [x] Mantel: the five folders, each with its colour and count — hosts/linux/desktop/shell/FileManager.qml: "tint: sortDl.colourOf(rowItem.modelData)"
+- [x] Mantel: the button back to plain once nothing is loose — hosts/linux/desktop/shell/FilesSortDownloads.qml: "if (e.name.charAt(0) !== \".\" && top.indexOf(e.name) < 0) n++;"
+- [x] Mantel: the status bar: "5 folders · nothing loose" — hosts/linux/desktop/shell/FileManager.qml: "\" · nothing loose\""
+- [x] Mantel: the note "✓ Sorted N items into 5 folders." with Undo, and "Ctrl+Z also puts them back" — hosts/linux/desktop/shell/FilesSortSheet.qml: "Ctrl+Z also puts them back"
+- [x] Mantel: one Undo (the note's button or Ctrl+Z) puts everything back; only moves, never overwrites — hosts/linux/desktop/shell/FileManager.qml: "call([isUndo ? \"sort-undo\" : \"sort-redo\", JSON.stringify(op.moves)]"

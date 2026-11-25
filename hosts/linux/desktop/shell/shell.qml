@@ -220,9 +220,40 @@ ShellRoot {
         source: "DescribeIt.qml"
         property string pending: "bar"
         property string ask: ""
-        onLoaded: { item.open(pending); if (ask !== "") { item.text = ask; ask = ""; item.make(); } }
+        // an app's Describe it (AppBlocks.qml): {app, name, catalog}
+        property var pendingApp: null
+        onLoaded: {
+            if (pendingApp) { const a = pendingApp; pendingApp = null; item.openApp(a.app, a.name, a.catalog); return; }
+            item.open(pending); if (ask !== "") { item.text = ask; ask = ""; item.make(); }
+        }
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Describe it couldn't load (DescribeIt.qml)")
         function openAt(p) { pending = p || "bar"; if (!active) active = true; else if (item) item.open(pending); }
+        function openApp(a, n, c) { if (item) item.openApp(a, n, c); else { pendingApp = { app: a, name: n, catalog: c }; active = true; } }
+    }
+    Connections { target: AppBlocksHub; function onDescribeAsked(a, n, c) { describe.openApp(a, n, c); } }
+    // Every Mantel app made of blocks (AppBlocks.qml): Edit layout and its state, for the checks' pictures.
+    IpcHandler {
+        target: "appblocks"
+        function edit(app: string): void { const b = AppBlocksHub.get(app); if (b) b.edit(""); }
+        function pick(app: string, id: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) b.picked = id; }
+        function done(app: string): void { const b = AppBlocksHub.get(app); if (b) { b.menuShown = false; if (b.editing) b.done(); } }
+        function partMenu(app: string, id: string): void { const b = AppBlocksHub.get(app); if (b) b.partMenu(id !== "" ? id : (b.defs.length ? b.defs[b.defs.length > 1 ? 1 : 0].id : ""), 160, 140); }
+        function menus(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) b.openMenus(); }
+        function describe(app: string): void { const b = AppBlocksHub.get(app); if (b) b.describe(); }
+        function open(): string { return JSON.stringify(Object.keys(AppBlocksHub.open)); }
+        // the Settings page shown: its groups as blocks (AppBlocksFlow.qml)
+        function flowEdit(): void { const f = AppBlocksHub.flow; if (f) f.edit(""); }
+        function flowMenu(): void { const f = AppBlocksHub.flow; if (f) { f.ensureOrig(); f.menuFor = f.orig[0] || ""; f.menuAt = Qt.point(60, (f.col ? f.col.y : 0) + 30); f.menuShown = f.menuFor !== ""; } }
+        function flowDone(): void { const f = AppBlocksHub.flow; if (f) f.done(); }
+        function flowState(): string { const f = AppBlocksHub.flow; if (!f) return JSON.stringify({ open: false }); f.ensureOrig(); return JSON.stringify({ open: true, page: f.pid, groups: f.orig, editing: f.editing, kept: f.saved !== undefined }); }
+        function state(app: string): string {
+            const b = AppBlocksHub.get(app);
+            if (!b) return JSON.stringify({ open: false });
+            return JSON.stringify({ open: true, page: b.pageId, mode: b.mode, editing: b.editing, picked: b.picked, unreadable: b.unreadable,
+                                    blocks: b.defs.map(d => d.id), parts: Object.keys(b.parts).filter(k => !!b.parts[k]),
+                                    hidden: b.placed.filter(p => p.hidden).map(p => p.id), menus: b.menus.map(m => m.id),
+                                    layoutItems: b.menuItems().map(i => i.label) });
+        }
     }
     // Build anything: the first start's "How do you want your desktop?" (once, on a new install) and your desktop's IPC.
     ScreenEditor { id: screenEditor; launcher: launcher; quick: quick; settingsApp: settings; filesApp: files; powerMenu: powerMenu }
