@@ -817,12 +817,18 @@ pub fn page(a: &App) -> E<'_> {
         }
         None => container(t(if a.pc_err.is_empty() { "Reading what this PC has inside…" } else { a.pc_err.as_str() }, 14.0, p.muted)).center_x(Length::Fill).center_y(Length::Fill).style(ui::boxed(hex("#15181c"), 10.0, Some((hex("#2a2f36"), 2.0)))).into(),
     };
-    let left = column![
-        row![ts(ui::fit(&name, 44), 15.0, p.text).wrapping(text::Wrapping::None), gap(10.0, 1.0), container(t1(sub, 13.0, p.muted)).width(Length::Fill).clip(true), legend].spacing(6.0).align_y(iced::Center),
-        stage,
-    ]
-    .spacing(8.0)
-    .width(Length::FillPortion(7));
+    let heading = row![ts(ui::fit(&name, 44), 15.0, p.text).wrapping(text::Wrapping::None), gap(10.0, 1.0), container(t1(sub, 13.0, p.muted)).width(Length::Fill).clip(true), legend].spacing(6.0).align_y(iced::Center);
     let right = container(details(a, &busy)).width(Length::Fixed(340.0)).height(Length::Fill).style(ui::boxed(p.panel, 10.0, Some((p.line, 1.0))));
-    row![left, right].spacing(12.0).padding(12.0).height(Length::Fill).into()
+    // its blocks (hearth_ui::blocks, view.rs BLOCKS "pc"): as it was when nothing is customised
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "pc",
+        vec![("heading", heading.into()), ("stage", stage), ("details", right.into())],
+        |ps| {
+            let left = column![ps.take("heading"), ps.take("stage")].spacing(8.0).width(Length::FillPortion(7));
+            row![left, ps.take("details")].spacing(12.0).padding(12.0).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }

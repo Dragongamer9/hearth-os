@@ -12,24 +12,25 @@ rm -rf "$BC"; mkdir -p "$BC/nimbus/apps"
 cat > "$BC/nimbus/apps/task-manager.json" <<'J'
 {"format": 1, "layout": {"blocks": {
   "window": {"rail": {"x": 0, "y": 0, "w": 3, "h": 12, "corners": 16, "accent": "#ff7a2f"}, "page": {"x": 3, "y": 0, "w": 9, "h": 12}},
-  "processes": {"table": {"x": 0, "y": 0, "w": 12, "h": 10}, "head": {"x": 0, "y": 10, "w": 12, "h": 2, "corners": 12, "seeThrough": 35, "font": "Noto Serif"}}}},
+  "processes": {"table": {"x": 0, "y": 0, "w": 12, "h": 10}, "title": {"x": 0, "y": 10, "w": 4, "h": 2, "corners": 12, "seeThrough": 35, "font": "Noto Serif"}, "tabs": {"x": 4, "y": 10, "w": 3, "h": 2}, "buttons": {"x": 7, "y": 10, "w": 5, "h": 2, "corners": 12, "seeThrough": 35}}}},
  "features": []}
 J
 # Reliability history: the day's events on the left, the chart on the right in blue, the heading over both.
 cat > "$BC/nimbus/apps/reliability.json" <<'J'
 {"format": 1, "layout": {"blocks": {"main": {
-  "header": {"x": 0, "y": 0, "w": 12, "h": 2},
-  "events": {"x": 0, "y": 2, "w": 7, "h": 10, "corners": 16},
-  "chart": {"x": 7, "y": 2, "w": 5, "h": 10, "corners": 16, "accent": "#5b8cff", "size": "smaller"}}}},
+  "heading": {"x": 0, "y": 0, "w": 9, "h": 1}, "toggle": {"x": 9, "y": 0, "w": 3, "h": 1},
+  "events": {"x": 0, "y": 1, "w": 7, "h": 11, "corners": 16},
+  "stability": {"x": 7, "y": 1, "w": 5, "h": 4, "corners": 16, "accent": "#5b8cff", "size": "smaller"},
+  "marks": {"x": 7, "y": 5, "w": 5, "h": 5, "size": "smaller"}, "days": {"x": 7, "y": 10, "w": 5, "h": 2, "size": "smaller"}}}},
  "features": []}
 J
 # System Restore: its buttons at the top, no heading, What will change on the left.
 cat > "$BC/nimbus/apps/system-restore.json" <<'J'
 {"format": 1, "layout": {"blocks": {"main": {
-  "footer": {"x": 0, "y": 0, "w": 12, "h": 1},
+  "make": {"x": 0, "y": 0, "w": 4, "h": 1}, "status": {"x": 4, "y": 0, "w": 4, "h": 1}, "go": {"x": 8, "y": 0, "w": 4, "h": 1},
   "header": {"hidden": true},
-  "aside": {"x": 0, "y": 1, "w": 4, "h": 11, "corners": 20, "accent": "#2f9e5a"},
-  "list": {"x": 4, "y": 1, "w": 8, "h": 11}}}},
+  "changes": {"x": 0, "y": 1, "w": 4, "h": 9, "corners": 20, "accent": "#2f9e5a"}, "see": {"x": 0, "y": 10, "w": 4, "h": 2},
+  "heads": {"x": 4, "y": 1, "w": 8, "h": 1}, "points": {"x": 4, "y": 2, "w": 8, "h": 9}, "older": {"x": 4, "y": 11, "w": 8, "h": 1}}}},
  "features": []}
 J
 # Hearth Store: the rail on the right, the title bar with the search at the bottom.
@@ -49,12 +50,12 @@ run app-blocks-03-system-restore hearth-restore 0 env XDG_CONFIG_HOME="$BC" "$BI
 run app-blocks-04-store hearth-store 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-store-app"
 run app-blocks-05-g15-broken-file-is-the-original hearth-g15-app 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-g15-app"
 
-# Arrange open: the grid, each block's bar (drag it to move, ✕ hides) and corner (drag it to size), the picked block's
-# Look (corners, see-through, font, text size, accent), Undo, Back to the original, Done, Keep this.
-run app-blocks-06-arrange-task-manager hearth-tasks 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=task-manager:processes HEARTH_ARRANGE_PICK=head "$BIN/hearth-task-manager"
-run app-blocks-07-arrange-restore-hidden-heading hearth-restore 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=system-restore:main HEARTH_ARRANGE_PICK=aside "$BIN/hearth-system-restore"
+# Edit layout open (arrange.rs): the live page, each block's soft outline, the picked one's name, ✕ Hide, its edges and
+# corner, its Look (corners, see-through, font, text size, accent), Undo, Back to the original, Describe it…, Done.
+run app-blocks-06-arrange-task-manager hearth-tasks 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=task-manager:processes HEARTH_ARRANGE_PICK=buttons "$BIN/hearth-task-manager"
+run app-blocks-07-arrange-restore-hidden-heading hearth-restore 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=system-restore:main HEARTH_ARRANGE_PICK=changes "$BIN/hearth-system-restore"
 run app-blocks-08-arrange-files hearth-files 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=files:window HEARTH_ARRANGE_PICK=folder "$BIN/hearth-files-app" "$HOME"
 run app-blocks-09-arrange-settings-home hearth-settings 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=settings:home HEARTH_ARRANGE_PICK=storage "$BIN/hearth-settings-app"
 run app-blocks-10-arrange-notes hearth-notes 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=notes:window "$BIN/hearth-notes-app"
-# Describe it's box with Move and resize blocks beside Done
+# Describe it's box with Edit layout beside Done
 run app-blocks-11-describe-box hearth-capture 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_DESCRIBE_OPEN=capture "$BIN/hearth-capture-app"

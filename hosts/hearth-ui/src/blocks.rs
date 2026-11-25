@@ -269,6 +269,10 @@ pub fn catalog(pages: &[PageDef]) -> Value {
 pub enum Grip {
     Move,
     Size,
+    /// the right edge: wider or narrower only (Edit layout)
+    Wide,
+    /// the bottom edge: taller or shorter only (Edit layout)
+    Tall,
 }
 
 /// A held block moved or sized to the grid cell under the pointer: `start` is the block as it was picked up, `from` the
@@ -286,8 +290,61 @@ pub fn drag(start: &Placed, grip: Grip, from: (u8, u8), to: (u8, u8)) -> Placed 
             p.w = (to.0 as i16 - start.x as i16 + 1).clamp(1, (COLS - start.x) as i16) as u8;
             p.h = (to.1 as i16 - start.y as i16 + 1).clamp(1, (ROWS - start.y) as i16) as u8;
         }
+        Grip::Wide => p.w = (to.0 as i16 - start.x as i16 + 1).clamp(1, (COLS - start.x) as i16) as u8,
+        Grip::Tall => p.h = (to.1 as i16 - start.y as i16 + 1).clamp(1, (ROWS - start.y) as i16) as u8,
     }
     p
+}
+
+fn overlaps(a: &Placed, b: &Placed) -> bool {
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+}
+
+/// The other blocks moved out of the way of block `fixed` (down below what's in the way, else to its right, else made
+/// shorter or narrower to fit), so nothing overlaps; with `fixed` None, the page is tidied as it reads (top to bottom,
+/// left to right). Hidden blocks are in nobody's way. Edit layout runs it on every move from the page as it was when
+/// the block was picked up, so blocks pushed aside come back when the held one moves on (live reflow).
+pub fn push_aside(placed: &mut [Placed], fixed: Option<usize>) {
+    let mut order: Vec<usize> = (0..placed.len()).filter(|i| Some(*i) != fixed && !placed[*i].hidden).collect();
+    order.sort_by_key(|i| (placed[*i].y, placed[*i].x));
+    let mut settled: Vec<usize> = fixed.filter(|i| *i < placed.len() && !placed[*i].hidden).into_iter().collect();
+    for j in order {
+        let mut p = placed[j].clone();
+        for _ in 0..(COLS as usize + ROWS as usize) * 2 {
+            let Some(s) = settled.iter().map(|k| &placed[*k]).find(|s| overlaps(&p, s)).cloned() else { break };
+            if s.y + s.h + p.h <= ROWS {
+                p.y = s.y + s.h;
+            } else if s.x + s.w + p.w <= COLS {
+                p.x = s.x + s.w;
+            } else if s.y + s.h < ROWS {
+                p.y = s.y + s.h;
+                p.h = ROWS - p.y;
+            } else if s.x + s.w < COLS {
+                p.x = s.x + s.w;
+                p.w = COLS - p.x;
+            } else {
+                break;
+            }
+        }
+        placed[j] = p;
+        settled.push(j);
+    }
+}
+
+/// A block moved by whole cells (the keys and the controller in Edit layout), staying whole and on the grid.
+pub fn nudge(p: &Placed, dx: i8, dy: i8) -> Placed {
+    let mut n = p.clone();
+    n.x = (p.x as i16 + dx as i16).clamp(0, (COLS - p.w) as i16) as u8;
+    n.y = (p.y as i16 + dy as i16).clamp(0, (ROWS - p.h) as i16) as u8;
+    n
+}
+
+/// A block sized by whole cells from its top-left corner (never smaller than a cell, never off the grid).
+pub fn grow(p: &Placed, dw: i8, dh: i8) -> Placed {
+    let mut n = p.clone();
+    n.w = (p.w as i16 + dw as i16).clamp(1, (COLS - p.x) as i16) as u8;
+    n.h = (p.h as i16 + dh as i16).clamp(1, (ROWS - p.y) as i16) as u8;
+    n
 }
 
 /// Which part of the look a press in Arrange steps on.
@@ -434,6 +491,41 @@ mod tests {
         assert_eq!((z.w, z.h), (5, 5));
         let z = drag(&s, Grip::Size, (11, 11), (0, 0));
         assert_eq!((z.w, z.h), (1, 1), "never smaller than one cell");
+    }
+
+    #[test]
+    fn edges_size_one_way_and_keys_stay_on_the_grid() {
+        let s = Placed::of(&PAGE.blocks[1]); // 2, 0, 10 x 12
+        let w = drag(&s, Grip::Wide, (11, 3), (7, 9));
+        assert_eq!((w.w, w.h), (6, 12), "the right edge: only the width");
+        let t = drag(&s, Grip::Tall, (5, 11), (9, 5));
+        assert_eq!((t.w, t.h), (10, 6), "the bottom edge: only the height");
+        let n = nudge(&s, -5, 3);
+        assert_eq!((n.x, n.y), (0, 0), "a full-height block stays where it fits");
+        let g = grow(&s, 4, -20);
+        assert_eq!((g.w, g.h), (10, 1));
+        let g = grow(&grow(&s, -3, -6), 1, 1);
+        assert_eq!((g.x, g.w, g.h), (2, 8, 7));
+    }
+
+    #[test]
+    fn others_make_way_and_nothing_overlaps() {
+        const P3: PageDef = PageDef { id: "p", title: "P", blocks: &[bl("a", "A", 0, 0, 6, 2), bl("b", "B", 6, 0, 6, 2), bl("c", "C", 0, 2, 12, 10)] };
+        let mut r = defaults(&P3);
+        r[0] = drag(&r[0], Grip::Move, (0, 0), (0, 2)); // A dropped onto C
+        push_aside(&mut r, Some(0));
+        assert_eq!((r[0].y, r[0].h), (2, 2), "the held block stays where it was put");
+        assert_eq!((r[2].y, r[2].h), (4, 8), "C goes down below it, shorter to fit");
+        assert_eq!((r[1].x, r[1].y), (6, 0), "B wasn't in the way");
+        for i in 0..r.len() {
+            for j in 0..r.len() {
+                assert!(i == j || !overlaps(&r[i], &r[j]), "{} and {} overlap", r[i].id, r[j].id);
+            }
+        }
+        let mut t = defaults(&P3);
+        t[1].x = 3; // B half over A: tidied
+        push_aside(&mut t, None);
+        assert!(!overlaps(&t[0], &t[1]));
     }
 
     #[test]

@@ -508,6 +508,9 @@ fn title_row(a: &App) -> E<'_> {
         link(&p, if a.paused { "Resume ▶".into() } else { "Pause ⏸".into() }, Msg::Pause),
         t1(" · ", 13.0, p.muted),
         link(&p, "Open Task Manager".into(), Msg::OpenTm),
+        t1(" · ", 13.0, p.muted),
+        // Edit layout, always findable (the owner, Nov 24): the tab in front, edited in place
+        link(&p, "Edit layout".into(), Msg::Describe(hearth_ui::arrange::edit_layout())),
         gap(12.0, 1.0),
         wbtn(G::Minimize, Msg::Minimize, false),
         wbtn(G::Maximize, Msg::Maximize, false),
@@ -545,12 +548,50 @@ fn tabs(a: &App) -> E<'_> {
     column![container(r).width(Length::Fill).height(Length::Fixed(41.0)).align_bottom(Length::Fixed(41.0)), hline(p.line)].into()
 }
 
-/// Resource Monitor's blocks (hearth_ui::blocks): each tab's tables and graphs.
-pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "tab",
-    title: "Overview, CPU, Memory, Disk, Network, GPU",
-    blocks: &[hearth_ui::blocks::bl("tables", "The tables", 0, 0, 9, 12), hearth_ui::blocks::bl("graphs", "The graphs", 9, 0, 3, 12)],
-}];
+/// Resource Monitor's blocks (hearth_ui::blocks): the tabs and the page under them, and every tab's own sections and
+/// graphs (each section scrolls on its own once it's moved; in the app's own view the sections scroll together).
+use hearth_ui::blocks::{bl, bls, PageDef};
+pub const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "The window", blocks: &[bl("tabs", "The tabs", 0, 0, 12, 1), bl("page", "The page", 0, 1, 12, 11)] },
+    PageDef { id: "pc", title: "Your PC", blocks: &[bl("heading", "Name and legend", 0, 0, 9, 1), bl("stage", "The PC's drawing", 0, 1, 9, 11), bl("details", "What's picked", 9, 0, 3, 12)] },
+    PageDef {
+        id: "overview",
+        title: "Overview",
+        blocks: &[
+            bls("processor", "Processor", 0, 0, 9, 2),
+            bls("memory", "Memory", 0, 2, 9, 2),
+            bls("disk", "Disk", 0, 4, 9, 2),
+            bls("network", "Network", 0, 6, 9, 2),
+            bls("graphics", "Graphics", 0, 8, 9, 3),
+            bl("hint", "How to filter", 0, 11, 9, 1),
+            bl("graphs", "The graphs", 9, 0, 3, 12),
+        ],
+    },
+    PageDef {
+        id: "cpu",
+        title: "Processor",
+        blocks: &[
+            bls("programs", "Programs", 0, 0, 9, 5),
+            bl("filter", "Filtered to", 0, 5, 9, 1),
+            bls("services", "Services", 0, 6, 9, 2),
+            bls("files", "Open files", 0, 8, 9, 2),
+            bls("libs", "Libraries", 0, 10, 9, 2),
+            bl("graphs", "The graphs", 9, 0, 3, 12),
+        ],
+    },
+    PageDef { id: "memory", title: "Memory", blocks: &[bls("programs", "Programs", 0, 0, 9, 7), bls("physical", "Physical memory", 0, 7, 9, 5), bl("graphs", "The graphs", 9, 0, 3, 12)] },
+    PageDef {
+        id: "disk",
+        title: "Disk",
+        blocks: &[bls("programs", "Programs using the disk", 0, 0, 9, 4), bls("files", "Files being read and written", 0, 4, 9, 4), bls("drives", "Drives", 0, 8, 9, 4), bl("graphs", "The graphs", 9, 0, 3, 12)],
+    },
+    PageDef {
+        id: "network",
+        title: "Network",
+        blocks: &[bls("programs", "Programs using the network", 0, 0, 9, 4), bls("connections", "Connections", 0, 4, 9, 4), bls("listening", "Listening ports", 0, 8, 9, 4), bl("graphs", "The graphs", 9, 0, 3, 12)],
+    },
+    PageDef { id: "gpu", title: "Graphics", blocks: &[bls("programs", "Programs using the graphics card", 0, 0, 9, 7), bls("card", "Graphics card", 0, 7, 9, 5), bl("graphs", "The graphs", 9, 0, 3, 12)] },
+];
 
 pub fn view(a: &App) -> E<'_> {
     let p = a.p;
@@ -560,20 +601,28 @@ pub fn view(a: &App) -> E<'_> {
             let cw = 330.0;
             // its blocks (hearth_ui::blocks): the tables and the graphs, moved, sized, hidden or restyled; as it was
             // when nothing is
+            let mut items = left(a);
+            let ids: Vec<&'static str> = items.iter().map(|x| x.0).collect();
+            items.push(("graphs", container(graphs(a)).width(Length::Fixed(cw)).into()));
             hearth_ui::arrange::parts(
                 &a.describe,
                 &p,
-                "tab",
-                vec![
-                    ("tables", scrollable(container(left(a)).padding(Padding { top: 0.0, right: 6.0, bottom: 14.0, left: 0.0 })).height(Length::Fill).width(Length::Fill).into()),
-                    ("graphs", container(graphs(a)).width(Length::Fixed(cw)).into()),
-                ],
-                |ps| row![ps.take("tables"), ps.take("graphs")].spacing(14.0).padding(Padding { top: 14.0, right: 16.0, bottom: 10.0, left: 16.0 }).height(Length::Fill).into(),
+                a.tab.id(),
+                items,
+                move |ps| {
+                    let mut tables = Column::new().spacing(12.0);
+                    for id in ids {
+                        tables = tables.push(ps.take(id));
+                    }
+                    let tables = scrollable(container(tables).padding(Padding { top: 0.0, right: 6.0, bottom: 14.0, left: 0.0 })).height(Length::Fill).width(Length::Fill);
+                    row![tables, ps.take("graphs")].spacing(14.0).padding(Padding { top: 14.0, right: 16.0, bottom: 10.0, left: 16.0 }).height(Length::Fill).into()
+                },
                 Msg::Describe,
             )
         }
     };
-    let base: E = container(column![title_row(a), hline(Pal::a(p.line, 0.6)), tabs(a), page]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
+    let body = hearth_ui::arrange::parts(&a.describe, &p, "window", vec![("tabs", tabs(a)), ("page", page)], |ps| column![ps.take("tabs"), ps.take("page")].into(), Msg::Describe);
+    let base: E = container(column![title_row(a), hline(Pal::a(p.line, 0.6)), body]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     let base: E = mouse_area(base).on_move(Msg::Cursor).into();
     let base = match &a.menu {
         Some(m) => {
@@ -769,12 +818,32 @@ fn sorted(a: &App, mut tb: Table) -> Table {
 }
 
 /// The left column: each tab's sections (Mantel's sectionsFor), Overview's five.
-fn left(a: &App) -> E<'_> {
+/// A tab's sections in order, each with its block id (the page's blocks; Column-like, so each `add` reads as a push).
+struct Secs<'a>(Vec<(&'static str, E<'a>)>);
+impl<'a> Secs<'a> {
+    fn add(mut self, id: &'static str, e: impl Into<E<'a>>) -> Self {
+        self.0.push((id, e.into()));
+        self
+    }
+}
+
+/// The Overview section's block id for a tab.
+fn sec_id(k: Tab) -> &'static str {
+    match k {
+        Tab::Cpu => "processor",
+        Tab::Memory => "memory",
+        Tab::Disk => "disk",
+        Tab::Network => "network",
+        _ => "graphics",
+    }
+}
+
+fn left(a: &App) -> Vec<(&'static str, E<'_>)> {
     let p = a.p;
     let d = a.sample.as_deref().cloned().unwrap_or(Value::Null);
     let cpu = d.get("cpu").cloned().unwrap_or(Value::Null);
     let mb = d.get("memBar").cloned().unwrap_or(Value::Null);
-    let mut out = Column::new().spacing(12.0);
+    let mut out = Secs(Vec::new());
     let ticked_pids: Vec<i64> = a.groups().iter().filter(|g| a.ticked.contains(&gid_of(g))).flat_map(|g| arr(g, "pids").iter().filter_map(Value::as_i64).collect::<Vec<_>>()).collect();
     let pick_pid = |pid: i64| ticked_pids.is_empty() || ticked_pids.contains(&pid);
     match a.tab {
@@ -783,7 +852,7 @@ fn left(a: &App) -> E<'_> {
                 let key = format!("ov:{}", k.id());
                 let ch = chips(&p, overview_chips(a, k, &d));
                 let body = if a.folded.contains(&key) { None } else { Some(table_view(a, ov_table(a, k))) };
-                out = out.push(section(a, &key, title.into(), ch, body));
+                out = out.add(sec_id(k), section(a, &key, title.into(), ch, body));
             }
             let names: Vec<String> = a.groups().iter().filter(|g| a.ticked.contains(&gid_of(g))).map(|g| s(g, "name").to_string()).collect();
             let hint = if names.is_empty() {
@@ -791,11 +860,11 @@ fn left(a: &App) -> E<'_> {
             } else {
                 format!("Tick programs to filter every section to just them (here: {}). Click a heading to fold it.", names.join(", "))
             };
-            out = out.push(container(t(hint, 13.0, p.muted)).padding(Padding { top: 6.0, right: 4.0, bottom: 0.0, left: 16.0 }));
+            out = out.add("hint", container(t(hint, 13.0, p.muted)).padding(Padding { top: 6.0, right: 4.0, bottom: 0.0, left: 16.0 }));
         }
         Tab::Cpu => {
             let chip_v = if cpu.is_object() { vec![(format!("{} used", pct(f(&cpu, "total"))), "main"), (format!("{} threads", thousands(f(&cpu, "threads"))), ""), (format!("Up {}", up_time(f(&d, "uptime"))), "")] } else { vec![] };
-            out = out.push(section(a, "cpu:programs", "Programs".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Cpu)))));
+            out = out.add("programs", section(a, "cpu:programs", "Programs".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Cpu)))));
             if let Some(fc) = a.focus() {
                 let banner = row![
                     t1("Filtered to ", 14.0, Pal::mix(p.text, p.muted, 0.25)),
@@ -803,7 +872,7 @@ fn left(a: &App) -> E<'_> {
                     t1(" · showing its services, open files and libraries", 14.0, Pal::mix(p.text, p.muted, 0.25)),
                 ]
                 .align_y(iced::Center);
-                out = out.push(container(banner).padding(Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 }).center_y(Length::Fixed(36.0)).width(Length::Fill).style(ui::boxed(Pal::a(col(PURPLE), 0.12), p.r(6.0), None)));
+                out = out.add("filter", container(banner).padding(Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 }).center_y(Length::Fixed(36.0)).width(Length::Fill).style(ui::boxed(Pal::a(col(PURPLE), 0.12), p.r(6.0), None)));
                 let running = a.services.iter().filter(|x| s(x, "status") == "Running").count();
                 let groups = a.groups();
                 let svc_rows: Vec<Vec<Cell>> = a
@@ -816,7 +885,7 @@ fn left(a: &App) -> E<'_> {
                     })
                     .collect();
                 let st = sorted(a, tbl("cpu:services", vec![c("Service", 3.0, false), c("PID", 1.0, true), c("Status", 1.4, false), c("CPU", 1.0, true), c("What it is", 4.0, false)], svc_rows, "It doesn't run as a service."));
-                out = out.push(section(a, "cpu:services", "Services".into(), chips(&p, vec![(format!("{running} running"), "")]), Some(table_view(a, st))));
+                out = out.add("services", section(a, "cpu:services", "Services".into(), chips(&p, vec![(format!("{running} running"), "")]), Some(table_view(a, st))));
                 let q = a.files_query.to_lowercase();
                 let file_rows: Vec<Vec<Cell>> = a
                     .open_files
@@ -843,18 +912,18 @@ fn left(a: &App) -> E<'_> {
                 .padding(Padding { top: 1.0, right: 8.0, bottom: 1.0, left: 10.0 })
                 .style(ui::boxed(Color::TRANSPARENT, 11.0, Some((p.line, 1.0))))
                 .into();
-                out = out.push(section(a, "cpu:files", "Open files".into(), search, Some(table_view(a, ft))));
+                out = out.add("files", section(a, "cpu:files", "Open files".into(), search, Some(table_view(a, ft))));
                 let lib_rows: Vec<Vec<Cell>> = a.libs.iter().map(|x| vec![cell(s(x, "name")), cell(s(x, "path"))]).collect();
                 let n_libs = lib_rows.len();
                 let lt = sorted(a, tbl("cpu:libs", vec![c("Library", 3.0, false), c("Where", 8.0, false)], lib_rows, "None it shares with others."));
                 let lib_chips = if a.folded.contains("cpu:libs") { vec![] } else { vec![(format!("{n_libs} loaded"), "")] };
-                out = out.push(section(a, "cpu:libs", "Libraries (modules)".into(), chips(&p, lib_chips), Some(table_view(a, lt))));
+                out = out.add("libs", section(a, "cpu:libs", "Libraries (modules)".into(), chips(&p, lib_chips), Some(table_view(a, lt))));
             }
         }
         Tab::Memory => {
             let pr = fo(&d, "pressure");
             let chip_v = vec![(format!("{} in use", size(f(&mb, "inUse"))), "main"), (format!("pressure: {}", press_word(pr)), if pr.unwrap_or(0.0) >= 10.0 { "warn" } else { "good" })];
-            out = out.push(section(a, "memory:programs", "Programs".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Memory)))));
+            out = out.add("programs", section(a, "memory:programs", "Programs".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Memory)))));
             let zr = d.get("zram").cloned();
             let zmem = zr.as_ref().map(|z| f(z, "mem")).unwrap_or(0.0);
             let programs = (f(&mb, "inUse") - zmem).max(0.0);
@@ -892,12 +961,12 @@ fn left(a: &App) -> E<'_> {
                 }),
             ];
             let body = column![mem_bar(&p, parts, total), facts(&p, fx)];
-            out = out.push(section(a, "memory:physical", "Physical memory".into(), chips(&p, vec![(size(total), "")]), Some(body.into())));
+            out = out.add("physical", section(a, "memory:physical", "Physical memory".into(), chips(&p, vec![(size(total), "")]), Some(body.into())));
         }
         Tab::Disk => {
             let ds = arr(&d, "disks");
             let chip_v = vec![(format!("{} write", rate(ds.iter().map(|x| f(x, "write")).sum())), ""), (format!("{} read", rate(ds.iter().map(|x| f(x, "read")).sum())), "")];
-            out = out.push(section(a, "disk:programs", "Programs using the disk".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Disk)))));
+            out = out.add("programs", section(a, "disk:programs", "Programs using the disk".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Disk)))));
             let frows: Vec<Vec<Cell>> = a
                 .files_busy
                 .iter()
@@ -910,7 +979,7 @@ fn left(a: &App) -> E<'_> {
                 })
                 .collect();
             let ft = sorted(a, tbl("disk:files", vec![c("File", 6.0, false), c("Program", 1.8, false), c("PID", 0.9, true), c("Read", 1.2, true), c("Write", 1.2, true)], frows, "Nothing is reading or writing files right now."));
-            out = out.push(section(a, "disk:files", "Files being read and written".into(), chips(&p, vec![]), Some(table_view(a, ft))));
+            out = out.add("files", section(a, "disk:files", "Files being read and written".into(), chips(&p, vec![]), Some(table_view(a, ft))));
             let health = a.health.get("drives").cloned().unwrap_or(Value::Null);
             let mut drows = Vec::new();
             for dv in &a.drives {
@@ -937,12 +1006,12 @@ fn left(a: &App) -> E<'_> {
                 ]);
             }
             let dt = sorted(a, tbl("disk:drives", vec![c("Drive", 2.0, false), c("Type", 2.0, false), c("Busy", 1.0, true), c("Response", 1.2, true), c("Free", 1.2, true), c("Total", 1.2, true), c("Health", 1.0, true), c("Temp", 1.0, true)], drows, "Reading the drives…"));
-            out = out.push(section(a, "disk:drives", "Drives".into(), chips(&p, vec![]), Some(table_view(a, dt))));
+            out = out.add("drives", section(a, "disk:drives", "Drives".into(), chips(&p, vec![]), Some(table_view(a, dt))));
         }
         Tab::Network => {
             let ns: Vec<&Value> = arr(&d, "nets").iter().filter(|x| x.get("up").and_then(Value::as_bool).unwrap_or(false)).collect();
             let chip_v = vec![(format!("{} down", rate(ns.iter().map(|x| f(x, "recv")).sum())), ""), (format!("{} up", rate(ns.iter().map(|x| f(x, "send")).sum())), "")];
-            out = out.push(section(a, "network:programs", "Programs using the network".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Network)))));
+            out = out.add("programs", section(a, "network:programs", "Programs using the network".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Network)))));
             let conns: Vec<Vec<Cell>> = arr(&a.ports, "connections")
                 .iter()
                 .filter(|x| pick_pid(f(x, "pid") as i64))
@@ -961,7 +1030,7 @@ fn left(a: &App) -> E<'_> {
                 })
                 .collect();
             let ct = sorted(a, tbl("net:conns", vec![c("Program", 2.6, false), c("PID", 1.0, true), c("Talking to", 4.5, false), c("Port", 1.0, true), c("Ping", 1.0, true), c("State", 1.0, false)], conns, "No open connections."));
-            out = out.push(section(a, "net:conns", "Connections (TCP)".into(), chips(&p, vec![]), Some(table_view(a, ct))));
+            out = out.add("connections", section(a, "net:conns", "Connections (TCP)".into(), chips(&p, vec![]), Some(table_view(a, ct))));
             let listen: Vec<Vec<Cell>> = arr(&a.ports, "listening")
                 .iter()
                 .filter(|x| pick_pid(f(x, "pid") as i64))
@@ -974,7 +1043,7 @@ fn left(a: &App) -> E<'_> {
             let lt = sorted(a, tbl("net:listen", vec![c("Program", 2.2, false), c("PID", 0.9, true), c("Port", 1.0, true), c("Open to", 2.4, false), c("What it is", 4.0, false)], listen, "Nothing is listening."));
             let fw = s(&a.ports, "firewall");
             let fw = if fw.is_empty() { "allowed only on your network" } else { fw };
-            out = out.push(section(a, "net:listen", "Listening ports".into(), chips(&p, vec![(format!("firewall: {fw}"), "warn")]), Some(table_view(a, lt))));
+            out = out.add("listening", section(a, "net:listen", "Listening ports".into(), chips(&p, vec![(format!("firewall: {fw}"), "warn")]), Some(table_view(a, lt))));
         }
         Tab::Gpu => {
             let g = arr(&d, "gpus").first().cloned().unwrap_or(Value::Null);
@@ -987,7 +1056,7 @@ fn left(a: &App) -> E<'_> {
                     chip_v.push((format!("{}°C", f(&g, "temp").round() as i64), ""));
                 }
             }
-            out = out.push(section(a, "gpu:programs", "Programs using the graphics card".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Gpu)))));
+            out = out.add("programs", section(a, "gpu:programs", "Programs using the graphics card".into(), chips(&p, chip_v), Some(table_view(a, prog_table(a, Tab::Gpu)))));
             let games: Vec<String> = a.groups().iter().filter(|x| s(x, "kind") == "game").map(|x| s(x, "name").to_string()).collect();
             let drv = [if s(&card, "mesa").is_empty() { String::new() } else { format!("Mesa {}", s(&card, "mesa")) }, if s(&card, "driver").is_empty() { s(&g, "driver").to_string() } else { s(&card, "driver").to_string() }]
                 .into_iter()
@@ -1006,11 +1075,11 @@ fn left(a: &App) -> E<'_> {
                 ("Vulkan · OpenGL".into(), format!("{} · {}", if s(&card, "vulkan").is_empty() { "–" } else { s(&card, "vulkan") }, if s(&card, "opengl").is_empty() { "–" } else { s(&card, "opengl") })),
                 ("Games running".into(), if games.is_empty() { "none".into() } else { games.join(", ") }),
             ];
-            out = out.push(section(a, "gpu:card", "Graphics card".into(), chips(&p, vec![]), Some(facts(&p, fx))));
+            out = out.add("card", section(a, "gpu:card", "Graphics card".into(), chips(&p, vec![]), Some(facts(&p, fx))));
         }
         Tab::Pc => {}
     }
-    out.into()
+    out.0
 }
 
 /// The chips on each Overview heading (Mantel's overviewChips, with the mockup's ping on Network).

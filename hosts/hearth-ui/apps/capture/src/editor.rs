@@ -1151,6 +1151,3 @@ pub fn side<'a>(ed: &'a Ed, p: &Pal, tools: &'a Value, note: &'a str, shot: &'a 
     row![ui::vline(p.line), panel].height(Length::Fill).into()
 }
 
-pub fn view<'a>(ed: &'a Ed, p: &Pal, tools: &'a Value, note: &'a str, shot: &'a str) -> Element<'a, Msg> {
-    column![toolbar(ed, p), row![stage(ed, p), side(ed, p, tools, note, shot)].height(Length::Fill)].into()
-}

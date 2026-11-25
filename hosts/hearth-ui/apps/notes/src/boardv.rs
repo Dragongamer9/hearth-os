@@ -105,8 +105,20 @@ pub fn view(a: &App) -> E<'_, Msg> {
         t1(if sl.starts_with("Up to date") { "Up to date with GitHub".to_string() } else { sl }, f(14.0), tn.muted),
     ]
     .align_y(iced::Center);
-    let body = column![container(head).padding(pad(z(12.0), z(28.0), z(12.0), z(28.0))), container(cols).padding(pad(0.0, z(26.0), z(14.0), z(26.0))).height(Length::Fill), ui::hline(tn.line), container(foot).padding(pad(0.0, z(28.0), 0.0, z(28.0))).center_y(Length::Fixed(z(42.0)))];
-    let page: E<Msg> = column![crate::editor::tabs(a), body].into();
+    let items: Vec<(&'static str, E<Msg>)> = vec![
+        ("tabs", crate::editor::tabs(a)),
+        ("head", container(head).padding(pad(z(12.0), z(28.0), z(12.0), z(28.0))).into()),
+        ("columns", container(cols).padding(pad(0.0, z(26.0), z(14.0), z(26.0))).height(Length::Fill).into()),
+        ("foot", column![ui::hline(tn.line), container(foot).padding(pad(0.0, z(28.0), 0.0, z(28.0))).center_y(Length::Fixed(z(42.0)))].into()),
+    ];
+    let page: E<Msg> = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "board",
+        items,
+        |ps| column![ps.take("tabs"), column![ps.take("head"), ps.take("columns"), ps.take("foot")]].into(),
+        Msg::Describe,
+    );
     if a.board_menu > 0 {
         stack![page, menu(a)].into()
     } else {

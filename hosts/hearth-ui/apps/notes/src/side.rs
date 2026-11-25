@@ -10,11 +10,60 @@ use iced::widget::{column, container, mouse_area, row, scrollable, stack, text, 
 use iced::{Color, Length, Theme};
 
 /// Hearth Notes' blocks (hearth_ui::blocks).
-pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "window",
-    title: "Hearth Notes",
-    blocks: &[hearth_ui::blocks::bl("rail", "The icon rail", 0, 0, 1, 12), hearth_ui::blocks::bl("side", "The sidebar", 1, 0, 3, 12), hearth_ui::blocks::bl("page", "The page", 4, 0, 8, 12)],
-}];
+/// The window, and every page's own parts (each page's file puts them together the app's own way).
+use hearth_ui::blocks::{bl, bls, PageDef};
+pub const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "Hearth Notes", blocks: &[bl("rail", "The icon rail", 0, 0, 1, 12), bl("side", "The sidebar", 1, 0, 3, 12), bl("page", "The page", 4, 0, 8, 12)] },
+    PageDef {
+        id: "files",
+        title: "Files",
+        blocks: &[
+            bl("tabs", "The tabs", 0, 0, 5, 1),
+            bl("crumb", "Where the note is", 0, 1, 5, 1),
+            bl("note", "The note", 0, 2, 5, 9),
+            bl("status", "The status bar", 0, 11, 5, 1),
+            bl("graph", "The graph", 5, 0, 4, 12),
+            bl("right", "Backlinks and outline", 9, 0, 3, 12),
+        ],
+    },
+    PageDef { id: "search", title: "Search", blocks: &[bl("tabs", "The tabs", 0, 0, 12, 1), bl("crumb", "Where the note is", 0, 1, 12, 1), bl("doc", "The note with its matches", 0, 2, 12, 10)] },
+    PageDef { id: "today", title: "Today", blocks: &[bl("tabs", "The tabs", 0, 0, 9, 1), bl("crumb", "Where the note is", 0, 1, 9, 1), bl("dashboard", "Today", 0, 2, 9, 10), bl("right", "Backlinks and outline", 9, 0, 3, 12)] },
+    PageDef { id: "board", title: "Board", blocks: &[bl("tabs", "The tabs", 0, 0, 12, 1), bl("head", "Group by and the filters", 0, 1, 12, 1), bl("columns", "The columns", 0, 2, 12, 9), bl("foot", "The line at the bottom", 0, 11, 12, 1)] },
+    PageDef { id: "graph", title: "Graph", blocks: &[bl("graph", "The graph", 0, 0, 9, 12), bls("customise", "Customise the graph", 9, 0, 3, 12)] },
+    PageDef { id: "modes", title: "Graph modes", blocks: &[bl("head", "Title", 0, 0, 12, 1), bls("grid", "The modes", 0, 1, 12, 8), bl("bottom", "Reduce motion, Customise, Stays light", 0, 9, 12, 3), bls("customise", "Customise the graph", 9, 0, 3, 12)] },
+    PageDef {
+        id: "sync",
+        title: "Sync",
+        blocks: &[
+            bl("title", "Title", 0, 0, 12, 1),
+            bls("secrets", "Looks like a secret", 0, 1, 12, 1),
+            bls("changes", "Changes", 0, 2, 6, 4),
+            bls("check", "The workspace check", 0, 6, 6, 3),
+            bls("commit", "Commit and push", 0, 9, 6, 3),
+            bls("diff", "What changed", 6, 2, 6, 4),
+            bls("auto", "Sync by itself", 6, 6, 6, 3),
+            bls("tidy", "Keep it tidy", 6, 9, 6, 3),
+        ],
+    },
+    PageDef {
+        id: "conflict",
+        title: "A note changed on two PCs",
+        blocks: &[bl("title", "Title", 0, 0, 12, 1), bl("sub", "What happened", 0, 1, 12, 1), bls("panes", "Both versions", 0, 2, 12, 6), bl("choices", "What to keep", 0, 8, 12, 2), bl("safe", "Nothing is lost", 0, 10, 12, 2)],
+    },
+    PageDef {
+        id: "settings",
+        title: "Settings",
+        blocks: &[
+            bl("title", "Title", 0, 0, 12, 1),
+            bls("github", "GitHub", 0, 1, 12, 3),
+            bls("sync", "Sync", 0, 4, 12, 2),
+            bls("editor", "Editor", 0, 6, 6, 4),
+            bls("looks", "Looks and Today", 6, 6, 6, 4),
+            bls("about", "About", 0, 10, 12, 1),
+            bl("unreadable", "The settings file couldn't be read", 0, 11, 12, 1),
+        ],
+    },
+];
 
 pub fn window(a: &App) -> E<'_, Msg> {
     let p = a.p;
@@ -128,6 +177,8 @@ fn rail(a: &App) -> E<'_, Msg> {
         Space::new().height(Length::Fill),
         icon(G::Gear, on_page(Page::Settings), None, Msg::Rail(Page::Settings)),
         icon(G::Help, false, None, Msg::OpenRel("README.md".into())),
+        // Edit layout, always findable (the owner, Nov 24): the page in front, edited in place
+        icon(G::Pencil, a.describe.is_editing(), None, Msg::Describe(hearth_ui::arrange::edit_layout())),
         gap(1.0, z(12.0)),
     ]
     .align_x(iced::Center)

@@ -43,6 +43,8 @@ pub enum DMsg {
     ArrUndo,
     ArrReset,
     ArrKeep,
+    /// Edit layout, in place (arrange.rs: right-click a block, drag it, its edges, saved as you go)
+    Edit(crate::arrange::EMsg),
 }
 
 fn pos(a: &Arrange, id: &str) -> Option<usize> {
@@ -76,6 +78,8 @@ pub struct Describe {
     pub pages: &'static [blocks::PageDef],
     pub laid: Vec<(&'static str, Option<Vec<blocks::Placed>>)>,
     pub arr: Option<Arrange>,
+    /// Edit layout's own (arrange.rs: the right-click menu, the block under the pointer, what was saved)
+    pub ed: crate::arrange::EditState,
     closing: bool,
 }
 
@@ -101,7 +105,7 @@ impl Describe {
     pub fn new(app: &'static str, name: &'static str) -> Describe {
         // HEARTH_DESCRIBE_OPEN=<app> opens the box at start (the CI pictures).
         let open = std::env::var("HEARTH_DESCRIBE_OPEN").map(|v| v == app).unwrap_or(false);
-        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app), pages: &[], laid: Vec::new(), arr: None, closing: false }
+        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app), pages: &[], laid: Vec::new(), arr: None, ed: Default::default(), closing: false }
     }
 
     /// The app's pages made of blocks (every Hearth app names its own). HEARTH_ARRANGE_OPEN=<app>[:<page>] opens Arrange
@@ -162,7 +166,7 @@ impl Describe {
         e
     }
 
-    fn arrange(&mut self, m: DMsg) -> Task<DMsg> {
+    pub(crate) fn arrange(&mut self, m: DMsg) -> Task<DMsg> {
         match m {
             DMsg::Arrange(None) => self.arr = None,
             DMsg::Arrange(Some(page)) => {
@@ -330,6 +334,9 @@ impl Describe {
 
     fn update_inner(&mut self, m: DMsg) -> Task<DMsg> {
         match m {
+            DMsg::Edit(e) => return self.edit(e),
+            // Edit layout in place (arrange.rs): every way into it starts the same
+            DMsg::Arrange(Some(p)) => return self.edit(crate::arrange::EMsg::StartAt(p, None)),
             DMsg::Arrange(_) | DMsg::Grab(..) | DMsg::Cell(..) | DMsg::Drop | DMsg::Pick(_) | DMsg::Hide(_) | DMsg::Show(_) | DMsg::Look(_) | DMsg::ArrUndo | DMsg::ArrReset | DMsg::ArrKeep => {
                 return self.arrange(m);
             }
@@ -517,7 +524,8 @@ pub fn bar<'a, M: Clone + 'a>(p: &Pal, d: &'a Describe, map: impl Fn(DMsg) -> M 
                 buttons = buttons.push(ui::btn(&p, "Undo", ui::Kind::Normal, false, Some(map(DMsg::Undo))));
             }
             if let Some(pg) = d.pages.first() {
-                buttons = buttons.push(ui::btn(&p, "Move and resize blocks", ui::Kind::Normal, false, Some(map(DMsg::Arrange(Some(pg.id))))));
+                let _ = pg;
+                buttons = buttons.push(ui::btn(&p, "Edit layout", ui::Kind::Normal, false, Some(map(DMsg::Edit(crate::arrange::EMsg::Start)))));
             }
             buttons = buttons.push(ui::btn(&p, "Done", ui::Kind::Normal, false, Some(map(DMsg::Close))));
             buttons = buttons.push(ui::btn(&p, if d.busy { "Making it…" } else { "Make it" }, ui::Kind::Primary, false, (!d.busy && !d.text.trim().is_empty()).then(|| map(DMsg::Make))));

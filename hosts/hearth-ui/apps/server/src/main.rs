@@ -461,6 +461,7 @@ impl App {
             ("sleep", "Sleep", "Your devices can't reach the PC while it sleeps".into()),
             ("restart", "Restart the PC", "Server mode comes back if it's your Start in mode".into()),
             ("power", "Turn off", "Everything stops until you turn it on".into()),
+            ("gear", "Edit layout", "Move, size and hide the dashboard's parts (B or ☰ when you're done)".into()),
         ]
     }
     fn menu_do(&mut self, i: usize) -> Task<Msg> {
@@ -487,6 +488,7 @@ impl App {
             5 => self.act(&["power", "sleep"], ""),
             6 => self.act(&["power", "restart"], ""),
             7 => self.act(&["power", "off"], ""),
+            8 => self.describe.update(hearth_ui::arrange::edit_page("dashboard")).map(Msg::Describe),
             _ => Task::none(),
         }
     }
@@ -1255,6 +1257,10 @@ fn pad(a: &mut App, ev: &str) -> Task<Msg> {
     a.wake();
     if asleep {
         return Task::none();
+    }
+    // Edit layout takes the controller while the dashboard is being edited (D-pad moves, LB / RB size, B finishes)
+    if let Some(t) = hearth_ui::arrange::pad(&mut a.describe, ev) {
+        return t.map(Msg::Describe);
     }
     let id = a.cur_id();
     if a.overlay == Overlay::Detail && matches!(id.as_str(), "cache" | "ads" | "rules") && (ev == "menu" || ev == "y") {

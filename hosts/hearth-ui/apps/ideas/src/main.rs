@@ -836,6 +836,16 @@ fn sidebar<'a>(a: &'a App) -> Element<'a, Msg> {
             );
         }
     }
+    // Edit layout, always findable (the owner, Nov 24): the page in front, edited in place
+    c = c.push(gap(1.0, 14.0)).push(
+        mouse_area(
+            container(row![glyph(G::Pencil, p.muted, 14.0, 1.8), tm("Edit layout", 14.0, p.muted)].spacing(8.0).align_y(iced::Center))
+                .padding(Padding { top: 9.0, right: 12.0, bottom: 9.0, left: 12.0 })
+                .width(Length::Fill),
+        )
+        .on_press(Msg::Describe(hearth_ui::arrange::edit_layout()))
+        .interaction(mouse::Interaction::Pointer),
+    );
     let foot = t("On your devices only. Uses your own GitHub sign-in and your AI team (the Command Center). Nothing goes out without your version number.", 12.0, p.muted);
     container(column![c, Space::new().height(Length::Fill), container(foot).padding(Padding { top: 0.0, right: 12.0, bottom: 8.0, left: 12.0 })])
         .width(Length::Fixed(258.0))
@@ -865,7 +875,8 @@ fn list_page(a: &App) -> Element<'_, Msg> {
         a.by_app.clone()
     };
     let sort = btn(&p, if a.most_asked { "Most asked ▾" } else { "Newest ▾" }, ui::Kind::Normal, Some(Msg::Sort));
-    let mut c = Column::new().spacing(14.0).push(row![tb(title, 30.0, p.text), Space::new().width(Length::Fill), sort].align_y(iced::Center));
+    let head = row![tb(title, 30.0, p.text), Space::new().width(Length::Fill), sort].align_y(iced::Center);
+    let mut c = Column::new().spacing(14.0);
     if a.loading {
         c = c.push(t("Reading the ideas…", 14.0, p.muted));
     } else if !a.problem.is_empty() {
@@ -926,13 +937,31 @@ fn list_page(a: &App) -> Element<'_, Msg> {
                 .style(ui::boxed(p.panel, p.r(10.0), Some((if first { Pal::a(p.accent, 0.8) } else { p.line }, 1.0)))),
         );
     }
+    let mut note = Column::new().spacing(14.0);
+    let mut has_note = false;
     if a.list == State::New && a.by_app.is_empty() {
-        c = c.push(t("Accepting doesn't change anything for anyone by itself: it goes on the roadmap, and comes in an update with your version number.", 13.0, p.muted));
+        note = note.push(t("Accepting doesn't change anything for anyone by itself: it goes on the roadmap, and comes in an update with your version number.", 13.0, p.muted));
+        has_note = true;
     }
     if !a.said.is_empty() {
-        c = c.push(t(a.said.clone(), 13.0, p.text));
+        note = note.push(t(a.said.clone(), 13.0, p.text));
+        has_note = true;
     }
-    scrollable(c.padding(Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 0.0 })).height(Length::Fill).into()
+    // its blocks (hearth_ui::blocks "list"): as it was when nothing is customised
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "list",
+        vec![("title", head.into()), ("ideas", c.into()), ("note", note.into())],
+        move |ps| {
+            let mut all = Column::new().spacing(14.0).push(ps.take("title")).push(ps.take("ideas"));
+            if has_note {
+                all = all.push(ps.take("note"));
+            }
+            scrollable(all.padding(Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 0.0 })).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 fn app_of_long(i: &Idea) -> String {
@@ -1048,11 +1077,28 @@ fn idea_page(a: &App) -> Element<'_, Msg> {
     .style(ui::boxed(p.panel, p.r(10.0), Some((p.line, 1.0))));
     let right = column![section(&p, "Build it"), build_card, road].spacing(12.0);
 
-    let mut c = column![back(a, st), head, t(meta, 14.0, p.muted), gap(1.0, 4.0), row![left.width(Length::FillPortion(57)), right.width(Length::FillPortion(43))].spacing(22.0)].spacing(8.0);
-    if !a.said.is_empty() {
-        c = c.push(gap(1.0, 6.0)).push(t(a.said.clone(), 13.0, p.text));
-    }
-    scrollable(c.padding(Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 0.0 })).height(Length::Fill).into()
+    let said = !a.said.is_empty();
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "idea",
+        vec![
+            ("back", back(a, st)),
+            ("head", head.into()),
+            ("meta", t(meta, 14.0, p.muted).into()),
+            ("about", left.width(Length::FillPortion(57)).into()),
+            ("build", right.width(Length::FillPortion(43)).into()),
+            ("said", t(a.said.clone(), 13.0, p.text).into()),
+        ],
+        move |ps| {
+            let mut c = column![ps.take("back"), ps.take("head"), ps.take("meta"), gap(1.0, 4.0), row![ps.take("about"), ps.take("build")].spacing(22.0)].spacing(8.0);
+            if said {
+                c = c.push(gap(1.0, 6.0)).push(ps.take("said"));
+            }
+            scrollable(c.padding(Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 0.0 })).height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 fn back(a: &App, st: State) -> Element<'_, Msg> {
@@ -1123,11 +1169,21 @@ fn built_page(a: &App) -> Element<'_, Msg> {
     if !says.is_empty() {
         right = right.push(t(format!("The AI team says: \"{says}\""), 13.0, p.muted));
     }
-    let mut c = column![back(a, a.state_of(i)), head, gap(1.0, 6.0), row![left, right].spacing(20.0).height(Length::Fill)].spacing(10.0);
-    if !a.said.is_empty() {
-        c = c.push(t(a.said.clone(), 13.0, p.text));
-    }
-    c.height(Length::Fill).into()
+    let said = !a.said.is_empty();
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "built",
+        vec![("back", back(a, a.state_of(i))), ("head", head.into()), ("steps", left.into()), ("pictures", right.into()), ("said", t(a.said.clone(), 13.0, p.text).into())],
+        move |ps| {
+            let mut c = column![ps.take("back"), ps.take("head"), gap(1.0, 6.0), row![ps.take("steps"), ps.take("pictures")].spacing(20.0).height(Length::Fill)].spacing(10.0);
+            if said {
+                c = c.push(ps.take("said"));
+            }
+            c.height(Length::Fill).into()
+        },
+        Msg::Describe,
+    )
 }
 
 fn ship_box<'a>(a: &'a App) -> Option<Element<'a, Msg>> {
@@ -1211,11 +1267,28 @@ fn ship_box<'a>(a: &'a App) -> Option<Element<'a, Msg>> {
 }
 
 /// Hearth Ideas' blocks (hearth_ui::blocks).
-const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "window",
-    title: "Hearth Ideas",
-    blocks: &[hearth_ui::blocks::bl("side", "The side", 0, 0, 2, 12), hearth_ui::blocks::bl("page", "The page", 2, 0, 10, 12)],
-}];
+use hearth_ui::blocks::{bl, bls, PageDef};
+const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "Hearth Ideas", blocks: &[bl("side", "The side", 0, 0, 2, 12), bl("page", "The page", 2, 0, 10, 12)] },
+    PageDef { id: "list", title: "The ideas", blocks: &[bl("title", "Title and sort", 0, 0, 12, 1), bls("ideas", "The ideas", 0, 1, 12, 10), bl("note", "The note", 0, 11, 12, 1)] },
+    PageDef {
+        id: "idea",
+        title: "An idea",
+        blocks: &[
+            bl("back", "Back", 0, 0, 12, 1),
+            bl("head", "Its name", 0, 1, 12, 1),
+            bl("meta", "Who asked and when", 0, 2, 12, 1),
+            bls("about", "What people asked", 0, 3, 7, 8),
+            bls("build", "Build it", 7, 3, 5, 8),
+            bl("said", "What happened", 0, 11, 12, 1),
+        ],
+    },
+    PageDef {
+        id: "built",
+        title: "Being built",
+        blocks: &[bl("back", "Back", 0, 0, 12, 1), bl("head", "Its name and buttons", 0, 1, 12, 1), bl("steps", "The steps", 0, 2, 4, 10), bl("pictures", "Its pictures", 4, 2, 8, 9), bl("said", "What happened", 4, 11, 8, 1)],
+    },
+];
 
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;

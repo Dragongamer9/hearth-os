@@ -288,11 +288,70 @@ fn chip_btn<'a>(p: &Pal, label: impl Into<String>, picked: bool, focused: bool, 
 
 // ------------------------------------------------------------------ the frame
 /// The G15 app's blocks (hearth_ui::blocks).
-pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
-    id: "window",
-    title: "Logitech G15",
-    blocks: &[hearth_ui::blocks::bl("side", "The side", 0, 0, 3, 11), hearth_ui::blocks::bl("page", "The page", 3, 0, 9, 11), hearth_ui::blocks::bl("bottom", "The bar at the bottom", 0, 11, 12, 1)],
-}];
+/// The window and each page; a page laid out by you no longer scrolls as a whole (each block scrolls on its own).
+use hearth_ui::blocks::{bl, bls, PageDef};
+pub const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "Logitech G15", blocks: &[bl("side", "The side", 0, 0, 3, 11), bl("page", "The page", 3, 0, 9, 11), bl("bottom", "The bar at the bottom", 0, 11, 12, 1)] },
+    PageDef {
+        id: "overview",
+        title: "Overview",
+        blocks: &[
+            bl("title", "Title", 0, 0, 12, 1),
+            bls("keyboard", "The keyboard and its facts", 0, 1, 12, 5),
+            bls("sets", "Key sets", 0, 6, 12, 3),
+            bl("switch", "Switch key sets for each game", 0, 9, 12, 1),
+            bl("mr", "Record a macro with MR", 0, 10, 12, 1),
+            bl("note", "The note", 0, 11, 12, 1),
+        ],
+    },
+    PageDef {
+        id: "gkeys",
+        title: "G-keys",
+        blocks: &[
+            bl("title", "Title", 0, 0, 12, 1),
+            bl("sets", "Key sets", 0, 1, 12, 1),
+            bls("keyboard", "The keys drawn big", 0, 2, 6, 10),
+            bls("key", "The picked key", 6, 2, 6, 3),
+            bls("macro", "Macro", 6, 5, 6, 2),
+            bls("all", "All keys", 6, 7, 6, 4),
+            bl("note", "The note", 6, 11, 6, 1),
+        ],
+    },
+    PageDef {
+        id: "screen",
+        title: "Keyboard screen",
+        blocks: &[
+            bl("title", "Title", 0, 0, 12, 1),
+            bls("now", "What's on the screen now", 0, 1, 12, 4),
+            bls("pages", "Pages", 0, 5, 12, 2),
+            bls("own", "Your own screens", 0, 7, 12, 2),
+            bl("gamescreen", "The game's own screen", 0, 9, 12, 1),
+            bl("autopage", "Change page by itself", 0, 10, 12, 1),
+            bl("note", "The note", 0, 11, 12, 1),
+        ],
+    },
+    PageDef {
+        id: "lighting",
+        title: "Lighting",
+        blocks: &[bl("title", "Title", 0, 0, 12, 1), bls("picture", "The keyboard", 0, 1, 12, 4), bls("keys", "Keys", 0, 5, 12, 2), bls("when", "When", 0, 7, 12, 4), bl("note", "The note", 0, 11, 12, 1)],
+    },
+    PageDef {
+        id: "editor",
+        title: "Make your own screen",
+        blocks: &[bl("title", "Title", 0, 0, 7, 1), bl("buttons", "Undo, Show and Done", 7, 0, 5, 1), bls("add", "Add", 0, 1, 2, 11), bls("screen", "The screen", 2, 1, 7, 11), bls("props", "Its settings", 9, 1, 3, 11)],
+    },
+];
+
+/// A page's blocks' id (BLOCKS).
+fn page_id(pg: Page) -> &'static str {
+    match pg {
+        Page::Overview => "overview",
+        Page::GKeys => "gkeys",
+        Page::Screen => "screen",
+        Page::Lighting => "lighting",
+        Page::Editor => "editor",
+    }
+}
 
 /// The G15 app with Describe it's box under it while it's open.
 pub fn shown(a: &App) -> E<'_> {
@@ -309,7 +368,12 @@ pub fn view(a: &App) -> E<'_> {
         Page::Lighting => lighting(a),
         Page::Editor => editor(a),
     };
-    let page = container(scrollable(container(body).padding(Padding { top: 16.0, right: 30.0, bottom: 16.0, left: 32.0 })).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None));
+    // laid out (or being laid out), the page fills the window and its blocks scroll on their own
+    let pid = page_id(a.page);
+    let free = a.describe.laid(pid).is_some() || a.describe.arr.as_ref().map(|x| x.page == pid).unwrap_or(false);
+    let pad = Padding { top: 16.0, right: 30.0, bottom: 16.0, left: 32.0 };
+    let inner: E = if free { container(body).padding(pad).width(Length::Fill).height(Length::Fill).into() } else { scrollable(container(body).padding(pad)).height(Length::Fill).into() };
+    let page = container(inner).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None));
     // its blocks (hearth_ui::blocks): the side, the page and the bar at the bottom, moved, sized, hidden or restyled;
     // as it was when nothing is
     let main = hearth_ui::arrange::parts(
@@ -362,6 +426,13 @@ fn sidebar(a: &App) -> E<'_> {
         let c = container(r).padding(Padding { top: 8.0, right: 10.0, bottom: 8.0, left: 0.0 }).width(Length::Fill).style(ui::boxed(if here { Pal::mix(p.panel, Color::WHITE, 0.04) } else { Color::TRANSPARENT }, 8.0, None));
         nav = nav.push(mouse_area(c).on_press(Msg::Go(pg)).interaction(mouse::Interaction::Pointer));
     }
+    // Edit layout, always findable (the owner, Nov 24): the page in front, edited in place
+    let er = row![Space::new().width(Length::Fixed(3.0)), gap(10.0, 1.0), container(t("✎", 13.0, p.muted)).width(Length::Fixed(22.0)), t("Edit layout", 14.5, p.muted)].align_y(iced::Center);
+    nav = nav.push(
+        mouse_area(container(er).padding(Padding { top: 8.0, right: 10.0, bottom: 8.0, left: 0.0 }).width(Length::Fill))
+            .on_press(Msg::Describe(hearth_ui::arrange::edit_layout()))
+            .interaction(mouse::Interaction::Pointer),
+    );
     let foot = t1("Settings are saved as you change them.\nAlso in Settings › Bluetooth & devices.", 11.5, p.muted);
     container(column![container(who).padding(Padding { top: 16.0, right: 0.0, bottom: 18.0, left: 18.0 }), container(nav).padding(Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 10.0 }), Space::new().height(Length::Fill), container(foot).padding(18.0)])
         .width(Length::Fixed(sz(330.0)))
@@ -455,19 +526,22 @@ fn overview(a: &App) -> E<'_> {
         Some((i, game)) => format!("Starts M{} when {game} opens, back to M{set} when it closes", i + 1),
         None => "Pick a game for a key set: press → here".into(),
     };
-    column![
-        big_title(&p, vec![("Your G15".into(), true)]),
-        gap(1.0, 14.0),
-        top,
-        head(&p, "Key sets"),
-        sets,
-        gap(1.0, 2.0),
-        srow(&p, "⟳", "Switch key sets for each game", sw_sub, switch(&p, flag(a, "switchSets", true), Msg::Flag("switchSets", !flag(a, "switchSets", true))), on(a, "switch"), Some(Msg::GamesOpen)),
-        srow(&p, "●", "Record a macro with MR", "Press MR, type, then press the G-key to keep it on", switch(&p, flag(a, "mrRecord", true), Msg::Flag("mrRecord", !flag(a, "mrRecord", true))), on(a, "mr"), None),
-        note(a),
-    ]
-    .spacing(10.0)
-    .into()
+    let items: Vec<(&'static str, E)> = vec![
+        ("title", big_title(&p, vec![("Your G15".into(), true)])),
+        ("keyboard", top.into()),
+        ("sets", column![head(&p, "Key sets"), sets].spacing(10.0).into()),
+        ("switch", srow(&p, "⟳", "Switch key sets for each game", sw_sub, switch(&p, flag(a, "switchSets", true), Msg::Flag("switchSets", !flag(a, "switchSets", true))), on(a, "switch"), Some(Msg::GamesOpen))),
+        ("mr", srow(&p, "●", "Record a macro with MR", "Press MR, type, then press the G-key to keep it on", switch(&p, flag(a, "mrRecord", true), Msg::Flag("mrRecord", !flag(a, "mrRecord", true))), on(a, "mr"), None)),
+        ("note", note(a)),
+    ];
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "overview",
+        items,
+        |ps| column![ps.take("title"), gap(1.0, 14.0), ps.take("keyboard"), ps.take("sets"), gap(1.0, 2.0), ps.take("switch"), ps.take("mr"), ps.take("note")].spacing(10.0).into(),
+        Msg::Describe,
+    )
 }
 
 pub fn page_title(a: &App, id: &str) -> String {
@@ -612,8 +686,26 @@ fn gkeys(a: &App) -> E<'_> {
         }
         all = all.push(rw);
     }
-    let right = column![key_card, macro_card, head(&p, format!("All keys in M{set}")), all, note(a)].spacing(10.0).width(Length::Fill);
-    column![big_title(&p, vec![("G-keys".into(), false), (format!("M{set} · {}", a.set_name(set)), true)]), gap(1.0, 6.0), chips, gap(1.0, 8.0), row![left, right].spacing(16.0)].spacing(6.0).into()
+    let items: Vec<(&'static str, E)> = vec![
+        ("title", big_title(&p, vec![("G-keys".into(), false), (format!("M{set} · {}", a.set_name(set)), true)])),
+        ("sets", chips.into()),
+        ("keyboard", left.into()),
+        ("key", key_card.into()),
+        ("macro", macro_card),
+        ("all", column![head(&p, format!("All keys in M{set}")), all].spacing(10.0).into()),
+        ("note", note(a)),
+    ];
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "gkeys",
+        items,
+        |ps| {
+            let right = column![ps.take("key"), ps.take("macro"), ps.take("all"), ps.take("note")].spacing(10.0).width(Length::Fill);
+            column![ps.take("title"), gap(1.0, 6.0), ps.take("sets"), gap(1.0, 8.0), row![ps.take("keyboard"), right].spacing(16.0)].spacing(6.0).into()
+        },
+        Msg::Describe,
+    )
 }
 
 /// A Hearth action's row ("Take a screenshot · pick an area", "Capture").
@@ -723,21 +815,23 @@ fn screen_page(a: &App) -> E<'_> {
         .center_y(Length::Fixed(sz(200.0)))
         .style(ui::boxed(Color::TRANSPARENT, 12.0, Some((if on(a, "new") { ORANGE } else { Pal::mix(p.line, Color::WHITE, 0.15) }, 1.5))));
     own = own.push(mouse_area(dashed).on_press(Msg::NewScreen).interaction(mouse::Interaction::Pointer));
-    column![
-        big_title(&p, vec![("Keyboard screen".into(), true)]),
-        gap(1.0, 14.0),
-        top,
-        head(&p, "Pages · drag to reorder"),
-        cards,
-        head(&p, "Your own screens"),
-        own,
-        gap(1.0, 4.0),
-        srow(&p, "◈", "Show the game's own screen when it has one", "Games made for the G15's screen take it over while they run", switch(&p, flag(a, "gameScreens", true), Msg::Flag("gameScreens", !flag(a, "gameScreens", true))), on(a, "gamescreen"), None),
-        srow(&p, "◷", "Change page by itself", format!("Every {} seconds", a.cfg.get("autoPageSecs").and_then(|v| v.as_u64()).unwrap_or(10)), switch(&p, flag(a, "autoPage", false), Msg::Flag("autoPage", !flag(a, "autoPage", false))), on(a, "autopage"), None),
-        note(a),
-    ]
-    .spacing(10.0)
-    .into()
+    let items: Vec<(&'static str, E)> = vec![
+        ("title", big_title(&p, vec![("Keyboard screen".into(), true)])),
+        ("now", top.into()),
+        ("pages", column![head(&p, "Pages · drag to reorder"), cards].spacing(10.0).into()),
+        ("own", column![head(&p, "Your own screens"), own].spacing(10.0).into()),
+        ("gamescreen", srow(&p, "◈", "Show the game's own screen when it has one", "Games made for the G15's screen take it over while they run", switch(&p, flag(a, "gameScreens", true), Msg::Flag("gameScreens", !flag(a, "gameScreens", true))), on(a, "gamescreen"), None)),
+        ("autopage", srow(&p, "◷", "Change page by itself", format!("Every {} seconds", a.cfg.get("autoPageSecs").and_then(|v| v.as_u64()).unwrap_or(10)), switch(&p, flag(a, "autoPage", false), Msg::Flag("autoPage", !flag(a, "autoPage", false))), on(a, "autopage"), None)),
+        ("note", note(a)),
+    ];
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "screen",
+        items,
+        |ps| column![ps.take("title"), gap(1.0, 14.0), ps.take("now"), ps.take("pages"), ps.take("own"), gap(1.0, 4.0), ps.take("gamescreen"), ps.take("autopage"), ps.take("note")].spacing(10.0).into(),
+        Msg::Describe,
+    )
 }
 
 // ------------------------------------------------------------------ 4. Lighting (g15-4)
@@ -747,21 +841,34 @@ fn lighting(a: &App) -> E<'_> {
     // Night light's own schedule (Settings › Display), as the service follows it: read once while the app is open.
     static NIGHT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let night = NIGHT.get_or_init(|| hearth_g15::lights_auto::describe(&hearth_g15::lights_auto::for_root(&a.root))).clone();
-    column![
-        big_title(&p, vec![("Lighting".into(), true)]),
-        gap(1.0, 6.0),
-        card(&p, container(pic).padding(Padding { top: 8.0, right: 120.0, bottom: 8.0, left: 120.0 })).width(Length::Fill),
+    let keys = column![
         head(&p, "Keys"),
         srow(&p, "☀", "Key light", "The orange light under the keys · the light button on the keyboard changes it too", three(&p, "kbdLight", level(a, "kbdLight", 2)), on(a, "kbd"), None),
         srow(&p, "▭", "Screen light", "Also on the Keyboard screen page", three(&p, "lcdLight", level(a, "lcdLight", 2)), on(a, "lcd"), None),
+    ]
+    .spacing(10.0);
+    let when = column![
         head(&p, "When"),
         srow(&p, "☾", "Turn the lights off when the PC sleeps or locks", "They come back the way you had them", switch(&p, flag(a, "lightsOffWhenLocked", false), Msg::Flag("lightsOffWhenLocked", !flag(a, "lightsOffWhenLocked", false))), on(a, "locked"), None),
         srow(&p, "◖", "Dim the keys with Night light", night, switch(&p, flag(a, "nightDim", false), Msg::Flag("nightDim", !flag(a, "nightDim", false))), on(a, "night"), None),
         srow(&p, "⊞", "Light up the key set's M-key", "M1, M2 or M3 shows which set is in use · MR lights while recording", switch(&p, flag(a, "mLights", true), Msg::Flag("mLights", !flag(a, "mLights", true))), on(a, "mlights"), None),
-        note(a),
     ]
-    .spacing(10.0)
-    .into()
+    .spacing(10.0);
+    let items: Vec<(&'static str, E)> = vec![
+        ("title", big_title(&p, vec![("Lighting".into(), true)])),
+        ("picture", card(&p, container(pic).padding(Padding { top: 8.0, right: 120.0, bottom: 8.0, left: 120.0 })).width(Length::Fill).into()),
+        ("keys", keys.into()),
+        ("when", when.into()),
+        ("note", note(a)),
+    ];
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "lighting",
+        items,
+        |ps| column![ps.take("title"), gap(1.0, 6.0), ps.take("picture"), ps.take("keys"), ps.take("when"), ps.take("note")].spacing(10.0).into(),
+        Msg::Describe,
+    )
 }
 
 // ------------------------------------------------------------------ 6. Make your own screen (g15-6)
@@ -918,16 +1025,31 @@ fn editor(a: &App) -> E<'_> {
     // A little wider than 0.64 of the mockup's, so "Also show it  While Trains 2010 runs" fits on one line.
     let props = card(&p, props).padding(Padding { top: 16.0, right: 12.0, bottom: 16.0, left: 12.0 }).width(Length::Fixed(sz(380.0) + 12.0));
 
-    let top = row![
-        big_title(&p, vec![("Keyboard screen".into(), false), (s(&scr, "name"), true)]),
-        Space::new().width(Length::Fill),
+    let buttons = row![
         btn(&p, "Undo", Kind::Normal, on(a, "undo"), Some(Msg::Undo)),
         btn(&p, "Show on the keyboard", Kind::Normal, on(a, "show"), Some(Msg::Show)),
         orange_btn("Done", on(a, "done"), Msg::Done),
     ]
     .spacing(8.0)
     .align_y(iced::Center);
-    column![top, gap(1.0, 12.0), row![add, middle, props].spacing(14.0)].spacing(6.0).into()
+    let items: Vec<(&'static str, E)> = vec![
+        ("title", big_title(&p, vec![("Keyboard screen".into(), false), (s(&scr, "name"), true)])),
+        ("buttons", buttons.into()),
+        ("add", add.into()),
+        ("screen", middle.into()),
+        ("props", props.into()),
+    ];
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "editor",
+        items,
+        |ps| {
+            let top = row![ps.take("title"), Space::new().width(Length::Fill), ps.take("buttons")].spacing(8.0).align_y(iced::Center);
+            column![top, gap(1.0, 12.0), row![ps.take("add"), ps.take("screen"), ps.take("props")].spacing(14.0)].spacing(6.0).into()
+        },
+        Msg::Describe,
+    )
 }
 
 fn editor_canvas(a: &App) -> E<'_> {
