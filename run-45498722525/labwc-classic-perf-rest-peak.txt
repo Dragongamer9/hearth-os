@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 80  of event 'task-clock:ppp' (time slices: 2188,2196)
+# Event count (approx.): 402010000
+#
+# Overhead  Shared Object                 Symbol                                                                                     
+# ........  ............................  ...........................................................................................
+#
+     7.50%  libglib-2.0.so.0.9000.1       [.] sha256_transform
+            |
+            ---sha256_transform
+               sha256_sum_update.part.0
+               g_compute_checksum_for_data
+               flatpak_remote_state_ensure_subsummary
+               _flatpak_dir_get_remote_state.constprop.0
+               get_remote_state
+               flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+     5.00%  ld-linux-x86-64.so.2          [.] do_lookup_x
+            |
+            ---do_lookup_x
+               _dl_lookup_symbol_x
+               resolve_map (inlined)
+               elf_machine_rela (inlined)
+               elf_dynamic_do_Rela (inlined)
+               _dl_relocate_object_no_relro
+               _dl_relocate_object
+               |          
+               |--3.75%--dl_main
+               |          _dl_sysdep_start
+               |          _dl_start_final (inlined)
+               |          _dl_start
+               |          _dl_start_user
+               |          
+                --1.25%--dl_open_worker_begin
+                          set_catch (inlined)
+                          _dl_catch_exception
+                          dl_open_worker
+                          set_catch (inlined)
+                          _dl_catch_exception
+                          _dl_open
+                          dlopen_doit
+                          set_catch (inlined)
+                          _dl_catch_exception
+                          _dl_catch_error
+                          _dlerror_run
+                          dlopen@GLIBC_2.2.5
+                          g_module_open_full
+                          g_io_module_load_module
+                          g_type_module_use
+                          lazy_load_modules.isra.0
+                          g_io_extension_point_get_extension_by_name
+                          _g_io_module_get_default
+                          g_vfs_get_default
+                          main
+                          __libc_start_call_main
+                          __libc_start_main@@GLIBC_2.34
+                          _start
+     3.75%  libglib-2.0.so.0.9000.1       [.] g_variant_serialised_is_normal
+            |
+            ---g_variant_serialised_is_normal
+               g_variant_serialised_is_normal
+               g_variant_serialised_is_normal
+               g_variant_serialised_is_normal
+               g_variant_serialised_is_normal
+               |          
+               |--2.50%--g_variant_is_normal_form
+               |          summary_new_from_bytes_checked.lto_priv.0
+               |          flatpak_remote_state_ensure_subsummary
+               |          _flatpak_dir_get_remote_state.constprop.0
+               |          get_remote_state
+               |          flatpak_builtin_remote_ls
+               |          main
+               |          __libc_start_call_main
+               |          __libc_start_main@@GLIBC_2.34
+               |          _start
+               |          
+                --1.25%--g_variant_serialised_is_normal
+                          g_variant_serialised_is_normal
+                          g_variant_is_normal_form
+                          summary_new_from_bytes_checked.lto_priv.0
+                          flatpak_remote_state_ensure_subsummary
+                          _flatpak_dir_get_remote_state.constprop.0
+                          get_remote_state
+                          flatpak_builtin_remote_ls
+                          main
+                          __libc_start_call_main
+                          __libc_start_main@@GLIBC_2.34
+                          _start
+     2.50%  [kernel.kallsyms]             [k] kmem_cache_alloc_noprof
+            |
+            ---kmem_cache_alloc_noprof
+               do_getname
+               getname_flags
+               do_sys_openat2
+               __x64_sys_openat
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               |          
+               |--1.25%--__open64_nocancel
+               |          _IO_file_open
+               |          _IO_file_fopen@@GLIBC_2.2.5
+               |          __fopen_internal
+               |          __tzfile_read
+               |          tzset_internal
+               |          __tzset
+               |          mktime
+               |          qMkTime(tm*)
+               |          (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |          QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |          QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |          QDateTime::toMSecsSinceEpoch() const
+               |          QDateTime::msecsTo(QDateTime const&) const
+               |          QDateTime::secsTo(QDateTime const&) const
+               |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          0x7dcaeaceaec0
+               |          0x7dcad7c281c0
+               |          QFile::qt_metacast(char const*)
+               |          0xe9097400387f8348
+               |          
+                --1.25%--__syscall_cancel_arch
+                          QFSFileEnginePrivate::nativeOpenImpl(QFlags<QIODeviceBase::OpenModeFlag>, unsigned int)
+                          QFSFileEngine::open(QFlags<QIODeviceBase::OpenModeFlag>, std::optional<QFlags<QFileDevice::Permission> >)
+                          QFile::open(QFlags<QIODeviceBase::OpenModeFlag>)
+                          DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+                          0x7dcad171ea60
+                          0x8
+     2.50%  [kernel.kallsyms]             [k] link_path_walk
+            |
+            ---link_path_walk
+               path_lookupat
+               filename_lookup
+               vfs_statx
+               do_statx
+               __x64_sys_statx
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               statx
+               g_local_file_query_info
+               flatpak_dir_get_if_deployed
+               flatpak_dir_get_deploy_data
+               flatpak_builtin_remote_ls

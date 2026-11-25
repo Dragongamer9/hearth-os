@@ -1,0 +1,67 @@
+     59       1 Z        845 sh <defunct>    [sh] <defunct>
+    124       1 Z        844 sh <defunct>    [sh] <defunct>
+    129       1 Z        844 sh <defunct>    [sh] <defunct>
+    135       1 Z        844 sh <defunct>    [sh] <defunct>
+    137       1 Z        844 sh <defunct>    [sh] <defunct>
+    139       1 Z        844 sh <defunct>    [sh] <defunct>
+    140       1 Z        844 sh <defunct>    [sh] <defunct>
+    229       1 Z        844 python3 <defunc [python3] <defunct>
+    330       1 Z        841 gpgconf <defunc [gpgconf] <defunct>
+    332       1 Z        841 gpgconf <defunc [gpgconf] <defunct>
+    334       1 Z        841 gpg <defunct>   [gpg] <defunct>
+    336       1 Z        841 flatpak <defunc [flatpak] <defunct>
+    341       1 Z        841 gpgconf <defunc [gpgconf] <defunct>
+    342       1 Z        841 notify-send <de [notify-send] <defunct>
+    345       1 Z        841 gpg <defunct>   [gpg] <defunct>
+    355       1 Zs       841 gpg-agent <defu [gpg-agent] <defunct>
+    360       1 Z        841 scdaemon <defun [scdaemon] <defunct>
+    371       1 Z        841 gpg <defunct>   [gpg] <defunct>
+    375       1 Z        841 gpg <defunct>   [gpg] <defunct>
+    379       1 Z        841 gpg <defunct>   [gpg] <defunct>
+    381       1 Zs       841 gpg-agent <defu [gpg-agent] <defunct>
+    383       1 Z        841 scdaemon <defun [scdaemon] <defunct>
+    388       1 Z        841 curl <defunct>  [curl] <defunct>
+    405       1 Z        841 mv <defunct>    [mv] <defunct>
+    424       1 Zs       841 quickshell <def [quickshell] <defunct>
+    430       1 Z        841 curl <defunct>  [curl] <defunct>
+    464       1 Z        841 WebKitNetworkPr [WebKitNetworkPr] <defunct>
+    467       1 Z        841 WebKitWebProces [WebKitWebProces] <defunct>
+    503       1 Z        840 WebKitNetworkPr [WebKitNetworkPr] <defunct>
+    508       1 Z        840 WebKitWebProces [WebKitWebProces] <defunct>
+    524       1 Z        840 sh <defunct>    [sh] <defunct>
+    556       1 Zs       840 agent <defunct> [agent] <defunct>
+    558       1 Zs       840 sh <defunct>    [sh] <defunct>
+    559       1 Zs       840 liveinst-setup. [liveinst-setup.] <defunct>
+    560       1 Zs       840 spice-vdagent < [spice-vdagent] <defunct>
+    561       1 Zs       840 VBoxClient-all  [VBoxClient-all] <defunct>
+    563       1 Zs       840 xdg-user-dirs-u [xdg-user-dirs-u] <defunct>
+    564       1 Z        840 vmtoolsd <defun [vmtoolsd] <defunct>
+    565       1 Zs       840 python3 <defunc [python3] <defunct>
+    576       1 Z        840 sh <defunct>    [sh] <defunct>
+    697       1 Z        838 sh <defunct>    [sh] <defunct>
+    699       1 Z        838 sh <defunct>    [sh] <defunct>
+    983       1 Z        817 curl <defunct>  [curl] <defunct>
+   1011       1 Z        816 curl <defunct>  [curl] <defunct>
+   1138       1 Z        796 python3 <defunc [python3] <defunct>
+   1144       1 Z        795 mv <defunct>    [mv] <defunct>
+   1153       1 Zs       795 quickshell <def [quickshell] <defunct>
+   1167       1 Z        792 python3 <defunc [python3] <defunct>
+   1181       1 Z        791 curl <defunct>  [curl] <defunct>
+   1369       1 Z        779 sh <defunct>    [sh] <defunct>
+   1405       1 Z        773 mv <defunct>    [mv] <defunct>
+   1411       1 Zs       773 quickshell <def [quickshell] <defunct>
+   2324       1 Z        360 gpgconf <defunc [gpgconf] <defunct>
+   2326       1 Z        360 gpgconf <defunc [gpgconf] <defunct>
+   2328       1 Z        360 gpg <defunct>   [gpg] <defunct>
+   2330       1 Z        360 flatpak <defunc [flatpak] <defunct>
+   2333       1 Z        360 gpgconf <defunc [gpgconf] <defunct>
+   2335       1 Z        360 gpg <defunct>   [gpg] <defunct>
+   2474       1 Z        242 python3 <defunc [python3] <defunct>
+   2638       1 Z        127 addr2line <defu [addr2line] <defunct>
+   2639       1 Z        126 addr2line <defu [addr2line] <defunct>
+   2646       1 Z        124 addr2line <defu [addr2line] <defunct>
+   2648       1 Z        123 addr2line <defu [addr2line] <defunct>
+   2681       1 Z        119 addr2line <defu [addr2line] <defunct>
+   2685       1 Z        118 addr2line <defu [addr2line] <defunct>
+   2972       1 Z        117 sh <defunct>    [sh] <defunct>
+   2978       1 Z        113 sh <defunct>    [sh] <defunct>

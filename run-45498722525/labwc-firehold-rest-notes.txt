@@ -1,0 +1,13 @@
+up in 7.1 s
+the start's game lists answered after 0 s more
+font caches: 232 cache files, 29 font folders, 0 newer than the caches
+the app and desktop folders didn't change at rest
+the busiest second at rest (perf): 3235,  6.33% libglib-2.0.so.0.9000.1 [.] sha256_transform| 5.06% [kernel.kallsyms] [k] _raw_spin_unlock_irqrestore| |--1.27%--rmqueue_bulk| |--1.27%--folio_batch_move_lru|
+the busiest 5 s at rest:   370s shell   5 ticks | threads quickshell 2, Thread (pooled) 2, QThread 1 | others fatrace -t -f CWDO  11, grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports  2, python3 - 179 600 /tmp/xdg-firehold/nimbus-shell.log /out/firehold/rest-trace.txt /out/firehold/rest 1 | new children - | log 282→282
+Firehold after the rest: {"unlocked":true,"posture":"couch","mode":"auto","view":"home","tab":"home","page":"tabs","guide":false,"settings":false,"couchUp":true,"games":11,"counts":{"al
+the drive while at rest: 96G free of 145G; the shell's memory: Rss: 320 MB, Pss_File: 63 MB, Shared_Clean: 23 MB, Private_Dirty: 183 MB, Anonymous: 183 MB, 
+at rest over 600 s: shell 0.17 % of a core (worst minute 0.18 %; minutes: 16 8 10 8 10 8 18 6 11 6), labwc 0.00 %, shell memory 327 → 320 MB, 20 frames drawn, processes 32 → 27
+a notification and a window coming and going at rest: the shell used 0.14 s of the processor (320 MB, was 320 MB)
+an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used 0.51 s of the processor (memory 320 → 327 MB)
+the app lists made again 8 times (300 entries written again, one renamed): the shell used 0.93 s of the processor, memory 327 → 317 MB
+the shell's app lists (AppEntries) before the entry changes: {"rev":3,"apps":387,"live":387}; after: {"rev":14,"apps":387,"live":387}

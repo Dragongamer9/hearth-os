@@ -1,0 +1,32 @@
+1 0 timeout 1800 bash .github/scripts/labwc-fedora-rest.sh firehold /out/firehold 600 
+101 0 /usr/libexec/gvfsd-fuse /tmp/xdg-firehold/gvfs -f 
+104 0 /usr/libexec/dconf-service 
+1254 11 /usr/libexec/hearth/apps/hearth-settings-app --page looks 
+126 0 sh /usr/share/nimbus/desktop/labwc/autostart 
+127 5 sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 52 
+1385 0 /usr/bin/gnome-keyring-daemon --start --foreground --components=secrets 
+1516 0 sleep 2 
+1527 0 inotifywait -m -r -q -e create,modify,close_write,moved_to,moved_from,delete,attrib --timefmt %s --format %T %e %w%f /tm
+1528 6 fatrace -t -f CWDO 
+1529 1 grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports 
+179 611 quickshell -p /usr/share/nimbus/desktop/shell 
+182 6 /usr/libexec/xdg-desktop-portal 
+188 0 /usr/libexec/xdg-permission-store 
+194 2 /usr/libexec/xdg-document-portal 
+200 0 fusermount3 --auto-unmount -- /tmp/xdg-firehold/doc 
+204 7 /usr/libexec/xdg-desktop-portal-gtk 
+213 0 /usr/libexec/at-spi-bus-launcher 
+219 1 /usr/bin/dbus-daemon --config-file=/usr/share/defaults/at-spi2/accessibility.conf --nofork --print-address 11 --address=
+221 0 /usr/libexec/at-spi2-registryd --use-gnome-session 
+229 15 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-portal filechooser 
+258 12 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons 
+260 36 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio 
+264 25 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-pad 
+283 11 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-posture watch 
+285 0 /usr/sbin/udevadm monitor --udev --property --subsystem-match=block --subsystem-match=usb 
+34 9 bash .github/scripts/labwc-fedora-rest.sh firehold /out/firehold 600 
+44 9 dbus-daemon --session --fork --address=unix:path=/tmp/xdg-firehold/bus 
+443 0 /usr/sbin/wl-paste --watch python3 /usr/share/nimbus/desktop/shell/hearth-clipboard store 
+52 45 labwc -C /usr/share/nimbus/desktop/labwc 
+635 10 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-firehold/Desktop 
+95 1 /usr/libexec/gvfsd 

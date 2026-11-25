@@ -1,0 +1,400 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 233  of event 'task-clock:ppp'
+# Event count (approx.): 1170854125
+#
+# Children      Self  Symbol                                                                                                                                                                                                                                                                                                                                  
+# ........  ........  ........................................................................................................................................................................................................................................................................................................................................
+#
+    35.19%     0.00%  [.] __libc_start_call_main
+            |          
+             --34.33%--__libc_start_main@@GLIBC_2.34
+                       |          
+                       |--18.03%--_start
+                       |          
+                       |--11.59%--_start
+                       |          
+                       |--1.72%--_start
+                       |          
+                       |--0.86%--_start
+                       |          
+                        --0.86%--_start
+    34.33%     0.00%  [.] __libc_start_main@@GLIBC_2.34
+            |          
+            |--18.03%--_start
+            |          
+            |--11.59%--_start
+            |          
+            |--1.72%--_start
+            |          
+            |--0.86%--_start
+            |          
+             --0.86%--_start
+    31.33%     0.00%  [.] entry_SYSCALL_64_after_hwframe
+            |          
+            |--12.88%--__syscall_cancel_arch
+            |          |          
+            |          |--4.72%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+            |          |          QFileDevice::writeData(char const*, long long)
+            |          |          QIODevice::write(char const*, long long)
+            |          |          QIODevice::write(QByteArray const&)
+            |          |          qs::log::WriteBuffer::flush() (inlined)
+            |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |          |          |          
+            |          |           --4.29%--0x7cb418a08160
+            |          |                     0x7cb418a281c0
+            |          |                     QFile::qt_metacast(char const*)
+            |          |                     0xe9097400387f8348
+            |          |          
+            |          |--3.86%--g_main_context_iterate_unlocked.isra.0
+            |          |          g_main_context_iteration
+            |          |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+            |          |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+            |          |          QCoreApplication::exec()
+            |          |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+            |          |          0x7cb42ba0dc00
+            |          |          QApplication::qt_metacast(char const*)
+            |          |          0xe9097400387f8348
+            |          |          
+            |          |--1.29%--g_wakeup_signal
+            |          |          |          
+            |          |           --0.86%--QCoreApplication::postEvent(QObject*, QEvent*, int)
+            |          |                     queued_activate(QObject*, int, QObjectPrivate::Connection*, void**)
+            |          |                     void doActivate<false>(QObject*, int, void**)
+            |          |                     qs::log::LogManager::logMessage(qs::log::LogMessage, bool)
+            |          |                     0x7cb42ba0f080
+            |          |                     qs::log::LogManager::qt_metacast(char const*)
+            |          |                     0xffdf5830e9057400
+            |          |          
+            |          |--0.86%--QInotifyFileSystemWatcherEngine::~QInotifyFileSystemWatcherEngine()
+            |          |          QInotifyFileSystemWatcherEngine::~QInotifyFileSystemWatcherEngine()
+            |          |          QObjectPrivate::deleteChildren()
+            |          |          QObject::~QObject()
+            |          |          QFileSystemWatcher::~QFileSystemWatcher()
+            |          |          QObject::event(QEvent*)
+            |          |          QApplicationPrivate::notify_helper(QObject*, QEvent*)
+            |          |          QCoreApplication::notifyInternal2(QObject*, QEvent*)
+            |          |          QCoreApplicationPrivate::sendPostedEvents(QObject*, int, QThreadData*)
+            |          |          postEventSourceDispatch(_GSource*, int (*)(void*), void*)
+            |          |          g_main_context_dispatch_unlocked
+            |          |          g_main_context_iterate_unlocked.isra.0
+            |          |          g_main_context_iteration
+            |          |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+            |          |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+            |          |          QCoreApplication::exec()
+            |          |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+            |          |          0x7cb42ba0dc00
+            |          |          QApplication::qt_metacast(char const*)
+            |          |          0xe9097400387f8348
+            |          |          
+            |           --0.86%--QFSFileEnginePrivate::nativeOpenImpl(QFlags<QIODeviceBase::OpenModeFlag>, unsigned int)
+            |                     QFSFileEngine::open(QFlags<QIODeviceBase::OpenModeFlag>, std::optional<QFlags<QFileDevice::Permission> >)
+            |                     QFile::open(QFlags<QIODeviceBase::OpenModeFlag>)
+            |                     DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+            |          
+            |--6.44%--__open64_nocancel
+            |          |          
+            |           --6.01%--_IO_file_open
+            |                     _IO_file_fopen@@GLIBC_2.2.5
+            |                     __fopen_internal
+            |                     __tzfile_read
+            |                     tzset_internal
+            |                     __tzset
+            |                     |          
+            |                     |--3.43%--mktime
+            |                     |          qMkTime(tm*)
+            |                     |          (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     |          QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     |          QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     |          QDateTime::toMSecsSinceEpoch() const
+            |                     |          |          
+            |                     |          |--2.15%--QDateTime::toSecsSinceEpoch() const
+            |                     |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |                     |          |          0x7cb418a08160
+            |                     |          |          0x7cb418a281c0
+            |                     |          |          QFile::qt_metacast(char const*)
+            |                     |          |          0xe9097400387f8348
+            |                     |          |          
+            |                     |           --0.86%--QDateTime::msecsTo(QDateTime const&) const
+            |                     |                     QDateTime::secsTo(QDateTime const&) const
+            |                     |          
+            |                      --2.58%--qLocalTime(long, tm*)
+            |                                QLocalTime::utcToLocal(long long)
+            |                                QDateTimePrivate::expressUtcAsLocal(long long)
+            |                                QDateTime::setMSecsSinceEpoch(long long)
+            |                                QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+            |                                |          
+            |                                 --2.15%--QDateTime::currentDateTime(QTimeZone const&)
+            |                                           QDateTime::currentDateTime()
+            |                                           QString::toUtf8() const & (inlined)
+            |                                           qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+            |          
+            |--2.15%--syscall
+            |          |          
+            |           --0.86%--qLocalTime(long, tm*)
+            |                     QLocalTime::utcToLocal(long long)
+            |                     QDateTimePrivate::expressUtcAsLocal(long long)
+            |                     QDateTime::setMSecsSinceEpoch(long long)
+            |                     QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+            |                     QDateTime::currentDateTime(QTimeZone const&)
+            |                     QDateTime::currentDateTime()
+            |                     QString::toUtf8() const & (inlined)
+            |                     qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+            |          
+            |--2.15%--statx
+            |          g_local_file_query_info
+            |          flatpak_dir_get_if_deployed
+            |          flatpak_dir_get_deploy_data
+            |          flatpak_builtin_remote_ls
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+            |--1.72%--__munmap
+            |          
+            |--1.72%--__GI___libc_open
+            |          _io_FileIO___init__.lto_priv.0
+            |          _PyObject_MakeTpCall.constprop.0
+            |          PyObject_CallFunction
+            |          _io_open.lto_priv.0
+            |          PyObject_CallFunction
+            |          PyFile_OpenCodeObject
+            |          _Py_BuiltinCallFastWithKeywords_StackRef
+            |          _PyEval_EvalFrameDefault.cold
+            |          _PyEval_Vector
+            |          object_vacall.lto_priv.0
+            |          PyObject_CallMethodObjArgs
+            |          import_find_and_load_with_name.isra.0
+            |          PyImport_ImportModuleLevelObject
+            |          |          
+            |           --0.86%--_PyEval_ImportName
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector.constprop.0
+            |                     PyEval_EvalCode
+            |                     builtin_exec.lto_priv.0
+            |          
+            |--1.29%--__GI___fstatat64
+            |          _Py_BuiltinCallFastWithKeywords_StackRef
+            |          _PyEval_EvalFrameDefault.cold
+            |          |          
+            |           --0.86%--_PyEval_Vector
+            |                     object_vacall.lto_priv.0
+            |                     PyObject_CallMethodObjArgs
+            |                     import_find_and_load_with_name.isra.0
+            |                     PyImport_ImportModuleLevelObject
+            |                     _PyEval_ImportName
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector.constprop.0
+            |                     PyEval_EvalCode
+            |                     builtin_exec.lto_priv.0
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector
+            |                     object_vacall.lto_priv.0
+            |                     PyObject_CallMethodObjArgs
+            |                     import_find_and_load_with_name.isra.0
+            |                     PyImport_ImportModuleLevelObject
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector
+            |                     object_vacall.lto_priv.0
+            |                     PyObject_CallMethodObjArgs
+            |                     PyImport_ImportModuleLevelObject
+            |                     _PyEval_ImportName
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector.constprop.0
+            |                     PyEval_EvalCode
+            |          
+            |--0.86%--__GI___clone3
+            |          __GI___clone_internal
+            |          create_thread
+            |          pthread_create@GLIBC_2.2.5
+            |          
+             --0.86%--__mmap64 (inlined)
+                       mmap64
+                       _dl_map_segments (inlined)
+                       _dl_map_object_from_fd (inlined)
+                       _dl_map_new_object
+                       openaux
+                       set_catch (inlined)
+                       _dl_catch_exception
+                       dl_scratch_buffer_free (inlined)
+                       _dl_map_object_deps
+    30.90%     0.43%  [.] do_syscall_64
+            |
+            ---entry_SYSCALL_64_after_hwframe
+               |          
+               |--12.45%--__syscall_cancel_arch
+               |          |          
+               |          |--4.72%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+               |          |          QFileDevice::writeData(char const*, long long)
+               |          |          QIODevice::write(char const*, long long)
+               |          |          QIODevice::write(QByteArray const&)
+               |          |          qs::log::WriteBuffer::flush() (inlined)
+               |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          |          |          
+               |          |           --4.29%--0x7cb418a08160
+               |          |                     0x7cb418a281c0
+               |          |                     QFile::qt_metacast(char const*)
+               |          |                     0xe9097400387f8348
+               |          |          
+               |          |--3.86%--g_main_context_iterate_unlocked.isra.0
+               |          |          g_main_context_iteration
+               |          |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          |          QCoreApplication::exec()
+               |          |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               |          |          0x7cb42ba0dc00
+               |          |          QApplication::qt_metacast(char const*)
+               |          |          0xe9097400387f8348
+               |          |          
+               |          |--0.86%--g_wakeup_signal
+               |          |          
+               |          |--0.86%--QInotifyFileSystemWatcherEngine::~QInotifyFileSystemWatcherEngine()
+               |          |          QInotifyFileSystemWatcherEngine::~QInotifyFileSystemWatcherEngine()
+               |          |          QObjectPrivate::deleteChildren()
+               |          |          QObject::~QObject()
+               |          |          QFileSystemWatcher::~QFileSystemWatcher()
+               |          |          QObject::event(QEvent*)
+               |          |          QApplicationPrivate::notify_helper(QObject*, QEvent*)
+               |          |          QCoreApplication::notifyInternal2(QObject*, QEvent*)
+               |          |          QCoreApplicationPrivate::sendPostedEvents(QObject*, int, QThreadData*)
+               |          |          postEventSourceDispatch(_GSource*, int (*)(void*), void*)
+               |          |          g_main_context_dispatch_unlocked
+               |          |          g_main_context_iterate_unlocked.isra.0
+               |          |          g_main_context_iteration
+               |          |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          |          QCoreApplication::exec()
+               |          |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               |          |          0x7cb42ba0dc00
+               |          |          QApplication::qt_metacast(char const*)
+               |          |          0xe9097400387f8348
+               |          |          
+               |           --0.86%--QFSFileEnginePrivate::nativeOpenImpl(QFlags<QIODeviceBase::OpenModeFlag>, unsigned int)
+               |                     QFSFileEngine::open(QFlags<QIODeviceBase::OpenModeFlag>, std::optional<QFlags<QFileDevice::Permission> >)
+               |                     QFile::open(QFlags<QIODeviceBase::OpenModeFlag>)
+               |                     DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+               |          
+               |--6.44%--__open64_nocancel
+               |          |          
+               |           --6.01%--_IO_file_open
+               |                     _IO_file_fopen@@GLIBC_2.2.5
+               |                     __fopen_internal
+               |                     __tzfile_read
+               |                     tzset_internal
+               |                     __tzset
+               |                     |          
+               |                     |--3.43%--mktime
+               |                     |          qMkTime(tm*)
+               |                     |          (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     |          QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     |          QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     |          QDateTime::toMSecsSinceEpoch() const
+               |                     |          |          
+               |                     |          |--2.15%--QDateTime::toSecsSinceEpoch() const
+               |                     |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |                     |          |          0x7cb418a08160
+               |                     |          |          0x7cb418a281c0
+               |                     |          |          QFile::qt_metacast(char const*)
+               |                     |          |          0xe9097400387f8348
+               |                     |          |          
+               |                     |           --0.86%--QDateTime::msecsTo(QDateTime const&) const
+               |                     |                     QDateTime::secsTo(QDateTime const&) const
+               |                     |          
+               |                      --2.58%--qLocalTime(long, tm*)
+               |                                QLocalTime::utcToLocal(long long)
+               |                                QDateTimePrivate::expressUtcAsLocal(long long)
+               |                                QDateTime::setMSecsSinceEpoch(long long)
+               |                                QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               |                                |          
+               |                                 --2.15%--QDateTime::currentDateTime(QTimeZone const&)
+               |                                           QDateTime::currentDateTime()
+               |                                           QString::toUtf8() const & (inlined)
+               |                                           qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |          
+               |--2.15%--syscall
+               |          |          
+               |           --0.86%--qLocalTime(long, tm*)
+               |                     QLocalTime::utcToLocal(long long)
+               |                     QDateTimePrivate::expressUtcAsLocal(long long)
+               |                     QDateTime::setMSecsSinceEpoch(long long)
+               |                     QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               |                     QDateTime::currentDateTime(QTimeZone const&)
+               |                     QDateTime::currentDateTime()
+               |                     QString::toUtf8() const & (inlined)
+               |                     qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |          
+               |--2.15%--statx
+               |          g_local_file_query_info
+               |          flatpak_dir_get_if_deployed
+               |          flatpak_dir_get_deploy_data
+               |          flatpak_builtin_remote_ls
+               |          main
+               |          __libc_start_call_main
+               |          __libc_start_main@@GLIBC_2.34
+               |          _start
+               |          
+               |--1.72%--__munmap
+               |          
+               |--1.72%--__GI___libc_open
+               |          _io_FileIO___init__.lto_priv.0
+               |          _PyObject_MakeTpCall.constprop.0
+               |          PyObject_CallFunction
+               |          _io_open.lto_priv.0
+               |          PyObject_CallFunction
+               |          PyFile_OpenCodeObject
+               |          _Py_BuiltinCallFastWithKeywords_StackRef
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector
+               |          object_vacall.lto_priv.0
+               |          PyObject_CallMethodObjArgs
+               |          import_find_and_load_with_name.isra.0
+               |          PyImport_ImportModuleLevelObject
+               |          |          
+               |           --0.86%--_PyEval_ImportName
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector.constprop.0
+               |                     PyEval_EvalCode
+               |                     builtin_exec.lto_priv.0
+               |          
+               |--1.29%--__GI___fstatat64
+               |          _Py_BuiltinCallFastWithKeywords_StackRef
+               |          _PyEval_EvalFrameDefault.cold
+               |          |          
+               |           --0.86%--_PyEval_Vector
+               |                     object_vacall.lto_priv.0
+               |                     PyObject_CallMethodObjArgs
+               |                     import_find_and_load_with_name.isra.0
+               |                     PyImport_ImportModuleLevelObject
+               |                     _PyEval_ImportName
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector.constprop.0
+               |                     PyEval_EvalCode
+               |                     builtin_exec.lto_priv.0
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector
+               |                     object_vacall.lto_priv.0
+               |                     PyObject_CallMethodObjArgs
+               |                     import_find_and_load_with_name.isra.0
+               |                     PyImport_ImportModuleLevelObject
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector
+               |                     object_vacall.lto_priv.0
+               |                     PyObject_CallMethodObjArgs
+               |                     PyImport_ImportModuleLevelObject
+               |                     _PyEval_ImportName
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector.constprop.0
+               |                     PyEval_EvalCode
+               |          
+               |--0.86%--__GI___clone3
+               |          __GI___clone_internal
+               |          create_thread
+               |          pthread_create@GLIBC_2.2.5
+               |          
+                --0.86%--__mmap64 (inlined)
+                          mmap64
+                          _dl_map_segments (inlined)

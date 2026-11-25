@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 21  of event 'task-clock:ppp'
+# Event count (approx.): 42084168
+#
+# Overhead  Shared Object            Symbol                                                                                                                                         
+# ........  .......................  ...............................................................................................................................................
+#
+     9.52%  libglib-2.0.so.0.9000.1  [.] g_main_context_prepare_unlocked
+            |
+            ---g_main_context_prepare_unlocked
+               g_main_context_iterate_unlocked.isra.0
+               g_main_context_iteration
+               QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          
+               |--4.76%--QThread::exec()
+               |          QThreadPrivate::start(void*)
+               |          start_thread
+               |          __GI___clone3
+               |          
+                --4.76%--QCoreApplication::exec()
+                          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+                          0x7cb42ba0dc00
+                          QApplication::qt_metacast(char const*)
+                          0xe9097400387f8348
+     4.76%  [kernel.kallsyms]        [k] __filemap_get_folio_mpol
+            |
+            ---__filemap_get_folio_mpol
+               generic_perform_write
+               ext4_buffered_write_iter
+               ext4_file_write_iter
+               do_iter_readv_writev
+               vfs_iter_write
+               backing_file_write_iter
+               ovl_write_iter
+               vfs_write
+               ksys_write
+               __x64_sys_write
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __syscall_cancel_arch
+               QFSFileEnginePrivate::writeFdFh(char const*, long long)
+               QFileDevice::writeData(char const*, long long)
+               QIODevice::write(char const*, long long)
+               QIODevice::write(QByteArray const&)
+               qs::log::WriteBuffer::flush() (inlined)
+               qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               0x7cb418a08160
+               0x7cb418a281c0
+               QFile::qt_metacast(char const*)
+               0xe9097400387f8348
+     4.76%  [kernel.kallsyms]        [k] do_file_open
+            |
+            ---do_file_open
+               do_sys_openat2
+               __x64_sys_openat
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __open64_nocancel
+               _IO_file_open
+               _IO_file_fopen@@GLIBC_2.2.5
+               __fopen_internal
+               __tzfile_read
+               tzset_internal
+               __tzset
+               mktime
+               qMkTime(tm*)
+               (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTime::toMSecsSinceEpoch() const
+               QDateTime::msecsTo(QDateTime const&) const
+               QDateTime::secsTo(QDateTime const&) const
+               QByteArray::size() const (inlined)
+               QByteArray::append(QByteArrayView) (inlined)
+               QByteArray::append(char const*, long long) (inlined)
+               qs::log::WriteBuffer::writeBytes(char const*, long long) (inlined)
+               qs::log::WriteBuffer::writeU8(unsigned char) (inlined)
+               qs::log::EncodedLogWriter::writeOp(qs::log::EncodedLogOpcode) (inlined)
+               qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               0
+               0x7cb418a281c0
+               QFile::qt_metacast(char const*)
+               0xe9097400387f8348
+     4.76%  [kernel.kallsyms]        [k] do_syscall_64
+            |
+            ---do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               inotify_init1
+               QFileSystemWatcher::QFileSystemWatcher(QObject*)
+               qs::io::FileView::updateWatchedFiles()
+               qs::io::FileView::qt_metacall(QMetaObject::Call, int, void**)
+               0x7cb4173bf680
+     4.76%  [kernel.kallsyms]        [k] futex_ref_get
+            |
+            ---futex_ref_get
+               futex_wake
+               do_futex
+               __x64_sys_futex
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               pthread_cond_signal@@GLIBC_2.3.2
+               QWaitCondition::wakeOne()
+               QThreadPoolPrivate::tryStart(QRunnable*)
+               QThreadPool::start(QRunnable*, int)
+               qs::io::FileView::loadAsync(bool)
+               0x7cb413ec7200
+               qs::io::FileViewOperation::qt_metacast(char const*)
+               0xfff1f470e9057400
+     4.76%  [vdso]                   [.] 0x0000000000000a09
+            |
+            ---0x7cb433c82a09
+               clock_gettime@@GLIBC_2.17
+               g_main_context_prepare_unlocked
+               g_main_context_iterate_unlocked.isra.0
+               g_main_context_iteration
+               QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               QThread::exec()
+               QThreadPrivate::start(void*)
+               start_thread
+               __GI___clone3
+     4.76%  libQt6Core.so.6.11.2     [.] QArrayData::allocate1(QArrayData**, long long, QArrayData::AllocationOption)
+            |
+            ---QArrayData::allocate1(QArrayData**, long long, QArrayData::AllocationOption)
+               QByteArray::QByteArray(long long, Qt::Initialization)
+               QUtf8::convertFromUnicode(QStringView, QStringConverterBase::State*)
+               toLocal8Bit(char*, QStringView, QStringConverterBase::State*)
+               QString::toLocal8Bit_helper(QChar const*, long long)
+               QInotifyFileSystemWatcherEngine::addPaths(QList<QString> const&, QList<QString>*, QList<QString>*)
+               QFileSystemWatcher::addPaths(QList<QString> const&)
+               QFileSystemWatcher::addPath(QString const&)
+               QArrayDataPointer<char16_t>::QArrayDataPointer(QArrayDataPointer<char16_t> const&) (inlined)
+               QString::QString(QString const&) (inlined)
+               qs::io::FileView::updateWatchedFiles()
+               qs::io::FileView::qt_metacall(QMetaObject::Call, int, void**)
+               0x4aa395700
+     4.76%  libQt6Core.so.6.11.2     [.] QArrayData::allocate2(QArrayData**, long long, QArrayData::AllocationOption)
+            |
+            ---QArrayData::allocate2(QArrayData**, long long, QArrayData::AllocationOption)
+               QUtf8::convertToUnicode(QByteArrayView)
+               QString::fromUtf8(QByteArrayView)
+               QDebug::operator<<(char const*) (inlined)

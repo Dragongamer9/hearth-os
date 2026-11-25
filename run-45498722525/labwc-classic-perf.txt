@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 25  of event 'task-clock:ppp'
+# Event count (approx.): 50100200
+#
+# Overhead  Shared Object         Symbol                                                                                                                                        
+# ........  ....................  ..............................................................................................................................................
+#
+    16.00%  libQt6Qml.so.6.11.2   [.] QV4::MarkStack::drain(QDeadlineTimer)
+            |
+            ---QV4::MarkStack::drain(QDeadlineTimer)
+               QV4::(anonymous namespace)::markDrain(QV4::GCStateMachine*, std::variant<std::monostate, QV4::GCIteratorStorage>&)
+               QV4::GCStateMachine::transition()
+               |          
+               |--8.00%--QV4::MemoryManager::runGC()
+               |          QV4::MemoryManager::allocString(unsigned long)
+               |          QV4::ExecutionEngine::newString(QString const&)
+               |          QV4::IteratorPrototype::createIterResultObject(QV4::ExecutionEngine*, QV4::Value const&, bool)
+               |          QV4::ArrayIteratorPrototype::method_next(QV4::FunctionObject const*, QV4::Value const*, QV4::Value const*, int)
+               |          QV4::Runtime::IteratorNext::call(QV4::ExecutionEngine*, QV4::Value const&, QV4::Value*)
+               |          QV4::ArrayPrototype::method_from(QV4::FunctionObject const*, QV4::Value const*, QV4::Value const*, int)
+               |          QV4::Runtime::CallPropertyLookup::call(QV4::ExecutionEngine*, QV4::Value const&, unsigned int, QV4::Value*, int)
+               |          0x7dcacc2c0e51
+               |          QV4::Moth::VME::exec(QV4::JSTypesStackFrame*, QV4::ExecutionEngine*)
+               |          qfoDoCall(QV4::JavaScriptFunctionObject const*, QV4::Value const*, QV4::Value const*, int)
+               |          QV4::Runtime::CallQmlContextPropertyLookup::call(QV4::ExecutionEngine*, unsigned int, QV4::Value*, int)
+               |          0x7dcacc2be72e
+               |          QV4::Moth::VME::exec(QV4::JSTypesStackFrame*, QV4::ExecutionEngine*)
+               |          qfoDoCall(QV4::JavaScriptFunctionObject const*, QV4::Value const*, QV4::Value const*, int)
+               |          QV4::Runtime::CallQmlContextPropertyLookup::call(QV4::ExecutionEngine*, unsigned int, QV4::Value*, int)
+               |          0x7dcacc205355
+               |          QV4::Moth::VME::exec(QV4::JSTypesStackFrame*, QV4::ExecutionEngine*)
+               |          qfoDoCall(QV4::JavaScriptFunctionObject const*, QV4::Value const*, QV4::Value const*, int)
+               |          QV4::Runtime::CallPropertyLookup::call(QV4::ExecutionEngine*, QV4::Value const&, unsigned int, QV4::Value*, int)
+               |          0x7dcad8145fae
+               |          QV4::Moth::VME::exec(QV4::JSTypesStackFrame*, QV4::ExecutionEngine*)
+               |          QV4::doCall(QV4::Function*, QV4::Value const*, QV4::Value const*, int, QV4::ExecutionContext*)
+               |          QV4::Function::call(QObject*, void**, QMetaType const*, int, QV4::ExecutionContext*)
+               |          QQmlJavaScriptExpression::evaluate(void**, QMetaType const*, int)
+               |          QQmlBoundSignalExpression::evaluate(void**)
+               |          QQmlBoundSignal_callback(QQmlNotifierEndpoint*, void**)
+               |          QQmlNotifier::emitNotify(QQmlNotifierEndpoint*, void**)
+               |          void doActivate<false>(QObject*, int, void**)
+               |          QQmlTimer::event(QEvent*)
+               |          QApplicationPrivate::notify_helper(QObject*, QEvent*)
+               |          QCoreApplication::notifyInternal2(QObject*, QEvent*)
+               |          QCoreApplicationPrivate::sendPostedEvents(QObject*, int, QThreadData*)
+               |          postEventSourceDispatch(_GSource*, int (*)(void*), void*)
+               |          g_main_context_dispatch_unlocked
+               |          g_main_context_iterate_unlocked.isra.0
+               |          g_main_context_iteration
+               |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          QCoreApplication::exec()
+               |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               |          0x7dcaeac0dc00
+               |          QApplication::qt_metacast(char const*)
+               |          0xe9097400387f8348
+               |          
+                --8.00%--QObject::event(QEvent*)
+                          QApplicationPrivate::notify_helper(QObject*, QEvent*)
+                          QCoreApplication::notifyInternal2(QObject*, QEvent*)
+                          QCoreApplicationPrivate::sendPostedEvents(QObject*, int, QThreadData*)
+                          postEventSourceDispatch(_GSource*, int (*)(void*), void*)
+                          g_main_context_dispatch_unlocked
+                          g_main_context_iterate_unlocked.isra.0
+                          g_main_context_iteration
+                          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+                          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+                          QCoreApplication::exec()
+                          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+                          0x7dcaeac0dc00
+                          QApplication::qt_metacast(char const*)
+                          0xe9097400387f8348
+     4.00%  [kernel.kallsyms]     [k] _raw_spin_unlock_irqrestore
+            |
+            ---_raw_spin_unlock_irqrestore
+               try_to_wake_up
+               wake_up_q
+               futex_wake
+               do_futex
+               __x64_sys_futex
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               syscall
+               qLocalTime(long, tm*)
+               QLocalTime::utcToLocal(long long)
+               QDateTimePrivate::expressUtcAsLocal(long long)
+               QDateTime::setMSecsSinceEpoch(long long)
+               QDateTime::fromSecsSinceEpoch(long long, QTimeZone const&)
+               QDateTime::fromSecsSinceEpoch(long long)
+               void std::swap<QDateTime::ShortData>(QDateTime::ShortData&, QDateTime::ShortData&) requires ((!std::__is_tuple_like<QDateTime::ShortData>::value)&&(is_move_constructible_v<QDateTime::ShortData>))&&(is_move_assignable_v<QDateTime::ShortData>) (inlined)
+               QDateTime::Data::swap(QDateTime::Data&) (inlined)
+               QDateTime::swap(QDateTime&) (inlined)
+               QDateTime::operator=(QDateTime&&) (inlined)
+               qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               0x7dcaeaceaec0
+               0x7dcad7c281c0
+               QFile::qt_metacast(char const*)
+               0xe9097400387f8348
+     4.00%  [kernel.kallsyms]     [k] do_syscall_64
+            |
+            ---do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __open64_nocancel
+               _IO_file_open
+               _IO_file_fopen@@GLIBC_2.2.5
+               __fopen_internal
+               __tzfile_read
+               tzset_internal
+               __tzset
+               mktime
+               qMkTime(tm*)
+               (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTime::toMSecsSinceEpoch() const
+               QDateTime::toSecsSinceEpoch() const
+               qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               0x7dcaeaceaec0
+               0x7dcad7c281c0
+               QFile::qt_metacast(char const*)
+               0xe9097400387f8348
+     4.00%  [kernel.kallsyms]     [k] fput
+            |
+            ---fput
+               poll_freewait
+               do_sys_poll
+               __x64_sys_ppoll
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __syscall_cancel_arch
+               g_main_context_iterate_unlocked.isra.0
+               g_main_context_iteration
+               QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               QThread::exec()
+               QThreadPrivate::start(void*)
+               start_thread
+               __GI___clone3
+     4.00%  [kernel.kallsyms]     [k] lookup_fast
+            |
+            ---lookup_fast
+               open_last_lookups
+               path_openat

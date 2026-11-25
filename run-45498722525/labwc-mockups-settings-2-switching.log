@@ -1,0 +1,2 @@
+hearth-ui: drawing with the CPU (tiny-skia): no graphics card here (/dev/dri has no render node)
+hearth-settings: look: keyboard and mouse

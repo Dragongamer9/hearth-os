@@ -1,0 +1,500 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 80  of event 'task-clock:ppp' (time slices: 2188,2196)
+# Event count (approx.): 402010000
+#
+# Children      Self  Symbol                                                                                                                                                                                                                                               
+# ........  ........  .....................................................................................................................................................................................................................................................
+#
+    71.25%     0.00%  [.] __libc_start_main@@GLIBC_2.34
+            |          
+            |--55.00%--_start
+            |          
+            |--13.75%--_start
+            |          
+            |--1.25%--_start
+            |          
+             --1.25%--_start
+    71.25%     0.00%  [.] __libc_start_call_main
+            |
+            ---__libc_start_main@@GLIBC_2.34
+               |          
+               |--55.00%--_start
+               |          
+               |--13.75%--_start
+               |          
+               |--1.25%--_start
+               |          
+                --1.25%--_start
+    55.00%     0.00%  [.] _start
+    53.75%     0.00%  [.] main
+            |
+            ---__libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+    52.50%     0.00%  [.] flatpak_builtin_remote_ls
+            |
+            ---main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+    25.00%     0.00%  [.] get_remote_state
+            |
+            ---flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+    25.00%     0.00%  [.] _flatpak_dir_get_remote_state.constprop.0
+            |
+            ---get_remote_state
+               flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+    23.75%     0.00%  [.] entry_SYSCALL_64_after_hwframe
+            |          
+            |--10.00%--__syscall_cancel_arch
+            |          |          
+            |          |--2.50%--QFSFileEnginePrivate::nativeOpenImpl(QFlags<QIODeviceBase::OpenModeFlag>, unsigned int)
+            |          |          QFSFileEngine::open(QFlags<QIODeviceBase::OpenModeFlag>, std::optional<QFlags<QFileDevice::Permission> >)
+            |          |          QFile::open(QFlags<QIODeviceBase::OpenModeFlag>)
+            |          |          DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+            |          |          |          
+            |          |          |--1.25%--0x7dcad171ea60
+            |          |          |          0x8
+            |          |          |          
+            |          |           --1.25%--0x7dcac32a3030
+            |          |                     0x8
+            |          |          
+            |          |--2.50%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+            |          |          QFileDevice::writeData(char const*, long long)
+            |          |          QIODevice::write(char const*, long long)
+            |          |          QIODevice::write(QByteArray const&)
+            |          |          qs::log::WriteBuffer::flush() (inlined)
+            |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |          |          |          
+            |          |          |--1.25%--0x7dcad297c980
+            |          |          |          0x7dcad7c281c0
+            |          |          |          QFile::qt_metacast(char const*)
+            |          |          |          0xe9097400387f8348
+            |          |          |          
+            |          |           --1.25%--0x7dcad2870f80
+            |          |                     0x7dcad7c281c0
+            |          |                     QFile::qt_metacast(char const*)
+            |          |                     0xe9097400387f8348
+            |          |          
+            |          |--1.25%--_gpgme_io_select_poll.lto_priv.0
+            |          |          _gpgme_run_io_cb.constprop.0
+            |          |          _gpgme_wait_on_condition
+            |          |          gpgme_op_verify_ext
+            |          |          _ostree_repo_gpg_verify_data_internal
+            |          |          remote_verify_signature
+            |          |          _flatpak_dir_get_remote_state.constprop.0
+            |          |          get_remote_state
+            |          |          flatpak_builtin_remote_ls
+            |          |          main
+            |          |          __libc_start_call_main
+            |          |          __libc_start_main@@GLIBC_2.34
+            |          |          _start
+            |          |          
+            |          |--1.25%--g_local_file_output_stream_write
+            |          |          g_output_stream_write
+            |          |          g_file_replace_contents
+            |          |          flatpak_dir_remote_save_cached_summary.lto_priv.0
+            |          |          flatpak_remote_state_ensure_subsummary
+            |          |          _flatpak_dir_get_remote_state.constprop.0
+            |          |          get_remote_state
+            |          |          flatpak_builtin_remote_ls
+            |          |          main
+            |          |          __libc_start_call_main
+            |          |          __libc_start_main@@GLIBC_2.34
+            |          |          _start
+            |          |          
+            |          |--1.25%--g_unix_output_stream_write
+            |          |          g_output_stream_write
+            |          |          g_output_stream_write_all
+            |          |          _write_cb
+            |          |          cw_out_cb_write
+            |          |          cw_out_ptr_flush
+            |          |          cw_out_do_write
+            |          |          cw_out_write.lto_priv.0
+            |          |          cw_pause_write.lto_priv.0
+            |          |          cw_download_write
+            |          |          Curl_client_write
+            |          |          Curl_xfer_write_resp
+            |          |          on_data_chunk_recv
+            |          |          nghttp2_session_mem_recv2
+            |          |          h2_process_pending_input.lto_priv.0
+            |          |          h2_progress_ingress
+            |          |          cf_h2_recv.lto_priv.0
+            |          |          multistate_performing
+            |          |          multi_runsingle
+            |          |          multi_perform
+            |          |          easy_perform.constprop.0
+            |          |          flatpak_download_http_uri_once
+            |          |          flatpak_cache_http_uri.constprop.0
+            |          |          flatpak_dir_update_oci_index.lto_priv.0
+            |          |          _flatpak_dir_get_remote_state.constprop.0
+            |          |          get_remote_state
+            |          |          flatpak_builtin_remote_ls
+            |          |          main
+            |          |          __libc_start_call_main
+            |          |          __libc_start_main@@GLIBC_2.34
+            |          |          _start
+            |          |          
+            |           --1.25%--QFSFileEnginePrivate::closeFdFh()
+            |                     QFileDevice::close()
+            |                     QFileDevice::~QFileDevice()
+            |                     QString::~QString() (inlined)
+            |                     DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+            |                     0
+            |          
+            |--6.25%--statx
+            |          g_local_file_query_info
+            |          flatpak_dir_get_if_deployed
+            |          flatpak_dir_get_deploy_data
+            |          flatpak_builtin_remote_ls
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+            |--2.50%--__open64_nocancel
+            |          _IO_file_open
+            |          _IO_file_fopen@@GLIBC_2.2.5
+            |          __fopen_internal
+            |          __tzfile_read
+            |          tzset_internal
+            |          __tzset
+            |          |          
+            |          |--1.25%--qLocalTime(long, tm*)
+            |          |          QLocalTime::utcToLocal(long long)
+            |          |          QDateTimePrivate::expressUtcAsLocal(long long)
+            |          |          QDateTime::setMSecsSinceEpoch(long long)
+            |          |          QDateTime::fromSecsSinceEpoch(long long, QTimeZone const&)
+            |          |          QDateTime::fromSecsSinceEpoch(long long)
+            |          |          void std::swap<QDateTime::ShortData>(QDateTime::ShortData&, QDateTime::ShortData&) requires ((!std::__is_tuple_like<QDateTime::ShortData>::value)&&(is_move_constructible_v<QDateTime::ShortData>))&&(is_move_assignable_v<QDateTime::ShortData>) (inlined)
+            |          |          QDateTime::Data::swap(QDateTime::Data&) (inlined)
+            |          |          QDateTime::swap(QDateTime&) (inlined)
+            |          |          QDateTime::operator=(QDateTime&&) (inlined)
+            |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |          |          0x7dcac1ff9f80
+            |          |          0x7dcad7c281c0
+            |          |          QFile::qt_metacast(char const*)
+            |          |          0xe9097400387f8348
+            |          |          
+            |           --1.25%--mktime
+            |                     qMkTime(tm*)
+            |                     (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     QDateTime::toMSecsSinceEpoch() const
+            |                     QDateTime::msecsTo(QDateTime const&) const
+            |                     QDateTime::secsTo(QDateTime const&) const
+            |                     qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |                     0x7dcaeaceaec0
+            |                     0x7dcad7c281c0
+            |                     QFile::qt_metacast(char const*)
+            |                     0xe9097400387f8348
+            |          
+            |--1.25%--fstat64
+            |          openaux
+            |          set_catch (inlined)
+            |          _dl_catch_exception
+            |          dl_scratch_buffer_free (inlined)
+            |          _dl_map_object_deps
+            |          rtld_timer_stop (inlined)
+            |          rtld_timer_accum (inlined)
+            |          dl_main
+            |          _dl_sysdep_start
+            |          _dl_start_final (inlined)
+            |          _dl_start
+            |          _dl_start_user
+            |          
+            |--1.25%--__clone
+            |          QProcessPrivate::startProcess()
+            |          QArrayDataPointer<QString>::~QArrayDataPointer() (inlined)
+            |          QList<QString>::~QList() (inlined)
+            |          Process::startProcessIfReady()
+            |          Process::qt_metacall(QMetaObject::Call, int, void**)
+            |          0
+            |          0
+            |          
+            |--1.25%--syscall
+            |          qLocalTime(long, tm*)
+            |          QLocalTime::utcToLocal(long long)
+            |          QDateTimePrivate::expressUtcAsLocal(long long)
+            |          QDateTime::setMSecsSinceEpoch(long long)
+            |          QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+            |          QDateTime::currentDateTime(QTimeZone const&)
+            |          QDateTime::currentDateTime()
+            |          QString::toUtf8() const & (inlined)
+            |          qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+            |          0x7dcac9c42e90
+            |          0x37
+            |          
+             --1.25%--_Fork
+                       __libc_fork
+                       _gpgme_io_spawn
+                       _gpgme_get_program_version
+                       gpgme_get_engine_info
+                       gpgme_new
+                       ostree_gpg_verify_result_initable_init
+                       g_initable_new_valist
+                       g_initable_new
+                       _ostree_repo_gpg_verify_data_internal
+                       remote_verify_signature
+                       _flatpak_dir_get_remote_state.constprop.0
+                       get_remote_state
+                       flatpak_builtin_remote_ls
+                       main
+                       __libc_start_call_main
+                       __libc_start_main@@GLIBC_2.34
+                       _start
+    22.50%     1.25%  [.] do_syscall_64
+            |
+            ---entry_SYSCALL_64_after_hwframe
+               |          
+               |--8.75%--__syscall_cancel_arch
+               |          |          
+               |          |--2.50%--QFSFileEnginePrivate::nativeOpenImpl(QFlags<QIODeviceBase::OpenModeFlag>, unsigned int)
+               |          |          QFSFileEngine::open(QFlags<QIODeviceBase::OpenModeFlag>, std::optional<QFlags<QFileDevice::Permission> >)
+               |          |          QFile::open(QFlags<QIODeviceBase::OpenModeFlag>)
+               |          |          DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+               |          |          |          
+               |          |          |--1.25%--0x7dcad171ea60
+               |          |          |          0x8
+               |          |          |          
+               |          |           --1.25%--0x7dcac32a3030
+               |          |                     0x8
+               |          |          
+               |          |--2.50%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+               |          |          QFileDevice::writeData(char const*, long long)
+               |          |          QIODevice::write(char const*, long long)
+               |          |          QIODevice::write(QByteArray const&)
+               |          |          qs::log::WriteBuffer::flush() (inlined)
+               |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          |          |          
+               |          |          |--1.25%--0x7dcad297c980
+               |          |          |          0x7dcad7c281c0
+               |          |          |          QFile::qt_metacast(char const*)
+               |          |          |          0xe9097400387f8348
+               |          |          |          
+               |          |           --1.25%--0x7dcad2870f80
+               |          |                     0x7dcad7c281c0
+               |          |                     QFile::qt_metacast(char const*)
+               |          |                     0xe9097400387f8348
+               |          |          
+               |          |--1.25%--g_local_file_output_stream_write
+               |          |          g_output_stream_write
+               |          |          g_file_replace_contents
+               |          |          flatpak_dir_remote_save_cached_summary.lto_priv.0
+               |          |          flatpak_remote_state_ensure_subsummary
+               |          |          _flatpak_dir_get_remote_state.constprop.0
+               |          |          get_remote_state
+               |          |          flatpak_builtin_remote_ls
+               |          |          main
+               |          |          __libc_start_call_main
+               |          |          __libc_start_main@@GLIBC_2.34
+               |          |          _start
+               |          |          
+               |          |--1.25%--g_unix_output_stream_write
+               |          |          g_output_stream_write
+               |          |          g_output_stream_write_all
+               |          |          _write_cb
+               |          |          cw_out_cb_write
+               |          |          cw_out_ptr_flush
+               |          |          cw_out_do_write
+               |          |          cw_out_write.lto_priv.0
+               |          |          cw_pause_write.lto_priv.0
+               |          |          cw_download_write
+               |          |          Curl_client_write
+               |          |          Curl_xfer_write_resp
+               |          |          on_data_chunk_recv
+               |          |          nghttp2_session_mem_recv2
+               |          |          h2_process_pending_input.lto_priv.0
+               |          |          h2_progress_ingress
+               |          |          cf_h2_recv.lto_priv.0
+               |          |          multistate_performing
+               |          |          multi_runsingle
+               |          |          multi_perform
+               |          |          easy_perform.constprop.0
+               |          |          flatpak_download_http_uri_once
+               |          |          flatpak_cache_http_uri.constprop.0
+               |          |          flatpak_dir_update_oci_index.lto_priv.0
+               |          |          _flatpak_dir_get_remote_state.constprop.0
+               |          |          get_remote_state
+               |          |          flatpak_builtin_remote_ls
+               |          |          main
+               |          |          __libc_start_call_main
+               |          |          __libc_start_main@@GLIBC_2.34
+               |          |          _start
+               |          |          
+               |           --1.25%--QFSFileEnginePrivate::closeFdFh()
+               |                     QFileDevice::close()
+               |                     QFileDevice::~QFileDevice()
+               |                     QString::~QString() (inlined)
+               |                     DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+               |                     0
+               |          
+               |--6.25%--statx
+               |          g_local_file_query_info
+               |          flatpak_dir_get_if_deployed
+               |          flatpak_dir_get_deploy_data
+               |          flatpak_builtin_remote_ls
+               |          main
+               |          __libc_start_call_main
+               |          __libc_start_main@@GLIBC_2.34
+               |          _start
+               |          
+               |--2.50%--__open64_nocancel
+               |          _IO_file_open
+               |          _IO_file_fopen@@GLIBC_2.2.5
+               |          __fopen_internal
+               |          __tzfile_read
+               |          tzset_internal
+               |          __tzset
+               |          |          
+               |          |--1.25%--qLocalTime(long, tm*)
+               |          |          QLocalTime::utcToLocal(long long)
+               |          |          QDateTimePrivate::expressUtcAsLocal(long long)
+               |          |          QDateTime::setMSecsSinceEpoch(long long)
+               |          |          QDateTime::fromSecsSinceEpoch(long long, QTimeZone const&)
+               |          |          QDateTime::fromSecsSinceEpoch(long long)
+               |          |          void std::swap<QDateTime::ShortData>(QDateTime::ShortData&, QDateTime::ShortData&) requires ((!std::__is_tuple_like<QDateTime::ShortData>::value)&&(is_move_constructible_v<QDateTime::ShortData>))&&(is_move_assignable_v<QDateTime::ShortData>) (inlined)
+               |          |          QDateTime::Data::swap(QDateTime::Data&) (inlined)
+               |          |          QDateTime::swap(QDateTime&) (inlined)
+               |          |          QDateTime::operator=(QDateTime&&) (inlined)
+               |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          |          0x7dcac1ff9f80
+               |          |          0x7dcad7c281c0
+               |          |          QFile::qt_metacast(char const*)
+               |          |          0xe9097400387f8348
+               |          |          
+               |           --1.25%--mktime
+               |                     qMkTime(tm*)
+               |                     (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QDateTime::toMSecsSinceEpoch() const
+               |                     QDateTime::msecsTo(QDateTime const&) const
+               |                     QDateTime::secsTo(QDateTime const&) const
+               |                     qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |                     0x7dcaeaceaec0
+               |                     0x7dcad7c281c0
+               |                     QFile::qt_metacast(char const*)
+               |                     0xe9097400387f8348
+               |          
+               |--1.25%--fstat64
+               |          openaux
+               |          set_catch (inlined)
+               |          _dl_catch_exception
+               |          dl_scratch_buffer_free (inlined)
+               |          _dl_map_object_deps
+               |          rtld_timer_stop (inlined)
+               |          rtld_timer_accum (inlined)
+               |          dl_main
+               |          _dl_sysdep_start
+               |          _dl_start_final (inlined)
+               |          _dl_start
+               |          _dl_start_user
+               |          
+               |--1.25%--__clone
+               |          QProcessPrivate::startProcess()
+               |          QArrayDataPointer<QString>::~QArrayDataPointer() (inlined)
+               |          QList<QString>::~QList() (inlined)
+               |          Process::startProcessIfReady()
+               |          Process::qt_metacall(QMetaObject::Call, int, void**)
+               |          0
+               |          0
+               |          
+               |--1.25%--syscall
+               |          qLocalTime(long, tm*)
+               |          QLocalTime::utcToLocal(long long)
+               |          QDateTimePrivate::expressUtcAsLocal(long long)
+               |          QDateTime::setMSecsSinceEpoch(long long)
+               |          QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               |          QDateTime::currentDateTime(QTimeZone const&)
+               |          QDateTime::currentDateTime()
+               |          QString::toUtf8() const & (inlined)
+               |          qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |          0x7dcac9c42e90
+               |          0x37
+               |          
+                --1.25%--_Fork
+                          __libc_fork
+                          _gpgme_io_spawn
+                          _gpgme_get_program_version
+                          gpgme_get_engine_info
+                          gpgme_new
+                          ostree_gpg_verify_result_initable_init
+                          g_initable_new_valist
+                          g_initable_new
+                          _ostree_repo_gpg_verify_data_internal
+                          remote_verify_signature
+                          _flatpak_dir_get_remote_state.constprop.0
+                          get_remote_state
+                          flatpak_builtin_remote_ls
+                          main
+                          __libc_start_call_main
+                          __libc_start_main@@GLIBC_2.34
+                          _start
+    21.25%     1.25%  [.] x64_sys_call
+            |          
+            |--20.00%--do_syscall_64
+            |          entry_SYSCALL_64_after_hwframe
+            |          |          
+            |          |--7.50%--__syscall_cancel_arch
+            |          |          |          
+            |          |          |--2.50%--QFSFileEnginePrivate::nativeOpenImpl(QFlags<QIODeviceBase::OpenModeFlag>, unsigned int)
+            |          |          |          QFSFileEngine::open(QFlags<QIODeviceBase::OpenModeFlag>, std::optional<QFlags<QFileDevice::Permission> >)
+            |          |          |          QFile::open(QFlags<QIODeviceBase::OpenModeFlag>)
+            |          |          |          DesktopEntryScanner::scanDirectory(QDir const&, QString const&, QList<ParsedDesktopEntryData>&)
+            |          |          |          |          
+            |          |          |          |--1.25%--0x7dcad171ea60
+            |          |          |          |          0x8
+            |          |          |          |          
+            |          |          |           --1.25%--0x7dcac32a3030
+            |          |          |                     0x8
+            |          |          |          
+            |          |          |--2.50%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+            |          |          |          QFileDevice::writeData(char const*, long long)
+            |          |          |          QIODevice::write(char const*, long long)
+            |          |          |          QIODevice::write(QByteArray const&)
+            |          |          |          qs::log::WriteBuffer::flush() (inlined)
+            |          |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |          |          |          |          
+            |          |          |          |--1.25%--0x7dcad297c980
+            |          |          |          |          0x7dcad7c281c0
+            |          |          |          |          QFile::qt_metacast(char const*)
+            |          |          |          |          0xe9097400387f8348
+            |          |          |          |          
+            |          |          |           --1.25%--0x7dcad2870f80
+            |          |          |                     0x7dcad7c281c0
+            |          |          |                     QFile::qt_metacast(char const*)
+            |          |          |                     0xe9097400387f8348
+            |          |          |          
+            |          |          |--1.25%--g_local_file_output_stream_write
+            |          |          |          g_output_stream_write
+            |          |          |          g_file_replace_contents
+            |          |          |          flatpak_dir_remote_save_cached_summary.lto_priv.0
+            |          |          |          flatpak_remote_state_ensure_subsummary
+            |          |          |          _flatpak_dir_get_remote_state.constprop.0
+            |          |          |          get_remote_state
+            |          |          |          flatpak_builtin_remote_ls
+            |          |          |          main
+            |          |          |          __libc_start_call_main
+            |          |          |          __libc_start_main@@GLIBC_2.34
+            |          |          |          _start
+            |          |          |          
+            |          |           --1.25%--g_unix_output_stream_write
+            |          |                     g_output_stream_write
+            |          |                     g_output_stream_write_all
+            |          |                     _write_cb
+            |          |                     cw_out_cb_write
+            |          |                     cw_out_ptr_flush

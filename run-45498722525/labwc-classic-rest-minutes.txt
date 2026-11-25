@@ -1,0 +1,10 @@
+minute 1: shell 18, memory 237 MB, frames 1
+minute 2: shell 8, memory 237 MB, frames 2
+minute 3: shell 8, memory 237 MB, frames 4
+minute 4: shell 6, memory 237 MB, frames 6
+minute 5: shell 8, memory 237 MB, frames 8
+minute 6: shell 8, memory 237 MB, frames 10
+minute 7: shell 6, memory 237 MB, frames 11
+minute 8: shell 18, memory 239 MB, frames 13
+minute 9: shell 8, memory 238 MB, frames 15
+minute 10: shell 8, memory 238 MB, frames 17

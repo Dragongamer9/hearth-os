@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 79  of event 'task-clock:ppp' (time slices: 3231,3239)
+# Event count (approx.): 396984875
+#
+# Overhead  Shared Object                 Symbol                                                                                                                                                           
+# ........  ............................  .................................................................................................................................................................
+#
+     6.33%  libglib-2.0.so.0.9000.1       [.] sha256_transform
+            |
+            ---sha256_transform
+               sha256_sum_update.part.0
+               g_compute_checksum_for_data
+               flatpak_remote_state_ensure_subsummary
+               _flatpak_dir_get_remote_state.constprop.0
+               get_remote_state
+               flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+     5.06%  [kernel.kallsyms]             [k] _raw_spin_unlock_irqrestore
+            |
+            ---_raw_spin_unlock_irqrestore
+               |          
+               |--1.27%--rmqueue_bulk
+               |          __rmqueue_pcplist
+               |          rmqueue_pcplist
+               |          rmqueue.isra.0
+               |          get_page_from_freelist
+               |          __alloc_frozen_pages_noprof
+               |          alloc_pages_mpol
+               |          vma_alloc_folio_noprof
+               |          alloc_anon_folio
+               |          do_anonymous_page
+               |          handle_pte_fault
+               |          __handle_mm_fault
+               |          handle_mm_fault
+               |          do_user_addr_fault
+               |          exc_page_fault
+               |          asm_exc_page_fault
+               |          __memmove_avx_unaligned_erms
+               |          realloc
+               |          _PyPegen_fill_token
+               |          _gather_86_rule.lto_priv.0
+               |          atom_rule.lto_priv.0
+               |          t_primary_raw.lto_priv.0
+               |          target_with_star_atom_rule
+               |          star_target_rule.lto_priv.0
+               |          star_targets_rule.lto_priv.0
+               |          simple_stmt_rule.lto_priv.0
+               |          simple_stmts_rule.lto_priv.0
+               |          statements_rule.lto_priv.0
+               |          _PyPegen_parse
+               |          _PyPegen_run_parser
+               |          _PyParser_ASTFromString
+               |          _Py_CompileString
+               |          builtin_compile.lto_priv.0
+               |          _PyObject_Call
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector
+               |          object_vacall.lto_priv.0
+               |          PyObject_CallMethodObjArgs
+               |          import_find_and_load_with_name.isra.0
+               |          PyImport_ImportModuleLevelObject
+               |          _PyEval_ImportName
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector.constprop.0
+               |          PyEval_EvalCode
+               |          builtin_exec.lto_priv.0
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector
+               |          object_vacall.lto_priv.0
+               |          PyObject_CallMethodObjArgs
+               |          import_find_and_load_with_name.isra.0
+               |          PyImport_ImportModuleLevelObject
+               |          _PyEval_ImportName
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector.constprop.0
+               |          PyEval_EvalCode
+               |          run_mod.lto_priv.0
+               |          _PyRun_File.lto_priv.0
+               |          _PyRun_SimpleFile
+               |          _PyRun_AnyFile
+               |          Py_RunMain
+               |          Py_BytesMain
+               |          __libc_start_call_main
+               |          __libc_start_main@@GLIBC_2.34
+               |          _start
+               |          
+               |--1.27%--folio_batch_move_lru
+               |          __folio_batch_add_and_move
+               |          folio_add_lru
+               |          folio_add_lru_vma
+               |          do_anonymous_page
+               |          handle_pte_fault
+               |          __handle_mm_fault
+               |          handle_mm_fault
+               |          do_user_addr_fault
+               |          exc_page_fault
+               |          asm_exc_page_fault
+               |          _PyPegen_fill_token
+               |          expression_rule.lto_priv.0
+               |          kvpair_rule.lto_priv.0
+               |          _gather_86_rule.lto_priv.0
+               |          atom_rule.lto_priv.0
+               |          t_primary_raw.lto_priv.0
+               |          target_with_star_atom_rule
+               |          star_target_rule.lto_priv.0
+               |          star_targets_rule.lto_priv.0
+               |          simple_stmt_rule.lto_priv.0
+               |          simple_stmts_rule.lto_priv.0
+               |          statements_rule.lto_priv.0
+               |          _PyPegen_parse
+               |          _PyPegen_run_parser
+               |          _PyParser_ASTFromString
+               |          _Py_CompileString
+               |          builtin_compile.lto_priv.0
+               |          _PyObject_Call
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector
+               |          object_vacall.lto_priv.0
+               |          PyObject_CallMethodObjArgs
+               |          import_find_and_load_with_name.isra.0
+               |          PyImport_ImportModuleLevelObject
+               |          _PyEval_ImportName
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector.constprop.0
+               |          PyEval_EvalCode
+               |          builtin_exec.lto_priv.0
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector
+               |          object_vacall.lto_priv.0
+               |          PyObject_CallMethodObjArgs
+               |          import_find_and_load_with_name.isra.0
+               |          PyImport_ImportModuleLevelObject
+               |          _PyEval_ImportName
+               |          _PyEval_EvalFrameDefault.cold
+               |          _PyEval_Vector.constprop.0
+               |          PyEval_EvalCode
+               |          run_mod.lto_priv.0
+               |          _PyRun_File.lto_priv.0
+               |          _PyRun_SimpleFile
+               |          _PyRun_AnyFile
+               |          Py_RunMain
+               |          Py_BytesMain
+               |          __libc_start_call_main

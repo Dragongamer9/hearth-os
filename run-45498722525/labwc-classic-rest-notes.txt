@@ -1,0 +1,15 @@
+up in 6.6 s
+desktop icons kept their places through off/on and a shell restart: {"Budget.ods": [0, 1], "Notes.txt": [9, 3], "Photos": [14, 6], "Trains.desktop": [0, 3]}
+the start's game lists answered after 0 s more
+font caches: 232 cache files, 29 font folders, 0 newer than the caches
+the app and desktop folders didn't change at rest
+the busiest second at rest (perf): 2192,  7.50% libglib-2.0.so.0.9000.1 [.] sha256_transform| 5.00% ld-linux-x86-64.so.2 [.] do_lookup_x| |--3.75%--dl_main| --1.25%--dl_open_worker_begin| 3.75% libglib-2.0.so.0.9000.1 [.] g_variant_serialised_is_normal| |--2.50%--g_variant_is_normal_form|
+the busiest 5 s at rest:   430s shell   8 ticks | threads quickshell 4, Thread (pooled) 2, QThread 2 | others fatrace -t -f CWDO  11, grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports  3, /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 573→573
+the drive while at rest: 96G free of 145G; the shell's memory: Rss: 248 MB, Pss_File: 56 MB, Shared_Clean: 19 MB, Private_Dirty: 143 MB, Anonymous: 142 MB, 
+at rest over 600 s: shell 0.15 % of a core (worst minute 0.18 %; minutes: 18 8 8 6 8 8 6 18 8 8), labwc 0.00 %, shell memory 237 → 248 MB, 17 frames drawn, processes 37 → 33
+a notification and a window coming and going at rest: the shell used 0.14 s of the processor (245 MB, was 247 MB)
+an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used 0.40 s of the processor (memory 245 → 244 MB)
+the app lists made again 8 times (300 entries written again, one renamed): the shell used 0.66 s of the processor, memory 244 → 250 MB
+the shell's app lists (AppEntries) before the entry changes: {"rev":2,"apps":387,"live":387}; after: {"rev":13,"apps":387,"live":387}
+Hearth Files: OK Hearth Files (cold) 0.36 s OK Hearth Files (warm) 0.27 s OK Hearth Files (warm2) 0.26 s 
+the Welcome window just showing: 0.05 % of a core

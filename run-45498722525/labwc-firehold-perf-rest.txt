@@ -1,0 +1,88 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 233  of event 'task-clock:ppp'
+# Event count (approx.): 1170854125
+#
+# Overhead  Shared Object                 Symbol                                                                                                                                                                                                                                                                                      
+# ........  ............................  ............................................................................................................................................................................................................................................................................................
+#
+     4.29%  ld-linux-x86-64.so.2          [.] do_lookup_x
+            |
+            ---do_lookup_x
+               _dl_lookup_symbol_x
+               resolve_map (inlined)
+               elf_machine_rela (inlined)
+               elf_dynamic_do_Rela (inlined)
+               _dl_relocate_object_no_relro
+               _dl_relocate_object
+               |          
+                --3.43%--dl_main
+                          _dl_sysdep_start
+                          _dl_start_final (inlined)
+                          _dl_start
+                          _dl_start_user
+     3.00%  [kernel.kallsyms]             [k] _raw_spin_unlock_irqrestore
+            |
+            ---_raw_spin_unlock_irqrestore
+     2.58%  libpython3.15.so.1.0          [.] _Py_dict_lookup
+            |
+            ---_Py_dict_lookup
+               |          
+                --1.29%--type_new.lto_priv.0
+     2.15%  libglib-2.0.so.0.9000.1       [.] sha256_transform
+            |
+            ---sha256_transform
+               sha256_sum_update.part.0
+               g_compute_checksum_for_data
+               flatpak_remote_state_ensure_subsummary
+               _flatpak_dir_get_remote_state.constprop.0
+               get_remote_state
+               flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+     1.72%  libglib-2.0.so.0.9000.1       [.] g_main_context_check_unlocked
+            |
+            ---g_main_context_check_unlocked
+               g_main_context_iterate_unlocked.isra.0
+               g_main_context_iteration
+               QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               QCoreApplication::exec()
+               qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               0x7cb42ba0dc00
+               QApplication::qt_metacast(char const*)
+               0xe9097400387f8348
+     1.72%  libpython3.15.so.1.0          [.] _PyEval_EvalFrameDefault.cold
+            |
+            ---_PyEval_EvalFrameDefault.cold
+     1.29%  [kernel.kallsyms]             [k] kernel_init_pages
+            |
+            ---kernel_init_pages
+               post_alloc_hook
+               get_page_from_freelist
+               __alloc_frozen_pages_noprof
+               alloc_pages_mpol
+               vma_alloc_folio_noprof
+               alloc_anon_folio
+               do_anonymous_page
+               handle_pte_fault
+               __handle_mm_fault
+               handle_mm_fault
+               do_user_addr_fault
+               exc_page_fault
+               asm_exc_page_fault
+     1.29%  [kernel.kallsyms]             [k] may_lookup
+            |
+            ---may_lookup
+               link_path_walk
+     1.29%  [kernel.kallsyms]             [k] trace_syscall_enter
+            |
+            ---trace_syscall_enter
+#
+# (Tip: To compute metrics for samples use perf record -e '{cycles,instructions}' ... ; perf script -F +metric)
+#
