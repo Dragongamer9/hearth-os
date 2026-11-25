@@ -1,12 +1,12 @@
 //! What Hearth Ideas reads, as plain data (no window): the ideas people sent from Describe it, which the logs service
-//! keeps as GitHub issues labelled "idea" in the owner's private Hearth-Organization/hearth-logs (counter/src/index.js
+//! keeps as GitHub issues labelled "idea" in the owner's private Dragongamer9/hearth-logs (counter/src/index.js
 //! ideaToGitHub: one issue per idea, "Asked again …" comments for each person after the first); where each one is
 //! (its `state:` label); and how one being built is getting on (its branch, CI, pictures and pull request in
 //! Dragongamer9/hearth-os). Everything here is read with the owner's own `gh` sign-in; nothing is kept on the device.
 
 use serde_json::Value;
 
-pub const LOGS: &str = "Hearth-Organization/hearth-logs";
+pub const LOGS: &str = "Dragongamer9/hearth-logs";
 pub const REPO: &str = "Dragongamer9/hearth-os";
 pub const BASE: &str = "bughunt";
 

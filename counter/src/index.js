@@ -206,7 +206,7 @@ async function putFile(env, repo, path, text, message) {
 }
 
 async function toGitHub(env, code, ver, kind, body, note) {
-  const repo = env.LOGS_REPO || 'Hearth-Organization/hearth-logs';
+  const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
   const day = new Date().toISOString().slice(0, 10);
   // Requests from hearthos.fun/docs/requests.html (ideas, new editions) go in requests/, apart from the logs.
   const isReq = kind === 'request';
@@ -309,7 +309,7 @@ function ideaTitle(idea, count) {
   return `Idea · ${idea.part} · ${(idea.needs.join('; ') || idea.asked).slice(0, 100)} · ${count} asked`;
 }
 async function ideaToGitHub(env, key, idea, count, issue) {
-  const repo = env.LOGS_REPO || 'Hearth-Organization/hearth-logs';
+  const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
   if (issue) {
     await gh(env, 'POST', `/repos/${repo}/issues/${issue}/comments`, { body: `Asked again (${count} times now): "${noFence(idea.asked)}" · Hearth OS ${idea.hearth || '?'}${idea.sketch ? ' · with a sketch' : ''}${idea.kept ? ' · kept what Describe it made' : ''}` });
     await gh(env, 'PATCH', `/repos/${repo}/issues/${issue}`, { title: ideaTitle(idea, count) });

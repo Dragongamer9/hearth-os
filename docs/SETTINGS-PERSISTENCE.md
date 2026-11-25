@@ -83,7 +83,7 @@ All of them follow the same rules and file names, so different programs can shar
 
 ## What the logs show
 
-From `Hearth-Organization/hearth-logs` (72 logs, 2026-10-20 to 2026-11-02):
+From `Dragongamer9/hearth-logs` (72 logs, 2026-10-20 to 2026-11-02):
 
 - **The display mode self-heal dropped the owner's choice silently**: four logs from 2026-10-31 and 2026-11-01
   (CyberPowerPC, RTX 5070, Peppermint, Hearth 0.6.61: `32T4-3WJB-GJ`, `WMWL-M665-8B`, `P8GP-BFRS-AC`,

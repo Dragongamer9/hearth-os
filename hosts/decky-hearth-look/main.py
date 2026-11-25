@@ -374,7 +374,7 @@ def write_diag(text, home_dir=None, now=None):
 
 # ---- Sending Hearth Classic's diagnostics through Hearth's own "Send logs" service (hearth-core logs.rs send_report:
 # POST text to SERVICE/v1/logs; the counter worker, counter/src/index.js, keeps it for 14 days under a code and files it
-# as an issue with the full text in the private repo Hearth-Organization/hearth-logs). Only Hearth Classic's own diagnostics
+# as an issue with the full text in the private repo Dragongamer9/hearth-logs). Only Hearth Classic's own diagnostics
 # and its log go: personal details are taken out first (home folder, user and Steam account names, web addresses'
 # queries, anything that looks like a token).
 SEND_SERVICE = 'https://hearth-counter.game305-cl.workers.dev'

@@ -86,9 +86,9 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
 - CI logs can't be downloaded here: read `gh api repos/Dragongamer9/hearth-os/check-runs/<job id>/annotations`, and
   make tests post `::error` / `::notice` annotations with the useful details. GraphQL (`gh release list`) is blocked;
   use REST (`gh api repos/Dragongamer9/hearth-os/releases/latest`).
-- **Logs the owner sends** (Send logs) land in the private repo `Hearth-Organization/hearth-logs`: an issue per log (code,
+- **Logs the owner sends** (Send logs) land in the private repo `Dragongamer9/hearth-logs`: an issue per log (code,
   version, device, note, error lines) and the full text in `logs/<date>/<code>.txt`
-  (`gh api repos/Hearth-Organization/hearth-logs/contents/logs/<date>/<code>.txt -H 'Accept: application/vnd.github.raw'`).
+  (`gh api repos/Dragongamer9/hearth-logs/contents/logs/<date>/<code>.txt -H 'Accept: application/vnd.github.raw'`).
 
 ## Where things are
 

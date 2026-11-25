@@ -132,7 +132,7 @@ Quick Access › Hearth Classic › Diagnostics:
   back, the self-check fails, the mirror is used or Steam refuses a resize, and once at the menu's first opening after
   each start, Hearth Classic sends its diagnostics through Hearth's own **Send logs** service (the same one as
   Settings › System › Send logs, `hearth-core` `logs.rs` `send_report`: the counter worker in `counter/` keeps it for
-  14 days under a code and files it as an issue in the private repo `Hearth-Organization/hearth-logs`). At most one send per
+  14 days under a code and files it as an issue in the private repo `Dragongamer9/hearth-logs`). At most one send per
   reason per start and ten a day.
 - **Send Hearth Classic log now**: the same, by hand. **Last sent: <time> (code XXXX-XXXX-XX)** shows the newest.
 - Only Hearth Classic's own diagnostics and `hearth-classic.log` go: the home folder, the user's and Steam's account and
@@ -156,8 +156,8 @@ or the network's or TLS's reason, such as "certificate verify failed").
 Reading them (the owner, with `gh`):
 
 ```
-gh api 'repos/Hearth-Organization/hearth-logs/issues?state=all&per_page=30' -q '.[] | select(.title | test("Hearth Classic")) | "\(.number) \(.created_at) \(.title)"'
-gh api repos/Hearth-Organization/hearth-logs/contents/logs/<date>/<code>.txt -H 'Accept: application/vnd.github.raw'
+gh api 'repos/Dragongamer9/hearth-logs/issues?state=all&per_page=30' -q '.[] | select(.title | test("Hearth Classic")) | "\(.number) \(.created_at) \(.title)"'
+gh api repos/Dragongamer9/hearth-logs/contents/logs/<date>/<code>.txt -H 'Accept: application/vnd.github.raw'
 ```
 
 (`<date>` is the day it was sent, YYYY-MM-DD; the issue links the file.)
