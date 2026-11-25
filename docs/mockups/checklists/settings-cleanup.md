@@ -15,7 +15,7 @@ Release: 1.18
 - [x] Page title "Settings › <section>" (Home: just "Home") with its one-line description under it — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "tb(\"Settings\", 34.0, p.text), tb(\" › \", 34.0, p.text), tb(sec.0, 34.0, p.accent)"
 - [x] Each section's pages grouped in cards with a small capitals heading; every row: name, a short line, its current value read from the PC, and › — hosts/hearth-ui/apps/settings/src/widgets.rs: "pub fn scard<"
 - [x] Switches and sliders right on the page where the mockup has them (they change the setting through the usual safe writers, red flag 9) — hosts/linux/desktop/shell/hearth-settings-values: "sio.merge_json(str(path), {'testVersions' if key == 'test_versions' else 'autoInstall': on}, who='you')"
-- [x] The KDE-only pages gathered in one dashed "More KDE settings" row at the bottom of their section, listing them (System, Bluetooth & devices, Personalization, Apps) (shown only where KDE is installed; Hearth OS on Debian has none) — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "c = c.push(kde_more(&p, list, Msg::Go(go)));"
+- [x] The KDE-only pages gathered in one dashed "More KDE settings" row at the bottom of their section, listing them (System, Bluetooth & devices, Personalization, Apps) (shown only where KDE is installed; Hearth OS on Debian has none) — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "items.push((\"More in KDE's settings\".to_string(), kde_more(&p, list, Msg::Go(go))));"
 
 ## 01. Home
 - [x] "Home" with this PC's name, Hearth OS and Fedora versions, "what needs you first, then what you use most" (on Debian: Hearth OS and Debian versions) — hosts/hearth-ui/apps/settings/src/frame.rs: "bits.push(\"what needs you first, then what you use most\".into());"
