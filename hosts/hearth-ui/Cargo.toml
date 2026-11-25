@@ -30,7 +30,9 @@ futures = "0.3"
 libc = "0.2"
 
 [dependencies]
-iced = { workspace = true }
+# "advanced": Edit layout (arrange.rs) draws its menus as overlays; asked for here, not only by Settings, so Mantel in
+# Rust (which builds this crate on its own) gets it too.
+iced = { workspace = true, features = ["advanced"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }
