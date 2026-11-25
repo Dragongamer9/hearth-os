@@ -391,7 +391,7 @@ fn view(a: &App) -> Element<'_, Msg> {
     };
     let toggle = ui::ring(p, a.zone == Zone::Toggle, 6.0, row![toggle_btn("Days", false), toggle_btn("Weeks", true)].spacing(4.0).into());
     let what = if a.weeks { ("week by week", "week") } else { ("day by day", "day") };
-    let heading = column![
+    let head_text = column![
         ts("How Hearth has been running", 16.0, p.text),
         t1(format!("Problems and changes on this PC, {}. Click a {} to see what happened.", what.0, what.1), 13.0, p.muted)
     ]
@@ -500,7 +500,7 @@ fn view(a: &App) -> Element<'_, Msg> {
         &a.describe,
         &p,
         "main",
-        vec![("heading", heading.into()), ("toggle", toggle), ("stability", stability.into()), ("marks", marks.into()), ("days", days.into()), ("events", events.into())],
+        vec![("heading", head_text.into()), ("toggle", toggle), ("stability", stability.into()), ("marks", marks.into()), ("days", days.into()), ("events", events.into())],
         |ps| {
             let header = container(row![ps.take("heading"), ps.take("toggle")].align_y(iced::Center).spacing(16.0))
                 .padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 20.0 })
