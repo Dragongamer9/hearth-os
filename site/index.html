@@ -315,6 +315,10 @@ html.has-wall.playing section.deep,html.has-wall.playing footer{background:color
 @media (prefers-color-scheme:light){html.has-wall.playing:not([data-theme="dark"]) section{background:color-mix(in srgb,var(--page) 74%,transparent)}}
 html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,var(--page) 74%,transparent)}
 
+.presents{display:inline-flex;align-items:center;gap:10px;font:700 14px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--flame);text-decoration:none;margin-bottom:18px}
+.presents img{width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 1px var(--rule)}
+.presents:hover{color:var(--hi)}
+.presents b{color:var(--hi);font-weight:800}
 .eyebrow{display:block;font:700 14px/1.2 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--acc);margin-bottom:14px}
 .big{font:900 clamp(44px,6.2vw,88px)/.96 var(--display);font-stretch:125%;letter-spacing:-.01em;color:var(--hi)}
 .big em{font-style:normal;color:var(--acc)}
@@ -442,6 +446,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
 <div class="hero hero2" id="top">
   <div class="wrap">
     <div class="copy">
+      <a class="presents" href="organization/"><img src="img/org.svg" alt="" width="34" height="34"><span>Hearth Organization presents <b>Hearth OS</b></span></a>
       <h1 class="big">Your PC,<br><em>ready to play.</em></h1>
       <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, open source, and built on Debian.</p>
       <div class="ctas">
@@ -652,6 +657,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <p class="legal">Hearth OS is an independent project, not affiliated with or endorsed by Valve, Epic Games, GOG, Microsoft, Blizzard, ASUS, Lenovo, Debian, Fedora or Red Hat.
       Steam, Steam Deck, Epic Games, GOG, Xbox, Battle.net, ROG Ally and Legion Go are trademarks of their owners. Screenshots are of Hearth itself, taken by its automatic tests.
       The Anybody and Figtree typefaces are under the SIL Open Font License (<a href="fonts/OFL.txt">Anybody</a>, <a href="fonts/OFL-figtree.txt">Figtree</a>).</p>
+      <a href="organization/">Hearth Organization</a>
   </div>
 </footer>
 
