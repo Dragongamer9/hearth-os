@@ -8,6 +8,10 @@
 //! hearth-home-server status. Changes go through their own tools: hearth_ai_engines.py set ollamaModel (Change model),
 //! hearth-home-server set aiOn (Ollama on or off), hearth-link-settings ai-serve / ai-stop / ai-allow (sharing, Stop),
 //! hearth-home-server-helper app-fix (Fix it, as admin). Nothing changes by itself (red flag 9).
+//!
+//! Describe it uses (the owner, Nov 24, 2026: Describe it sat on "Your AI is making it…" on his laptop's slow CPU Ollama
+//! while his PC's AI was there): where Describe it asks first, Fastest available / This device / My other devices
+//! (hearth-ai-check use describe {"from": …}), and which AI that is now, with how fast it writes when it's slow.
 
 use crate::shared::Shared;
 use crate::widgets::*;
@@ -88,7 +92,12 @@ pub enum Msg {
     DTested(run::Output),
     ShowIt,
     Speed(run::Output),
+    /// Describe it uses… picked: fastest, here or link
+    DescribeFrom(&'static str),
 }
+
+/// Describe it uses… (Settings › AI): where it asks first, in hearth-ai-check's words.
+pub const DESCRIBE_FROM: [(&str, &str); 3] = [("fastest", "Fastest available"), ("here", "This device"), ("link", "My other devices")];
 
 fn py(name: &str, args: &[&str]) -> Vec<String> {
     let mut v = vec!["python3".to_string(), run::shell_helper(name)];
@@ -227,6 +236,10 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             run::detached(&v);
         }
         Msg::Copy(s) => return iced::clipboard::write(s),
+        Msg::DescribeFrom(k) => {
+            st.busy = true;
+            return Task::perform(run::spawn(py("hearth-ai-check", &["use", "describe", &serde_json::json!({ "from": k }).to_string()])), Msg::Did);
+        }
     }
     Task::none()
 }
@@ -587,6 +600,43 @@ fn uses_card<'a>(p: &Pal, st: &'a State, laptop: bool) -> Element<'a, Msg> {
     container(c).padding(22.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(14.0), Some((Pal::a(p.text, 0.06), 1.0)))).into()
 }
 
+/// Describe it uses… (the owner, Nov 24): where Describe it asks first, and which AI that is now.
+fn describe_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
+    let u = &st.st["uses"]["describe"];
+    let from = if s(u, "from").is_empty() { if b(u, "own") { String::new() } else { "fastest".into() } } else { s(u, "from") };
+    let items: Vec<(String, bool, Option<Msg>)> = DESCRIBE_FROM.iter().map(|(k, label)| (label.to_string(), from == *k, if st.busy { None } else { Some(Msg::DescribeFrom(*k)) })).collect();
+    let now = if st.st.is_null() {
+        "Checking…".to_string()
+    } else if b(u, "ready") {
+        let via = if s(u, "via").is_empty() { s(u, "label") } else { s(u, "via") };
+        let mut x = format!("Now: {via}");
+        if !s(u, "model").is_empty() {
+            x.push_str(&format!(" · {}", s(u, "model")));
+        }
+        if b(u, "slow") {
+            x.push_str(&match u["words"].as_f64() {
+                Some(w) => format!(" · slow on this device (about {} words a second)", w.round() as i64),
+                None => " · slow on this device".into(),
+            });
+        }
+        x
+    } else {
+        "Nothing answers there right now: the fastest that answers is asked instead".into()
+    };
+    let r = row![
+        column![tb("Where Describe it asks first".to_string(), 15.0, p.text), t(now, 13.0, p.muted)].spacing(3.0).width(Length::Fill),
+        seg(p, items)
+    ]
+    .spacing(16.0)
+    .align_y(iced::Center);
+    let rows: Vec<Element<'a, Msg>> = vec![
+        r.into(),
+        Space::new().height(Length::Fixed(8.0)).into(),
+        t("Fastest available: your other devices over Hearth Link before a slow engine on this device (under 8 words a second, or no graphics card). Nothing here changes by itself.", 13.0, p.muted).into(),
+    ];
+    titled(p, "Describe it uses", "", rows)
+}
+
 /// If no AI answers (ai-3): use your PC's, turn on Ollama here, or another address.
 fn none_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
     let pc = arr(&st.link, "servers").first().map(|x| (s(x, "name"), arr(x, "models").len()));
@@ -643,6 +693,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     if !st.msg.is_empty() {
         c = c.push(note(&p, st.msg.clone(), true));
     }
+    // Where Describe it asks first, near the top (the owner's laptop, Nov 24)
+    c = c.push(describe_card(&p, st));
     let answering = !st.st["answering"].is_null();
     let has_problem = arr(&st.st, "problems").iter().any(|x| s(x, "kind") != "none");
     if !answering || has_problem {

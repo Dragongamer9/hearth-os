@@ -796,6 +796,10 @@ UNIT
 ln -sf ../hearth-files-autoconnect.timer /usr/lib/systemd/user/timers.target.wants/hearth-files-autoconnect.timer
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too.
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
+# hearth-ai-check as a command (the owner, Nov 24, 2026: he had to type python3 /usr/share/nimbus/desktop/shell/hearth-ai-check
+# status): which AI answers, Describe it's pick, speeds. Read only unless Settings changes a pick through it.
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-ai-check
+ln -sfn /usr/share/nimbus/desktop/shell/hearth-ai-check /usr/bin/hearth-ai-check
 chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the other editions

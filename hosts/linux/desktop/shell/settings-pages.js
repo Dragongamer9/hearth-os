@@ -162,6 +162,7 @@ var PAGES = [
     // ---- AI (1.18, the owner's approved mockups settings-cleanup ai-1 to ai-4: everything AI in one place; the Rust
     // Settings draws it, from hearth-ai-check)
     { id: "ai", file: "SetCategory.qml", cat: "ai", label: "AI", icon: "ai", landing: true, words: "ai ollama colibri model qwen llm describe ithil photos share engine" },
+    { id: "ai-describe", file: "SetAIDescribe.qml", cat: "ai", label: "Describe it", icon: "sparkle", desc: "Which AI Describe it asks first: the fastest, this device or your other devices", words: "describe it ai fastest slow this device other devices hearth link pc" },
     { id: "accounts", file: "SetCategory.qml", cat: "accounts", label: "Accounts", icon: "user", landing: true },
     { id: "users", file: "SetUsers.qml", cat: "accounts", label: "Your account and other people", icon: "users", desc: "Your picture and name, other people on this PC", words: "accounts users people family", old: "Users" },
     { id: "signin", file: "SetSignin.qml", cat: "accounts", label: "Sign-in options", icon: "lock", desc: "Sign in automatically, password, lock after sleep", words: "password login autologin lock", old: "Sign-in" },

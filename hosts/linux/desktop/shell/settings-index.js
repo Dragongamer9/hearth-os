@@ -3,6 +3,11 @@
 // {t: title, d: description, i: icon, p: the page it's on}. Don't edit by hand: run the tool again.
 var ENTRIES = [
 {
+"t": "Where Describe it asks first",
+"p": "ai-describe",
+"i": "sparkle"
+},
+{
 "t": "Server mode runs",
 "p": "hs-aiengine",
 "i": "chat"
