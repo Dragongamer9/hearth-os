@@ -96,12 +96,20 @@ Item {
         const p2 = Object.assign({}, parked);
         for (const s of secs) if (hid[s.id]) { for (const it of s.items) it.parent = park; p2[s.id] = s.items; }
         parked = p2;
-        let prev = skip.length ? skip[skip.length - 1] : null;
+        // the column's children in the order wanted (QML only adds a child last: the ones after the first that's out of
+        // place are taken off and put back in order)
+        const desired = [];
+        for (let i = 0; i < col.children.length; i++) if (skip.indexOf(col.children[i]) >= 0) desired.push(col.children[i]);
         for (const id of ord) {
             const s = secs.find(x => x.id === id);
             if (!s || hid[id]) continue;
-            for (const it of s.items) { if (prev) it.stackAfter(prev); prev = it; }
+            for (const it of s.items) desired.push(it);
         }
+        for (const s of secs) if (!hid[s.id] && ord.indexOf(s.id) < 0) for (const it of s.items) desired.push(it);
+        let k = 0;
+        while (k < desired.length && k < col.children.length && col.children[k] === desired[k]) k++;
+        for (let i = k; i < desired.length; i++) if (desired[i].parent === col) desired[i].parent = park;
+        for (let i = k; i < desired.length; i++) desired[i].parent = col;
         rev++;
     }
     property int rev: 0
@@ -318,7 +326,8 @@ Item {
                 onReleased: fl.release()
             }
             Rectangle {
-                x: 8; y: -13
+                // (at the right, clear of the group's own heading)
+                x: parent.width - width - 8; y: -13
                 width: sgRow.implicitWidth + 16; height: 26; radius: 13
                 color: sg.lit ? Theme.accent : Theme.panel3
                 border.color: sg.lit ? "transparent" : Theme.line

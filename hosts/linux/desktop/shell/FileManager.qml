@@ -5272,15 +5272,16 @@ Scope {
                 anchors.fill: parent
                 app: "files"
                 appName: "Hearth Files"
-                page: app.picking ? "chooser" : "window"
+                page: filesApp.picking ? "chooser" : "window"
                 background: Theme.bg
                 focusBack: keys
-                pages: app.blockPages
+                // (filesApp: inside AppBlocks, "app" is its own app id)
+                pages: filesApp.blockPages
                 parts: ({ tabs: tabsBar, address: addressBar, toolbar: cmdBar, sidebar: navPane, folder: folderCol, status: statusBar, split: splitPane, preview: detailsBox })
-                menus: [{ id: "view", title: "View", items: () => app.dryMenu(() => app.viewMenu(-1, -1)) },
-                        { id: "context", title: "Right-click (empty space)", items: () => app.dryMenu(() => app.openMenu(true, -1, -1)) }]
-                Component.onCompleted: app.blocks = blocks
-                Component.onDestruction: if (app.blocks === blocks) app.blocks = null
+                menus: [{ id: "view", title: "View", items: () => filesApp.dryMenu(() => filesApp.viewMenu(-1, -1)) },
+                        { id: "context", title: "Right-click (empty space)", items: () => filesApp.dryMenu(() => filesApp.openMenu(true, -1, -1)) }]
+                Component.onCompleted: filesApp.blocks = blocks
+                Component.onDestruction: if (filesApp.blocks === blocks) filesApp.blocks = null
             }
 
             // ------------------------------------------------ overlays: actions menu and dialogs

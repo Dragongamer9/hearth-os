@@ -50,7 +50,7 @@ Item {
     readonly property int rows: L.ROWS
     readonly property int maxBlocks: 16
     readonly property string pageId: "mantel-" + page
-    readonly property var def: { for (let i = 0; i < pages.length; i++) if (pages[i].id === page) return pages[i]; return null; }
+    readonly property var def: { const ps = pages || []; for (let i = 0; i < ps.length; i++) if (ps[i].id === page) return ps[i]; return null; }
     readonly property var defs: def ? def.blocks.slice(0, maxBlocks) : []
 
     // ---------------------------------------------------------------- what's kept
@@ -129,13 +129,34 @@ Item {
         homes.push(h);
         return h;
     }
-    function goHome(h) {
-        const it = h.item;
-        if (!alive(it) || h.at === "home") return;
-        it.width = h.w; it.height = h.h;          // the holder's size let go of (its own layout sizes it again)
-        it.parent = h.parent;
-        if (h.anchor && alive(h.anchor) && h.anchor.parent === h.parent) it.stackBefore(h.anchor);
-        h.at = "home";
+    // Parts going back to their own place, in their own order. (QML can't put an item before another one: setting a
+    // parent adds it last, so the siblings after its place are taken off and put back after it, in the order they had.)
+    function goHome(list) {
+        const byParent = new Map();
+        for (const h of list) {
+            if (!alive(h.item) || h.at === "home" || !alive(h.parent)) continue;
+            if (!byParent.has(h.parent)) byParent.set(h.parent, []);
+            byParent.get(h.parent).push(h);
+        }
+        for (const [par, hs] of byParent) {
+            hs.sort((a, b) => a.index - b.index);
+            const desired = [];
+            for (let i = 0; i < par.children.length; i++) desired.push(par.children[i]);
+            for (const h of hs) {
+                const it = h.item;
+                it.width = h.w; it.height = h.h;          // the holder's size let go of (its own layout sizes it again)
+                const at = h.anchor && alive(h.anchor) ? desired.indexOf(h.anchor) : -1;
+                if (at < 0) desired.push(it); else desired.splice(at, 0, it);
+                h.at = "home";
+            }
+            reorder(par, desired);
+        }
+    }
+    function reorder(par, desired) {
+        let k = 0;
+        while (k < desired.length && k < par.children.length && par.children[k] === desired[k]) k++;
+        for (let i = k; i < desired.length; i++) if (desired[i].parent === par) desired[i].parent = park;
+        for (let i = k; i < desired.length; i++) desired[i].parent = par;
     }
     function goTo(h, slot, where) {
         const it = h.item;
@@ -161,8 +182,7 @@ Item {
             const p = placed[i];
             want.set(it, mode === "own" ? "home" : p && p.hidden ? "park" : mode === "natural" ? "home" : "h" + i);
         }
-        const going = homes.filter(h => (want.get(h.item) || "home") === "home" && h.at !== "home").sort((a, b) => a.index - b.index);
-        for (const h of going) goHome(h);
+        goHome(homes.filter(h => (want.get(h.item) || "home") === "home" && h.at !== "home"));
         for (let i = 0; i < defs.length; i++) {
             const it = parts[defs[i].id];
             const w = alive(it) ? want.get(it) : undefined;
@@ -304,7 +324,7 @@ Item {
                     delegate: MouseArea {
                         id: edge
                         required property var modelData
-                        readonly property bool corner: (modelData.l || modelData.r) && (modelData.t || modelData.b)
+                        readonly property bool corner: !!((modelData.l || modelData.r) && (modelData.t || modelData.b))
                         readonly property int t: 8
                         x: modelData.r ? parent.width - (corner ? 16 : t) : modelData.l ? 0 : 16
                         y: modelData.b ? parent.height - (corner ? 16 : t) : modelData.t ? 0 : 16
@@ -749,7 +769,7 @@ Item {
                 spacing: 8
                 Rectangle { width: edT.implicitWidth + 18; height: 30; radius: 15; color: "transparent"; border.color: Theme.accent
                     Text { id: edT; anchors.centerIn: parent; text: "EDITING"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1 } }
-                Text { height: 30; verticalAlignment: Text.AlignVCenter; text: ab.appName + (ab.pages.length > 1 && ab.def ? " · " + ab.def.title : ""); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                Text { height: 30; verticalAlignment: Text.AlignVCenter; text: ab.appName + ((ab.pages || []).length > 1 && ab.def ? " · " + ab.def.title : ""); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
                 Item { width: 8; height: 30 }
                 EBtn { label: "Describe it…"; icon: "sparkle"; onClicked: ab.describe() }
                 EBtn { visible: ab.menus.length > 0; label: "Menus…"; icon: "menu"; lit: ab.menuEditor; onClicked: { if (ab.menuEditor) ab.menuEditor = false; else ab.openMenus(); } }
