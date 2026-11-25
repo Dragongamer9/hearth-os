@@ -103,7 +103,7 @@ def page(slug, title, lead, body):
 <link rel="preload" href="../fonts/figtree-regular.woff" as="font" type="font/woff" crossorigin>
 <script>try{{var t=localStorage.getItem('hearth.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;var k=localStorage.getItem('hearth.look');if(/^[a-z]{{2,20}}$/.test(k||''))document.documentElement.dataset.look=k;}}catch(e){{}}</script>
 <link rel="stylesheet" href="docs.css">
-<link rel="stylesheet" href="../looks.css?v=f7c0aca2d7">
+<link rel="stylesheet" href="../looks.css?v=991fb925bb">
 </head>
 <body>
 <a class="skip" href="#main">Skip to the page</a>
@@ -141,7 +141,7 @@ def page(slug, title, lead, body):
   </div>
 </footer>
 <script src="docs.js" defer></script>
-<script src="../looks.js?v=f7c0aca2d7" defer></script>
+<script src="../looks.js?v=991fb925bb" defer></script>
 </body>
 </html>
 '''

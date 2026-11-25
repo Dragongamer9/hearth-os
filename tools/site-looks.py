@@ -414,12 +414,25 @@ WALL_JS = r"""
       // the Hearth fire (site/img/logo.svg's flame) glowing among the stars
       var wide = W > 900, s = (wide ? H / 1000 : W / 1300) * 1.05, fs = s * 1.25, fx = (wide ? W * .76 : W * .5) - 256 * fs, fy = (wide ? H * .42 : H * .3) - 295 * fs;
       c.save(); c.translate(fx, fy); c.scale(fs, fs); c.globalAlpha = wide ? (dark ? .95 : .8) : .35;
+      if (root.dataset.flame === 'stars') {   // the Hearth Organization page: the constellation flame (site/img/org.svg's stars and lines)
+        var P = [[512, 190], [600, 330], [680, 470], [660, 620], [560, 720], [464, 720], [364, 620], [344, 470], [420, 360], [470, 440]], R = [30, 24, 26, 24, 26, 26, 24, 26, 22, 16];
+        c.translate(256, 295); c.scale(.5, .5); c.translate(-512, -470);
+        c.strokeStyle = dark ? 'rgba(255,179,92,0.85)' : 'rgba(184,86,26,0.7)'; c.lineWidth = 10; c.lineCap = 'round'; c.lineJoin = 'round';
+        c.shadowColor = dark ? 'rgba(255,138,61,0.75)' : 'rgba(232,112,42,0.4)'; c.shadowBlur = 60 * fs;
+        c.beginPath(); c.moveTo(P[0][0], P[0][1]); [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].forEach(function(k){ c.lineTo(P[k][0], P[k][1]); }); c.stroke();
+        [1, 4, 5, 7, 2, 8].forEach(function(k){ c.beginPath(); c.moveTo(512, 470); c.lineTo(P[k][0], P[k][1]); c.stroke(); });
+        var sg = c.createLinearGradient(0, 160, 0, 750); sg.addColorStop(0, '#ffd166'); sg.addColorStop(.55, '#ff8a3d'); sg.addColorStop(1, '#e5483b'); c.fillStyle = sg;
+        P.forEach(function(p, k){ c.beginPath(); c.arc(p[0], p[1], R[k], 0, 6.3); c.fill(); });
+        var cc = c.createLinearGradient(0, 430, 0, 510); cc.addColorStop(0, '#fff6d6'); cc.addColorStop(1, '#ffc24f'); c.fillStyle = cc; c.beginPath(); c.arc(512, 470, 40, 0, 6.3); c.fill();
+        c.restore(); c.globalAlpha = 1; c.shadowBlur = 0;
+      } else {
       var fg = c.createLinearGradient(0, 168, 0, 422); fg.addColorStop(0, '#ffd166'); fg.addColorStop(.55, '#ff8a3d'); fg.addColorStop(1, '#e5483b');
       c.shadowColor = dark ? 'rgba(255,138,61,0.75)' : 'rgba(232,112,42,0.4)'; c.shadowBlur = 90 * fs;
       c.fillStyle = fg; c.fill(new Path2D('M256 168 C298 222 340 262 340 332 C340 386 302 422 256 422 C210 422 172 386 172 332 C172 294 190 266 212 244 C210 276 222 298 242 306 C232 258 236 212 256 168 Z'));
       var cg = c.createLinearGradient(0, 284, 0, 412); cg.addColorStop(0, '#fff6d6'); cg.addColorStop(1, '#ffc24f'); c.shadowBlur = 0;
       c.fillStyle = cg; c.fill(new Path2D('M258 284 C280 314 300 338 300 368 C300 394 282 412 258 412 C234 412 216 394 216 368 C216 340 238 316 258 284 Z'));
       c.restore(); c.globalAlpha = 1;
+      }
       shape([[0, 0], [70, -40], [150, -20], [210, 30], [130, 70]], [[0, 1], [1, 2], [2, 3], [3, 4], [4, 2]], W * .08, H * .16, s * .9, .55);
       shape([[0, 0], [60, 50], [130, 40], [170, 110]], [[0, 1], [1, 2], [2, 3]], W * .3, H * .82, s * .9, .45);
     },
