@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 18,
+  "serial": 19,
   "apps": [
     {
       "id": "command-center",
@@ -134,7 +134,20 @@
       "to": "#d9531e",
       "kind": "builtin",
       "open": "hearth-notes-app",
-      "partId": "hearth-notes-app"
+      "partId": "hearth-notes-app",
+      "part": {
+        "id": "hearth-notes-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-notes-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-notes-app-1.18.1/hearth-notes-app-1.18.1.tar.gz",
+        "sha256": "8bc7ad820b6ba6be200e6694610472c0f2379c6c5ff40e3cf9a454b178b8fba3",
+        "size": 7732815,
+        "notes": [
+          "Edit layout: move, resize or hide any part of the app, right on it",
+          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+        ]
+      }
     },
     {
       "id": "beacon",
