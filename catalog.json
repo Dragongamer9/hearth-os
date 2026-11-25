@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 22,
+  "serial": 23,
   "apps": [
     {
       "id": "command-center",
@@ -387,7 +387,20 @@
       "to": "#0e7490",
       "kind": "builtin",
       "partId": "hearth-resmon-app",
-      "open": "hearth-resmon-app"
+      "open": "hearth-resmon-app",
+      "part": {
+        "id": "hearth-resmon-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-resmon-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-resmon-app-1.18.1/hearth-resmon-app-1.18.1.tar.gz",
+        "sha256": "bbcc5edeb3e6eb60932c8936c93bb5cef6a207ed081132949462b32c60ac6c2b",
+        "size": 7268539,
+        "notes": [
+          "Edit layout: move, resize or hide any part of the app, right on it",
+          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+        ]
+      }
     },
     {
       "id": "part-hearth-store-app",
