@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 30,
+  "serial": 31,
   "apps": [
     {
       "id": "command-center",
@@ -211,15 +211,17 @@
       "partId": "mantel",
       "part": {
         "id": "mantel",
-        "version": "1.17.4",
-        "os": "1.17",
+        "version": "1.18.1",
+        "os": "1.18",
         "path": "shell",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.17.4/mantel-1.17.4.tar.gz",
-        "sha256": "988b31f57848e8c46214907458d5fff990bbcbae25817c6869b0dcbe463fc6b8",
-        "size": 9677839,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.1/mantel-1.18.1.tar.gz",
+        "sha256": "71a26cd262de5b0038c26743c49fff9a22c9ebf8d414e152d0000265a41efcc7",
+        "size": 10511366,
         "notes": [
-          "The Windows key opens the app menu again, and Super+Space and Hearth's other shortcuts work with the Store's Mantel",
-          "Includes 1.17.3 (the bar no longer closes and comes back, lighter sparks)"
+          "Hearth Files: Sort my Downloads, with one Undo that puts everything back",
+          "Files, Settings, Task Manager, Capture, Resource Monitor, Reliability and System Restore: Edit layout and Describe it",
+          "Edit layout: move, resize or hide any part of the app, right on it",
+          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
         ]
       },
       "group": "desktop"
