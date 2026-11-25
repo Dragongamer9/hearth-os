@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 25,
+  "serial": 26,
   "apps": [
     {
       "id": "command-center",
@@ -236,7 +236,20 @@
       "to": "#b7791f",
       "kind": "builtin",
       "partId": "hearth-files-app",
-      "open": "hearth-files-app"
+      "open": "hearth-files-app",
+      "part": {
+        "id": "hearth-files-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-files-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-files-app-1.18.1/hearth-files-app-1.18.1.tar.gz",
+        "sha256": "8a281b87f9f58c5aaaf0845424da2b292471b59059f9df70e11411165a5867a7",
+        "size": 8567239,
+        "notes": [
+          "Edit layout: move, resize or hide any part of the app, right on it",
+          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+        ]
+      }
     },
     {
       "id": "settings",
