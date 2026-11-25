@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 32,
+  "serial": 33,
   "apps": [
     {
       "id": "command-center",
@@ -987,7 +987,21 @@
       "kind": "builtin",
       "short": "Hearth Link",
       "tagline": "pairing, sharing AI and files",
-      "about": "Pairing, sharing AI and files. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Pairing, sharing AI and files. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates.",
+      "part": {
+        "id": "hearth-link",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-link",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-link-1.18.1/hearth-link-1.18.1.tar.gz",
+        "sha256": "b4bacdee489f518fd03b918efc6f3115dee98a6e15b5390c775b7fe6235faafa",
+        "size": 9006937,
+        "notes": [
+          "AI shared from your other devices shows in Settings › AI, and a device Hearth Link can't confirm says so, with Pair again",
+          "Edit layout: move, resize or hide any part of the app, right on it",
+          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+        ]
+      }
     },
     {
       "id": "ai-engines",
