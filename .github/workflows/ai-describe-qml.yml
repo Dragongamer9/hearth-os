@@ -136,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        part: [0]
+        part: [0, 1]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -158,3 +158,5 @@ jobs:
         run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
       - name: Pictures 4
         run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4

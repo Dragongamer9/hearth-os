@@ -1,7 +1,7 @@
 # Describe it on a slow device (the owner's laptop, Nov 24, 2026: CPU Ollama at ~4 words a second, his PC's AI over
 # Hearth Link): Settings › AI with "Describe it uses" (Fastest available picks the PC: this laptop has no graphics card),
 # and Describe it's waiting line in Hearth Files at 5 s and at ~25 s (who's asked, the seconds, "slow on this device
-# (about 4 words a second)", where to pick a faster one, Cancel). Stand-in AIs answer only "which models" (ai-standin.py);
+# (about 4 words a second)", where to pick a faster one, Cancel). Settings is measured at rest too (the run needs one). Stand-in AIs answer only "which models" (ai-standin.py);
 # the AI's answer is CI's canned one, made to take 2 minutes (HEARTH_DESCRIBE_FAKE_WAIT). Sourced by hearth-apps-rust-test.sh.
 SA="$ROOT/.github/scripts/ai-standin.py"
 python3 "$SA" 11434 dolphin3:8b >/tmp/standin-here.log 2>&1 & SA1=$!
@@ -12,7 +12,7 @@ look steam dark
 python3 "$ROOT/hosts/linux/desktop/shell/hearth-ai-check" for describe > /tmp/ai-describe-for.json 2>&1
 echo "::notice title=ai-describe: for describe::$(head -c 600 /tmp/ai-describe-for.json)"
 grep -q '"from": "link"' /tmp/ai-describe-for.json || echo "::error title=ai-describe::Fastest available didn't pick the other device over this slow one: $(head -c 400 /tmp/ai-describe-for.json)"
-SHOT_WAIT=6 run ai-describe-1-settings hearth-settings 0 env "$AIE" "$BIN/hearth-settings-app" --page sec-ai
+SHOT_WAIT=6 run ai-describe-1-settings hearth-settings 10 env "$AIE" "$BIN/hearth-settings-app" --page sec-ai
 cat > /tmp/ai-describe-fake.json <<'JSON'
 {"kind": "app", "layout": {"sidebar": "icons"}, "changes": ["The sidebar shows icons only"]}
 JSON
