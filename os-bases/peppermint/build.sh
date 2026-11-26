@@ -1349,7 +1349,7 @@ fi
 # and /usr/bin/<name> the Store's two-line start: the Hearth Store's newer copy only when one is installed (hearth-part
 # checks it's for this Hearth OS and hasn't failed), else the built-in one. Mantel's own apps keep their names; these
 # are the -app ones Mantel in Rust and the Store open. One that wasn't built or can't start is left out.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-layout; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-lights-app hearth-remap-app hearth-mouse-app hearth-shield-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # (Mantel's own command of the same name, if there is one, stays: the Rust one is used only where nothing else is.)
   [ -e "/usr/bin/$b" ] && { echo "note: /usr/bin/$b is already Mantel's; the Rust one goes to /usr/libexec/hearth/apps only"; install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"; continue; }
@@ -1790,6 +1790,17 @@ else
   echo "warning: couldn't install LACT $LACT_VER; GPU tuning stays unavailable"
 fi
 rm -f "/tmp/$LACT_DEB"
+# ------------------------------------------------------------------ the open-source apps' projects (Hearth Lights, Remap, Mouse)
+# What Hearth's open-source apps drive (docs/mockups/open-source-apps): OpenRGB (Hearth Lights; its udev rules let the
+# person at the PC reach the lights), Input Remapper (Hearth Remap) and libratbag's ratbagd (Hearth Mouse). None of their
+# services is on at start-up: ratbagd starts when Hearth Mouse asks D-Bus for it, input-remapper only once Hearth Remap
+# turns it on (the person's OK), OpenRGB's server only as the user service hearth-openrgb.service. A package that isn't
+# there only leaves its app saying so; it never stops the build.
+for x in openrgb input-remapper ratbagd; do pkg_cost "$x"; done
+optional openrgb input-remapper ratbagd
+for s in openrgb.service input-remapper.service input-remapper-autoload.service; do systemctl disable "$s" 2>/dev/null || true; done
+echo "::notice title=open-source apps' projects::$(for x in openrgb input-remapper ratbagd; do dpkg -s "$x" >/dev/null 2>&1 && printf '%s ' "$x" || printf 'no-%s ' "$x"; done)"
+
 # ------------------------------------------------------------------ Ludusavi: every game's saves (1.11)
 # github.com/mtkennerly/ludusavi (MIT), pinned: Settings › Gaming › Saved games (hearth-saves) backs them up into
 # ~/Saved Games/Backups and puts them back. Only when you press it. Optional.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Lights
+GenericName=RGB lighting
+Comment=Every light in your PC, one place: fans, memory, keyboard, mouse and strips (built on OpenRGB)
+Exec=/usr/bin/hearth-lights-app
+TryExec=/usr/bin/hearth-lights-app
+Icon=hearth-lights
+Categories=Settings;HardwareSettings;
+Keywords=rgb;lights;lighting;led;openrgb;fans;keyboard;mouse;argb;aura;mystic;polychrome;
+StartupWMClass=hearth-lights

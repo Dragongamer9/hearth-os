@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Shield
+GenericName=Ad blocker for the home
+Comment=Ads and trackers blocked for every device at home (built on AdGuard Home and Pi-hole)
+Exec=/usr/bin/hearth-shield-app
+TryExec=/usr/bin/hearth-shield-app
+Icon=hearth-shield
+Categories=Network;Security;
+Keywords=ads;adblock;tracker;dns;pihole;pi-hole;adguard;privacy;family;filter;
+StartupWMClass=hearth-shield

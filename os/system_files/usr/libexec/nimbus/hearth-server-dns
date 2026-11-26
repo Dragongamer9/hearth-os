@@ -24,6 +24,10 @@ Run through pkexec by hearth-server-mode (49-hearth-memory.rules: the person at 
   hearth-server-dns ads on|off           the ad blocker
   hearth-server-dns ads-pause SECONDS    stop blocking for a while (0: block again now)
   hearth-server-dns allow DOMAIN         let a site that breaks through (from here or your phone)
+  hearth-server-dns list ID on|off       Hearth Shield's block lists (main tv phone scam games adult; only main is on
+                                         until you turn another on)
+  hearth-server-dns block DOMAIN         always block a site (unblock DOMAIN: not any more; unallow DOMAIN likewise)
+  hearth-server-dns safe-search on|off   family rules: search engines' and YouTube's safe search
   hearth-server-dns device NAME on|off|pause   one device (by its Tailscale name, or "lan" for everything else on
                                          your Wi-Fi): blocking on, off, or paused for an hour
   hearth-server-dns run-dns | run-cache  what hearth-server-dns.service / hearth-lancache.service run
@@ -57,6 +61,16 @@ CACHE_IMAGE = 'docker.io/lancachenet/monolithic:latest'
 MARKER = 'hearth-dns.hearth'          # answered only by this server: how hearth-dns-client finds it and checks it's up
 UPSTREAM = ['https://dns.quad9.net/dns-query', 'https://cloudflare-dns.com/dns-query', '9.9.9.9', '1.1.1.1']
 BLOCKLIST = 'https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt'   # AdGuard DNS filter
+# Hearth Shield's block lists (board docs/mockups/open-source-apps/15-shield.png), each its own AdGuard filter. Only
+# the main list is on until you turn another on (nothing you had changes by itself).
+LISTS = {
+    'main': {'id': 1, 'label': 'Ads and trackers (main list)', 'url': BLOCKLIST, 'on': True},
+    'tv': {'id': 2, 'label': 'Smart TV spying', 'url': 'https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV-AGH.txt', 'on': False},
+    'phone': {'id': 3, 'label': 'Phone app trackers', 'url': 'https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/android-tracking.txt', 'on': False},
+    'scam': {'id': 4, 'label': 'Scam and malware sites', 'url': 'https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh.txt', 'on': False},
+    'games': {'id': 5, 'label': 'Game launcher ads', 'url': 'https://raw.githubusercontent.com/DandelionSprout/adfilt/master/GameConsoleAdblockList.txt', 'on': False},
+    'adult': {'id': 6, 'label': 'Adult sites', 'url': 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts', 'on': False},
+}
 
 # The stores' download names (from uklans/cache-domains, the list LANCache itself uses). Only download hosts: sign-in,
 # the stores' pages and Windows Update are never sent to the cache.
@@ -81,7 +95,7 @@ STORES = {
 }
 DEFAULTS = {'cache': {'on': False, 'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': False},
                       'dir': '/var/lib/hearth/server-dns/cache', 'sizeGB': 500},
-            'ads': {'on': False, 'pausedUntil': 0, 'allow': [], 'devices': {}}}
+            'ads': {'on': False, 'pausedUntil': 0, 'allow': [], 'block': [], 'devices': {}, 'lists': {}, 'safeSearch': False}}
 
 
 class Fail(Exception):
@@ -199,6 +213,9 @@ def adguard_rules(conf, names, now=None):
     now = now or time.time()
     ads = conf['ads']
     rules = ['@@||%s^' % d for d in ads.get('allow') or []]
+    # always block (Hearth Shield), only while blocking is on; an allowed site wins
+    if ads['on'] and ads.get('pausedUntil', 0) <= now:
+        rules += ['||%s^' % d for d in ads.get('block') or [] if d not in (ads.get('allow') or [])]
     devs = ads.get('devices') or {}
     for name, dv in sorted(devs.items()):
         off = dv.get('on') is False or dv.get('pausedUntil', 0) > now
@@ -236,10 +253,14 @@ def adguard_yaml(conf, lan, ts, names=None, now=None):
          '  bootstrap_dns:', '    - 9.9.9.9', '    - 1.1.1.1', '  cache_size: 4194304', '  ratelimit: 0',
          '  refuse_any: true', '  use_private_ptr_resolvers: false',
          'filtering:', '  protection_enabled: true', '  filtering_enabled: true',
-         '  blocking_mode: default', '  blocked_response_ttl: 10', '  rewrites:'] + [
+         '  blocking_mode: default', '  blocked_response_ttl: 10',
+         '  safe_search:', '    enabled: %s' % ('true' if blocking and ads.get('safeSearch') else 'false'),
+         '    bing: true', '    duckduckgo: true', '    google: true', '    pixabay: true', '    yandex: true', '    youtube: true',
+         '  rewrites:'] + [
          '    - domain: %s\n      answer: %s' % (yaml_str(d), yaml_str(a)) for d, a in rewrites] + [
-         'filters:', '  - enabled: %s' % ('true' if blocking else 'false'), '    url: ' + yaml_str(BLOCKLIST),
-         '    name: "AdGuard DNS filter"', '    id: 1'] + (
+         'filters:'] + [x for lid, l in LISTS.items() for x in (
+             '  - enabled: %s' % ('true' if blocking and (ads.get('lists') or {}).get(lid, l['on']) else 'false'),
+             '    url: ' + yaml_str(l['url']), '    name: ' + yaml_str(l['label']), '    id: %d' % l['id'])] + (
          ['user_rules:'] + ['  - ' + yaml_str(r) for r in rules] if rules else ['user_rules: []']) + [
          'clients:', '  persistent: []',
          'querylog:', '  enabled: true', '  interval: 24h', 'statistics:', '  enabled: true', '  interval: 24h',
@@ -490,6 +511,71 @@ def ads_view(conf, names, now=None):
     return out
 
 
+def today_of(s, now=None):
+    """Since midnight, from AdGuard's last 24 hours by the hour (its newest hour last): asked, blocked."""
+    now = now or time.time()
+    h = time.localtime(now).tm_hour + 1
+    q = (s.get('dns_queries') or [])[-h:]
+    b = (s.get('blocked_filtering') or [])[-h:]
+    return int(sum(q)), int(sum(b))
+
+
+def days_tick(now=None):
+    """Each day's totals kept for a month (Hearth Shield's 7 days and 30 days): STATE/days.json, readable."""
+    try:
+        s = api('/control/stats')
+    except (OSError, ValueError):
+        return
+    path = os.path.join(STATE, 'days.json')
+    try:
+        days = json.load(open(path))
+        if not isinstance(days, dict):
+            days = {}
+    except (OSError, ValueError):
+        days = {}
+    asked, blocked = today_of(s, now)
+    day = time.strftime('%Y-%m-%d', time.localtime(now or time.time()))
+    days[day] = {'asked': asked, 'blocked': blocked}
+    for k in sorted(days)[:-31]:
+        del days[k]
+    write_json(path, days)
+    write_json(os.path.join(RUN, 'days.json'), days)
+
+
+BLOCKED_REASONS = ('FilteredBlackList', 'FilteredBlockedService', 'FilteredParental', 'FilteredSafeBrowsing')
+
+
+def clients_tick(now=None, log=None):
+    """Each device's look-ups and blocked ones since midnight (Hearth Shield's Devices), counted from AdGuard's query
+    log as it grows: RUN/clients-today.json, readable. Only the new entries are read each time."""
+    now = now or time.time()
+    path = os.path.join(RUN, 'clients-today.json')
+    day = time.strftime('%Y-%m-%d', time.localtime(now))
+    try:
+        cur = json.load(open(path))
+        if not isinstance(cur, dict) or cur.get('day') != day:
+            raise ValueError
+    except (OSError, ValueError):
+        cur = {'day': day, 'last': '', 'clients': {}}
+    try:
+        data = (log if log is not None else api('/control/querylog?limit=500')).get('data') or []
+    except (OSError, ValueError, AttributeError):
+        return cur
+    newest = cur['last']
+    for e in data:
+        t = e.get('time') or ''
+        if t <= cur['last'] or not t.startswith(day):
+            break
+        newest = max(newest, t)
+        c = cur['clients'].setdefault(e.get('client') or '?', {'asked': 0, 'blocked': 0})
+        c['asked'] += 1
+        if (e.get('reason') or '').startswith(BLOCKED_REASONS):
+            c['blocked'] += 1
+    cur['last'] = newest
+    write_json(path, cur)
+    return cur
+
+
 def left(secs):
     secs = max(0, int(secs))
     return '%d h' % round(secs / 3600) if secs >= 3000 else '%d min' % max(1, round(secs / 60))
@@ -509,7 +595,8 @@ def status(stats=None):
             stats = {}
     return {'cache': dict(conf['cache'], running=active('hearth-lancache.service'), view=cache_view(stats, conf, names),
                           storeNames={k: v['label'] for k, v in STORES.items()}),
-            'ads': dict(conf['ads'], running=active('hearth-server-dns.service'), view=ads_view(conf, names)),
+            'ads': dict(conf['ads'], running=active('hearth-server-dns.service'), view=ads_view(conf, names),
+                        listNames={k: {'label': v['label'], 'id': v['id'], 'on': (conf['ads'].get('lists') or {}).get(k, v['on'])} for k, v in LISTS.items()}),
             'settingsReadable': readable, 'lan': lan_ip(), 'at': int(time.time())}
 
 
@@ -543,6 +630,10 @@ def cmd_watch(once=False):
             write_adguard(read_conf()[0])
             unit('restart', 'hearth-server-dns.service')
         write_json(path, stats)
+        if conf['ads']['on']:
+            clients_tick()
+            if n % 12 == 0:
+                days_tick()
         write_json(os.path.join(RUN, 'status.json'), status(stats))
         if once:
             return status(stats)
@@ -638,11 +729,39 @@ def main(argv):
                 if not re.match(r'^(?=.{3,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$', dom):
                     raise Fail('a site\'s name, like example.com')
                 out = changed(lambda c: section(c, 'ads').update(allow=sorted(set((section(c, 'ads').get('allow') or []) + [dom]))))
+            elif cmd == 'list' and len(a) == 3 and a[1] in LISTS:
+                on = onoff(a[2])
+                out = changed(lambda c: section(section(c, 'ads'), 'lists').update({a[1]: on}))
+            elif cmd in ('block', 'unblock', 'unallow') and len(a) == 2:
+                dom = re.sub(r'^[a-z]+://', '', a[1].strip().lower()).split('/')[0]
+                if not re.match(r'^(?=.{3,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,63}$', dom):
+                    raise Fail('a site\'s name, like example.com')
+                key = 'allow' if cmd == 'unallow' else 'block'
+
+                def ch(c):
+                    ads = section(c, 'ads')
+                    cur = set(ads.get(key) or [])
+                    if cmd == 'block':
+                        cur.add(dom)
+                        ads['allow'] = sorted(set(ads.get('allow') or []) - {dom})
+                    else:
+                        cur.discard(dom)
+                    ads[key] = sorted(cur)
+                out = changed(ch)
+            elif cmd == 'safe-search' and len(a) == 2:
+                on = onoff(a[1])
+                out = changed(lambda c: section(c, 'ads').update(safeSearch=on))
             elif cmd == 'device' and len(a) == 3 and a[2] in ('on', 'off', 'pause'):
                 name = a[1]
                 if not re.match(r'^[A-Za-z0-9._-]{1,63}$', name):
                     raise Fail('a device\'s name')
-                ids = [] if name == 'lan' else [ip for ip, n in device_names().items() if n == name]
+                # a device by its Tailscale name, or by its address on your Wi-Fi (Hearth Shield's device pages)
+                try:
+                    ipaddress.ip_address(name)
+                    by_ip = True
+                except ValueError:
+                    by_ip = False
+                ids = [] if name == 'lan' else [name] if by_ip else [ip for ip, n in device_names().items() if n == name]
 
                 def ch(c):
                     devs = section(section(c, 'ads'), 'devices')

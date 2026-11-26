@@ -1,0 +1,23 @@
+# Hearth Remap's runner (hosts/hearth-ui/apps/remap, `hearth-remap-app --run`): turns each device's profile on when
+# its game or app is in front and off when you leave it (Input Remapper does the remapping), says so on screen if you
+# asked, and lets you hold ≡ for 3 s to turn every remap off. Turned on by Hearth Remap once you have a profile.
+# Nothing waits for it and nothing at start-up needs it, so it can never hold up Game Mode or the desktop; it gives
+# up after a few failed starts. Light: it looks once a second and otherwise sleeps.
+[Unit]
+Description=Hearth Remap (profiles on when their game or app is in front)
+ConditionPathExists=/usr/bin/hearth-remap-app
+StartLimitIntervalSec=300
+StartLimitBurst=4
+
+[Service]
+ExecStart=/usr/bin/hearth-remap-app --run
+Restart=on-failure
+RestartSec=10
+Nice=10
+CPUWeight=20
+MemoryHigh=32M
+MemoryMax=64M
+TimeoutStopSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,41 @@
+#!/usr/bin/python3
+"""hearth-lights-admin: Hearth Lights' one-time OK (Not seen yet?), through pkexec.
+
+  hearth-lights-admin i2c    memory and motherboard lights: the i2c-dev module now (modprobe) and at every start
+                             (/etc/modules-load.d/hearth-lights.conf). OpenRGB's udev rules then let the person at the
+                             PC reach those lights. Nothing about how the PC starts changes: a module that can't load
+                             is only skipped by systemd-modules-load.
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import subprocess
+import sys
+
+CONF = os.environ.get('HEARTH_LIGHTS_MODULES', '/etc/modules-load.d/hearth-lights.conf')
+
+
+def main(argv):
+    if argv[1:] != ['i2c']:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    if os.geteuid() != 0 and 'HEARTH_LIGHTS_MODULES' not in os.environ:
+        print('error: run through pkexec', flush=True)
+        return 1
+    text = '# Hearth Lights (hearth-lights-admin i2c): memory and motherboard RGB through OpenRGB\ni2c-dev\n'
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    tmp = CONF + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, CONF)
+    loaded = os.path.exists('/sys/module/i2c_dev')
+    if not loaded and 'HEARTH_LIGHTS_MODULES' not in os.environ:
+        loaded = subprocess.run(['modprobe', 'i2c-dev'], stdin=subprocess.DEVNULL, capture_output=True, timeout=30).returncode == 0
+    print(json.dumps({'ok': True, 'loaded': loaded, 'conf': CONF}), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

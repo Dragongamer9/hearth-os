@@ -4,10 +4,64 @@ Mockups: open-source-apps/09-lights.png
 Release: next
 
 The owner, Nov 26: "The 18 app mockups look amazing remember to make them out of rust and add the blocks modular system
-to them". A pure-Rust Hearth app (hosts/hearth-ui/apps), made of blocks (studio: Edit layout, Customize, its own blocks
-window), built on the open-source project the board credits.
+to them". A pure-Rust Hearth app (hosts/hearth-ui/apps/lights), made of blocks (studio: Edit layout, Customize, its own
+blocks window), built on OpenRGB's SDK server protocol.
 
 Board: Hearth Lights (OpenRGB, GPL-2): every RGB device in the PC, one colour or effect for all, zones, profiles.
 
 ## Every part of the board
-- [ ] Every part of the board, listed one by one from its source when the app is built
+- [x] Title bar: the LT mark, Hearth Lights, "· every light in your PC, one place" (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "every light in your PC, one place"
+- [x] All lights off (top right; it turns them back on too) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "\"All lights off\""
+- [x] Minimize, maximize and close (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/oss-kit/kit.rs: "ui::G::Minimize"
+- [x] DEVICES · 9 FOUND (the count of what OpenRGB found) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Devices · {} found"
+- [x] All devices · one colour or effect for all (picked) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "one colour or effect for all"
+- [x] Memory (4 sticks) · 16 lights each (OpenRGB's sticks as one) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Memory ({} stick{})"
+- [x] Front fans · 3 × 24 lights (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "{} × {} lights"
+- [x] Back fan · 24 lights (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "format!(\"{n} lights\")"
+- [x] CPU cooler · pump ring, 16 lights (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "\"CPU cooler\".to_string()"
+- [x] Graphics card · strip, 12 lights (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "\"Graphics card\".to_string()"
+- [x] Motherboard · 2 headers (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "header{}"
+- [x] Keyboard · per-key, 104 (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "per-key, {n}"
+- [x] Mouse · logo + wheel (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: ".join(\" + \")"
+- [x] Desk light strip · USB, 60 lights (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "USB, {n} lights"
+- [x] Each device's dot in its colour and its own on/off switch (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Msg::Toggle(g.key.clone())"
+- [x] NOT SEEN YET? and its words (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Some lights need their makers' apps closed or a one-time OK. Hearth explains each one."
+- [x] Look again (OpenRGB looks for devices again) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/orgb.rs: "pub fn rescan"
+- [x] Hearth explains each one: the one-time OK for memory and motherboard lights, and makers' programs holding devices (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Give the one-time OK"
+- [x] The case with its FANS · 4 tag (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "FANS · {}"
+- [x] Four fans drawn as rings of their own lights, in their real colours (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "fn fan("
+- [x] CPU COOLER block with its glow (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "\"CPU COOLER\""
+- [x] MEMORY · 4 with each stick's lit top (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "MEMORY · {}"
+- [x] The graphics card with its strip (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "\"Graphics card\""
+- [x] KEYBOARD · PER-KEY with every key in its colour (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "KEYBOARD · PER-KEY"
+- [x] MOUSE with its logo and wheel lights (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "\"MOUSE\""
+- [x] Desk light strip card · 60 lights · USB, with its strip (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "fn strip_card"
+- [x] Ember wave (the effect's name) and "On all 9 devices · in step · speed 40% · brightness 80%" (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "On all {n} device{}"
+- [x] Tags IN STEP, SAVED TO THE DEVICES, PROFILE: GAMING (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Saved to the devices"
+- [x] "Click any light in the picture to change just that part. Lights stay as you set them after a restart." (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Click any light in the picture to change just that part. Lights stay as you set them after a restart."
+- [x] A press on any part of the picture picks just that part (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "Msg::Pick(p.key.clone())"
+- [x] Lights stay after a restart: saved on the device, or put back by Hearth's runner (a guarded user service) (CI pictures lights-1…5; needs testing on a device) — os/system_files/usr/lib/systemd/user/hearth-lights.service: "ExecStart=/usr/bin/hearth-lights-app --run"
+- [x] Zones · Front fans and "3 fans · 24 lights each · click to pick, drag to paint" (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "lights each · click to pick, drag to paint"
+- [x] Same for all / Each fan / Each light (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "\"Same for all\""
+- [x] Fan 1, Fan 2, Fan 3 rows of 24 lights: a click picks a light, a drag paints (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "Msg::Paint(h.0, h.1)"
+- [x] Colour: the colour wheel with its picked ring (click or drag on it) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/stage.rs: "pub struct Wheel"
+- [x] The #FF8A3D field (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "text_input(\"#FF8A3D\""
+- [x] Six colour swatches (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "const SWATCHES"
+- [x] EFFECT: Still, Breathing, Ember wave, Rainbow, Reacts to keys, Hotter = redder, To the music, Game colours, Off (each with its bar) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "(\"heat\", \"Hotter = redder\")"
+- [x] Each effect really runs: the device's own mode where it has one, Hearth's frames through OpenRGB's Direct mode where not (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "pub fn own_mode"
+- [x] Hotter = redder follows the processor's temperature (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "pub fn cpu_temp"
+- [x] To the music follows the sound playing (PipeWire) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "pub struct Music"
+- [x] Game colours from the running game's cover in Steam's library (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "pub fn game_colours"
+- [x] Speed 40 % slider (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "t(\"Speed\""
+- [x] Brightness 80 % slider (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "t(\"Brightness\""
+- [x] Direction → ← ↑ ↓ From centre (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "(\"centre\", \"From centre\")"
+- [x] PROFILES: Gaming (when a game starts), Desk (in Desktop Mode), Movie night (dim, one colour), Sleep (off when the screen sleeps) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "off when the screen sleeps"
+- [x] Profiles switch by themselves at their moment, only as you allow (ask me: a notification asks) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/fx.rs: "pub fn moment"
+- [x] ＋ New profile (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "＋ New profile"
+- [x] Switch by itself: ask me (ask me / yes / no) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "Switch by itself: ask me"
+- [x] Credit: Hearth Lights · Built on OpenRGB (GPL-2) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "\"OpenRGB (GPL-2)\""
+- [x] Made of blocks: devices, not seen yet, the picture, what's on now, keyboard/mouse/strip, zones, colour, effect, speed/brightness/direction, profiles (moved, sized, hidden, customized) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "bl(\"tuning\""
+- [x] Its own blocks window: its buttons, panes and info (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "name: \"Lights\""
+- [x] Built on OpenRGB's SDK protocol (devices, Direct mode, modes, saving on the device) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/orgb.rs: "pub fn set_mode"
+- [x] OpenRGB not here: Get OpenRGB (Flathub); not running: Start OpenRGB (a guarded user service) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/lights/src/main.rs: "\"Get OpenRGB\""
+- [x] Its choices kept safely (atomic, a .bak, merged; opening it writes nothing) (CI pictures lights-1…5; needs testing on a device) — hosts/hearth-ui/apps/oss-kit/kit.rs: "merge_json"

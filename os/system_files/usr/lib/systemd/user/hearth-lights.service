@@ -1,0 +1,25 @@
+# Hearth Lights' runner (hosts/hearth-ui/apps/lights, `hearth-lights-app --run`): puts your lights back as you set
+# them after a restart, sends Hearth's own effects (Ember wave, Hotter = redder, To the music, Game colours) to the
+# devices that have no mode of their own for them, and switches profiles when you said it may. Turned on only once you
+# change something in Hearth Lights. Nothing waits for it and nothing at start-up needs it, so it can never hold up
+# Game Mode or the desktop; it gives up after a few failed starts, and without OpenRGB it only waits, quietly.
+# Light: a frame every 50 ms only while one of Hearth's moving effects is on, otherwise once a second.
+[Unit]
+Description=Hearth Lights (your RGB lights as you set them)
+ConditionPathExists=/usr/bin/hearth-lights-app
+After=hearth-openrgb.service
+StartLimitIntervalSec=300
+StartLimitBurst=4
+
+[Service]
+ExecStart=/usr/bin/hearth-lights-app --run
+Restart=on-failure
+RestartSec=10
+Nice=10
+CPUWeight=20
+MemoryHigh=48M
+MemoryMax=96M
+TimeoutStopSec=5
+
+[Install]
+WantedBy=default.target

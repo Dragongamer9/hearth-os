@@ -27,6 +27,10 @@ PAGES = {
     'g15': ['window', 'overview', 'gkeys', 'screen', 'lighting', 'editor'],
     'ideas': ['window', 'list', 'idea', 'built'],
     'notes': ['window', 'files', 'search', 'today', 'board', 'graph', 'modes', 'sync', 'conflict', 'settings'],
+    'lights': ['main'],
+    'remap': ['main'],
+    'mouse': ['main'],
+    'shield': ['window', 'today', 'panel', 'devices', 'device', 'log', 'lists', 'allow', 'block', 'family', 'settings'],
 }
 
 BLOCK = re.compile(r'\bbls?\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)')
