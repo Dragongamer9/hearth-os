@@ -87,6 +87,12 @@ sleep 1.5
 SHOT_WAIT=4 oss oss-a-08-bottles hearth-bottles "$BO" --bottle "Office and tools"
 SHOT_WAIT=4.5 oss oss-a-08-bottles-editing hearth-bottles env HEARTH_ARRANGE_OPEN=bottles:bottle HEARTH_STUDIO_STAGE=bottles:none "$BO" --bottle "Office and tools"
 pkill -f "import time; x = bytearray" 2>/dev/null
+# A community installer run by Hearth step by step (installer.rs): Notepad++'s manifest from bottlesdevs/programs
+# (a stand-in answer), its extras with winetricks, the download checked, the setup run with the bottle's Wine, the
+# registry, the installer's own script skipped, and Notepad++ added to the bottle's programs.
+SHOT_WAIT=3 oss oss-a-08-bottles-installing hearth-bottles "$BO" --bottle "Trying something" --install notepad-plus-plus
+SHOT_WAIT=15 oss oss-a-08-bottles-installed hearth-bottles "$BO" --bottle "Trying something" --install notepad-plus-plus
+grep -q 'name: Notepad++' "$OH/.local/share/hearth/bottles/trying/bottle.yml" && echo "::notice title=oss-08 installer::Notepad++ is in the bottle's programs; $(tr '\n' '|' < "$OA/bottles/wine.log" | cut -c1-600)" || echo "::error title=oss-08 installer::the program wasn't added ($(tr '\n' '|' < "$OA/bottles/wine.log" 2>/dev/null | cut -c1-400))"
 
 # ---- 17 Hearth 3D (Blender): the quad mech (Blender's answer stands in: oss-a-fixture.py's scene)
 oss_world hearth-3d

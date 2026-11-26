@@ -211,8 +211,22 @@ elif app == "bottles":
         slug = "".join(c.lower() if c.isalnum() else "-" for c in "Office and tools-" + pn)
         w(".local/share/applications/hearth-bottles-%s.desktop" % slug, "[Desktop Entry]\nType=Application\nName=%s\n" % pn)
     cmd("bottles-cli", 'echo "bottles-cli $*"\n')
-    cmd("curl", 'case "$*" in\n  *bottlesdevs/programs*) printf "%s";;\n  *) exit 22;;\nesac\n' % "".join(
-        "%s:\n  Name: %s\n  Description: x\n  Grade: Platinum\n" % (k_, n_) for k_, n_ in (("office-2016", "Office 2016 installer"), ("paint-net", "Paint.NET"), ("msi-afterburner", "MSI Afterburner"), ("notepad-plus-plus", "Notepad++"), ("irfanview", "IrfanView"))).replace("%", "%%"))
+    # The community's installer for Notepad++ as bottlesdevs/programs has it (installer.rs runs it), its download a
+    # stand-in file, and stand-ins for Wine and winetricks that take their time and do what the real ones leave behind.
+    import hashlib
+    fake = b"MZ hearth stand-in installer\n"
+    manifest = ("Name: Notepad++\nDescription: A text editor\nGrade: Platinum\nArch: win64\nDependencies:\n- vcredist2019\n- arial32\n"
+                "Parameters:\n  dxvk: false\nSteps:\n- action: install_exe\n  file_name: npp.8.6.Installer.x64.exe\n  url: https://example.org/npp.8.6.Installer.x64.exe\n"
+                "  file_checksum: %s\n  arguments: /S\n- action: set_register_key\n  key: HKCU\\Software\\Notepad++\n  value: noUpdate\n  data: '1'\n  key_type: REG_SZ\n"
+                "- action: run_script\n  script: echo hi\nExecutable:\n  name: Notepad++\n  file: notepad++.exe\n  path: Notepad++/notepad++.exe\n") % hashlib.md5(fake).hexdigest()
+    w(os.path.join(root, "npp.yml"), manifest)
+    w(os.path.join(root, "fake.exe"), fake.decode())
+    cmd("wine", 'echo "wine $*" >> "%s"\ncase "$1" in\n  *.exe) sleep 2; mkdir -p "$WINEPREFIX/drive_c/Program Files/Notepad++"; : > "$WINEPREFIX/drive_c/Program Files/Notepad++/notepad++.exe";;\nesac\nexit 0\n' % os.path.join(root, "wine.log"))
+    cmd("winetricks", 'echo "winetricks $*" >> "%s"; sleep 1.5\n' % os.path.join(root, "wine.log"))
+    cmd("curl", 'out=; prev=; for a; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done\ncase "$*" in\n  *Software/notepad-plus-plus.yml*) cat "%s";;\n  *example.org*) cp "%s" "$out";;\n  *bottlesdevs/programs*) cat "%s";;\n  *) exit 22;;\nesac\n' % (os.path.join(root, "npp.yml"), os.path.join(root, "fake.exe"), os.path.join(root, "index.yml")))
+    os.environ["INDEX"] = "".join(
+        "%s:\n  Name: %s\n  Description: x\n  Grade: Platinum\n" % (k_, n_) for k_, n_ in (("office-2016", "Office 2016 installer"), ("paint-net", "Paint.NET"), ("msi-afterburner", "MSI Afterburner"), ("notepad-plus-plus", "Notepad++"), ("irfanview", "IrfanView")))
+    w(os.path.join(root, "index.yml"), os.environ["INDEX"])
     # two programs running in Office and tools (stand-ins with its WINEPREFIX, named as Wine names them)
     w(os.path.join(root, "run-office.sh"), "#!/bin/sh\nWINEPREFIX='%s' exec -a WINWORD.EXE python3 -c 'import time; x = bytearray(412 * 1048576); x[::4096] = b\"1\" * len(x[::4096]); time.sleep(90)' 'Story notes.docx' &\nWINEPREFIX='%s' exec -a foobar2000.exe python3 -c 'import time; x = bytearray(64 * 1048576); x[::4096] = b\"1\" * len(x[::4096]); time.sleep(90)' &\n" % (os.path.join(base, "office"), os.path.join(base, "office")), 0o755)
 elif app == "hearth-3d":
