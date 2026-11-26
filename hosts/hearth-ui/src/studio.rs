@@ -1475,7 +1475,16 @@ impl Describe {
                 }
                 dr.guide = guide.map(|(v, n)| Guide { line: Rectangle { x: pr.x + v, y: pr.y, width: 1.0, height: pr.h }, note: format!("Lined up with {n}"), at: Point::new(pr.x + v + 6.0, pr.y + r.bottom() + 6.0) });
                 let a = Anchors::from_rect(r, pr.w, pr.h);
-                st.s.live(|d| d.page_mut(page).part_mut(id).at = Some(a));
+                // the part being moved goes over the rest (Layers can put it back under)
+                st.s.live(|d| {
+                    let pd = d.page_mut(page);
+                    let top = pd.parts.iter().filter(|x| x.id != id).map(|x| x.z).max().unwrap_or(0);
+                    let pt = pd.part_mut(id);
+                    pt.at = Some(a);
+                    if pt.z <= top {
+                        pt.z = (top + 1).min(999);
+                    }
+                });
             }
             DragKind::Side(sel, side) => self.side_to(&sel, side, x, y),
         }
@@ -3177,7 +3186,7 @@ fn editor<'a, M: Clone + 'a>(d: &'a Describe, p: &Pal, body: Element<'a, M>, map
     // the side panel (Right-click any part › Customize)
     if st.panel {
         if let Some(sel) = st.pick.clone() {
-            let w = 520.0_f32.min(root.w * 0.5);
+            let w = 600.0_f32.min(root.w * 0.56);
             let panel = side_panel(d, st, &p, &sel, &sm_);
             layer.push(pin(container(panel).width(Length::Fixed(w)).height(Length::Fixed((root.h - 96.0).max(200.0)))).x((root.w - w - 16.0).max(0.0)).y(16.0).into());
         }
@@ -3579,7 +3588,7 @@ fn side_panel<'a, M: Clone + 'a>(d: &'a Describe, st: &'a Studio, p: &Pal, sel: 
             _ => "· free in the window".to_string(),
         },
     };
-    let row_ = |label: &'static str, right: Element<'a, M>| -> Element<'a, M> { row![container(t(label, 13.0, p.text)).width(Length::Fill), right].spacing(10.0).align_y(iced::Center).into() };
+    let row_ = |label: &'static str, right: Element<'a, M>| -> Element<'a, M> { row![container(t(label, 13.0, p.text)).width(Length::Fixed(118.0)), Space::new().width(Length::Fill), right].spacing(10.0).align_y(iced::Center).padding(Padding { top: 0.0, right: 14.0, bottom: 0.0, left: 0.0 }).into() };
     let head = |x: &'static str| -> Element<'a, M> { container(ts(x, 11.0, p.muted).wrapping(Wrapping::None)).padding(Padding { top: 10.0, right: 0.0, bottom: 2.0, left: 0.0 }).into() };
     let mut c = Column::new().spacing(9.0);
     let picker_item = |label: String, on: bool, m: M| -> Element<'a, M> {
@@ -3878,14 +3887,14 @@ fn side_panel<'a, M: Clone + 'a>(d: &'a Describe, st: &'a Studio, p: &Pal, sel: 
     .size(12.5)
     .padding(Padding { top: 5.0, right: 6.0, bottom: 5.0, left: 8.0 })
     .width(Length::Fixed(130.0));
-    let foot = row![
-        own_name,
-        tbtn(&p, "Save as my own block…".into(), false, false, Some(s(SMsg::SaveOwn(sel.clone())))),
-        tbtn(&p, "Copy its look".into(), false, false, Some(s(SMsg::CopyLook(sel.clone())))),
-        tbtn(&p, if is_add { "Apply to every bar item".into() } else { "Apply to every part".into() }, false, false, Some(s(SMsg::ApplyAll(sel.clone())))),
-    ]
-    .spacing(8.0)
-    .align_y(iced::Center);
+    let foot = Row::new()
+        .push(own_name)
+        .push(tbtn(&p, "Save as my own block…".into(), false, false, Some(s(SMsg::SaveOwn(sel.clone())))))
+        .push(tbtn(&p, "Copy its look".into(), false, false, Some(s(SMsg::CopyLook(sel.clone())))))
+        .push(tbtn(&p, if is_add { "Apply to every bar item".into() } else { "Apply to every part".into() }, false, false, Some(s(SMsg::ApplyAll(sel.clone())))))
+        .spacing(8.0)
+        .align_y(iced::Center)
+        .wrap();
     let tabs = ["Look", "Shows", "Does", "Place", "When", "Motion"];
     let mut tr = Row::new().spacing(6.0);
     for (i, n) in tabs.iter().enumerate() {
