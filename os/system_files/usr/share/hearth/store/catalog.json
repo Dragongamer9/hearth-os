@@ -466,7 +466,7 @@
     {
       "id": "home-server-helper",
       "name": "Home server helper",
-      "card": "Ollama, Jellyfin, AI photos, shares",
+      "card": "Ollama, Jellyfin, shares, and the server's parts: Dashboard, Model vault, Backups",
       "icon": "HS",
       "from": "#a3acb9",
       "to": "#5b6472",
@@ -474,8 +474,23 @@
       "group": "services",
       "kind": "builtin",
       "short": "Home server helper",
-      "tagline": "Ollama, Jellyfin, AI photos, shares",
-      "about": "Ollama, Jellyfin, AI photos, shares. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "tagline": "Ollama, Jellyfin, shares, and the server's parts: Dashboard, Model vault, Backups",
+      "about": "The home server's root helper and the engines of the server's parts (the Dashboard, the Model vault, Backups for every device…): Ollama, Jellyfin, AI photos, shares. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates; installing one asks for the admin password."
+    },
+    {
+      "id": "home-server-app",
+      "name": "Home server helper",
+      "short": "Home server",
+      "card": "The Server side in one window",
+      "icon": "HS",
+      "from": "#ffb36b",
+      "to": "#ff6a1f",
+      "partId": "hearth-home-server-app",
+      "open": "hearth-home-server-app",
+      "group": "apps",
+      "kind": "builtin",
+      "tagline": "The Server side in one window",
+      "about": "Your home server in one window: Server home, the dashboard (desk, TV, phone and Ally), the Model vault, backups for every device and the server's other parts. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
     },
     {
       "id": "hearth-link",

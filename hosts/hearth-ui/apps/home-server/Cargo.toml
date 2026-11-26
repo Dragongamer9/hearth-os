@@ -1,0 +1,24 @@
+# The Home server helper (pure Rust, hearth-ui; docs/HOME-SERVER-PARTS.md, boards docs/mockups/server-expansion,
+# checklists docs/mockups/checklists/server-*.md): one window for the Server side of Hearth OS: Server home, the
+# Dashboard (desk, TV, phone and Ally views), the Model vault, Backups for every device and the other parts' pages,
+# each page its own module (src/pages). It updates through the Hearth Store (its own part, hearth-home-server-app);
+# the work is done by the parts' engines in the Home server helper's system part. No version line: the owner picks
+# every version number.
+[package]
+name = "hearth-home-server-app"
+edition = "2021"
+description = "The Home server helper: the Server side of Hearth OS in one window"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-home-server-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
+hearth-server-parts = { path = "../server-parts" }
+iced = { workspace = true, features = ["canvas"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
