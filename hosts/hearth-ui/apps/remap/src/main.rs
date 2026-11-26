@@ -3,13 +3,15 @@
 //! Remapper (GPL-3): every change is an Input Remapper preset (ir.rs) on its device, its service does the remapping,
 //! and Hearth's runner (run.rs, `--run`) turns each profile on when its game or app is in front.
 //!
-//! Input Remapper not on this PC: it comes with Hearth OS (Fedora edition) from the update that has Hearth Remap; its
+//! Input Remapper not on this PC: Install Input Remapper gets Debian's own package (debs.rs, hearth-admin deb-install); its
 //! service not running: the app turns it on (one OK as administrator). Neither is part of starting the PC.
 //!
 //! $HEARTH_REMAP_FIXTURE (a JSON file: devices, state): CI's pictures; nothing is started or stopped then.
 
 #[path = "../../oss-kit/kit.rs"]
 mod kit;
+#[path = "../../oss-kit/debs.rs"]
+mod debs;
 mod ir;
 mod pad;
 mod run;
@@ -66,6 +68,8 @@ pub enum Msg {
     NewMacro,
     TryIt,
     StartService,
+    /// Debian's own Input Remapper, installed from here (debs.rs)
+    InstallIt,
     Done(Result<String, String>),
     Refresh,
     Drag,
@@ -698,6 +702,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return Task::perform(kit::bg(move || ir::start(&d, &p).map(|_| String::new())), |r| Msg::Done(r.unwrap_or(Err("stopped".into()))));
             }
         }
+        Msg::InstallIt => {
+            a.said = "Getting Debian's Input Remapper…".into();
+            return Task::perform(kit::bg(|| debs::input_remapper().map(|_| "Input Remapper is on this PC now.".to_string()).map_err(|e| format!("It couldn't be installed: {e}"))), |r| Msg::Done(r.unwrap_or(Err("stopped".into()))));
+        }
         Msg::StartService => {
             a.said = "Turning Input Remapper on…".into();
             return Task::perform(
@@ -862,7 +870,7 @@ fn new_profile(a: &App) -> E<'_, Msg> {
 fn missing(a: &App) -> Option<E<'_, Msg>> {
     let p = a.p;
     if !a.installed {
-        return Some(kit::missing(&p, "Input Remapper isn't on this PC yet", "Hearth Remap is built on Input Remapper (GPL-3), which does the remapping. It comes with Hearth OS's Fedora edition from the update that brings Hearth Remap, so update Hearth OS and it's here.", None, false));
+        return Some(kit::missing(&p, "Input Remapper isn't on this PC yet", "Hearth Remap is built on Input Remapper (GPL-3), which does the remapping. Install Debian's own Input Remapper from here (it asks for the administrator's password once; Hearth OS keeps it through its updates).", Some(("Install Input Remapper".into(), Msg::InstallIt)), false));
     }
     if !a.running {
         return Some(kit::missing(&p, "Input Remapper is off", "Turn it on and your profiles work (it asks once, as administrator). It never holds up starting the PC: if it fails, nothing else waits for it.", Some(("Turn Input Remapper on".into(), Msg::StartService)), false));

@@ -133,17 +133,31 @@ fn status() -> Value {
         o.json().unwrap_or(Value::Null)
     })
 }
+fn read_json(p: &std::path::Path) -> Option<Value> {
+    std::fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok())
+}
 fn clients_today() -> Value {
     if let Some(f) = fixture() {
         return f.get("clients-today").cloned().unwrap_or(Value::Null);
     }
-    std::fs::read(format!("{RUN}/clients-today.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null)
+    // the image's counter (hearth-server-dns), else Shield's own (count.rs: hearth-shield-count.timer)
+    read_json(std::path::Path::new(&format!("{RUN}/clients-today.json"))).or_else(|| read_json(&crate::count::state().join("clients-today.json"))).unwrap_or(Value::Null)
 }
 fn days_file() -> Value {
     if let Some(f) = fixture() {
         return f.get("days").cloned().unwrap_or(Value::Null);
     }
-    std::fs::read(format!("{RUN}/days.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null)
+    read_json(std::path::Path::new(&format!("{RUN}/days.json"))).or_else(|| read_json(&crate::count::state().join("days.json"))).unwrap_or(Value::Null)
+}
+/// AdGuard Home's own API on this PC (Shield's count.rs uses it too).
+pub fn ag_get(path: &str) -> Result<Value, String> {
+    ag(path)
+}
+pub fn ag_send(method: &str, path: &str, body: &Value) -> Result<Value, String> {
+    if is_fixture() {
+        return Ok(Value::Null);
+    }
+    send(method, &format!("{API}{path}"), &[], Some(body))
 }
 
 fn first_kv(v: &Value) -> Option<(String, u64)> {
@@ -343,10 +357,21 @@ pub fn helper(args: &[&str]) -> Result<(), String> {
     if is_fixture() {
         return Ok(());
     }
+    // A Hearth OS whose hearth-server-dns doesn't have this yet: Shield does it itself, through AdGuard Home's own
+    // API, and keeps it so it's put back whenever AdGuard starts again (count.rs)
+    if ["list", "block", "unblock", "unallow", "safe-search"].contains(&args.first().copied().unwrap_or("")) && !helper_has_lists() {
+        return crate::count::change(args);
+    }
     let mut v = vec!["pkexec".to_string(), HELPER.to_string()];
     v.extend(args.iter().map(|s| s.to_string()));
     let o = hearth_ui::run::blocking(&v);
     if o.ok && !o.out.trim_start().starts_with("error:") { Ok(()) } else { Err(o.why()) }
+}
+
+/// Does this Hearth OS's hearth-server-dns have Shield's lists, always-block and family rules (its help names them)?
+pub fn helper_has_lists() -> bool {
+    static HELP: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HELP.get_or_init(|| std::fs::read_to_string(HELPER).map(|h| h.contains("hearth-server-dns list ID")).unwrap_or(false))
 }
 
 // ------------------------------------------------------------------ a Pi-hole on the network

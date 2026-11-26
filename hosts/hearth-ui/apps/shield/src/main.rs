@@ -11,6 +11,7 @@
 
 #[path = "../../oss-kit/kit.rs"]
 mod kit;
+mod count;
 mod data;
 
 use data::{Data, Dev};
@@ -188,6 +189,10 @@ impl App {
                 if here {
                     let a: Vec<&str> = args.iter().map(String::as_str).collect();
                     data::helper(&a)?;
+                    // blocking on or off: Shield's own counter with it, where this Hearth OS doesn't count (count.rs)
+                    if a.first() == Some(&"ads") && !data::is_fixture() {
+                        count::set_on(a.get(1) == Some(&"on"))?;
+                    }
                 } else if let Some((m, path, body)) = pi {
                     if !data::is_fixture() {
                         let pass = kit::keyring::lookup("shield", "pihole").ok_or("The Pi-hole's password isn't in the keyring.")?;
@@ -801,6 +806,10 @@ fn shown(a: &App) -> Element<'_, Msg> {
 }
 
 fn main() -> iced::Result {
+    if app::flag("--count") {
+        // one minute's count (hearth-shield-count.service; count.rs): nothing at all when AdGuard isn't answering
+        std::process::exit(match count::tick() { Ok(()) => 0, Err(e) => { eprintln!("hearth-shield-app --count: {e}"); 0 } });
+    }
     if app::handle_cli("hearth-shield-app", "Hearth Shield: ads and trackers blocked for every device at home (built on AdGuard Home and Pi-hole).\n  --page today|devices|log|lists|allow|block|family|settings|device\n  --device ADDRESS   with --page device") {
         return Ok(());
     }

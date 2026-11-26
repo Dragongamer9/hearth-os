@@ -3,7 +3,7 @@
 //! libratbag (MIT) and its daemon ratbagd, the same as Piper (GPL-2) uses (rb.rs). DPI steps, every button, report
 //! rate, angle snapping, its lights and the profiles kept on the mouse itself, all written to the mouse (Commit).
 //!
-//! libratbag not on this PC: it comes with Hearth OS's Fedora edition (libratbag-ratbagd); its daemon is started by
+//! libratbag not on this PC: Install libratbag gets Debian's own ratbagd (debs.rs, hearth-admin deb-install); its daemon is started by
 //! D-Bus when asked, never at start-up. "Switch with the game" is the runner (`--run`, hearth-mouse.service), only
 //! once you change it, and "ask me" by default.
 //!
@@ -63,6 +63,8 @@ pub enum Msg {
     SwitchBy,
     OpenRemap,
     StartIt,
+    /// Debian's own libratbag (ratbagd), installed from here (debs.rs)
+    InstallIt,
     Drag,
     Max,
     Min,
@@ -464,6 +466,10 @@ udevadm trigger --subsystem-match=hidraw || true")?;
             let name = a.mouse().map(|m| m.name.clone()).unwrap_or_default();
             hearth_ui::run::detached(&["hearth-remap-app", "--device", &name]);
         }
+        Msg::InstallIt => {
+            a.said = "Getting Debian's libratbag…".into();
+            return Task::perform(kit::bg(|| debs::ratbagd()), |r| Msg::Wrote(r.unwrap_or_else(|| Err("stopped".into())))).chain(load());
+        }
         Msg::StartIt => {
             a.said = "Starting libratbag's ratbagd…".into();
             return Task::perform(
@@ -500,7 +506,7 @@ fn mouse_block(a: &App) -> E<'_, Msg> {
         let words = if a.loading {
             "Asking libratbag which mice are here…".to_string()
         } else if !rb::installed() {
-            return kit::missing(&p, "libratbag isn't on this PC yet", "Hearth Mouse is built on libratbag (MIT), which knows how to talk to gaming mice from many makers, like Piper does. It comes with Hearth OS's Fedora edition from the update that brings Hearth Mouse.", None, false);
+            return kit::missing(&p, "libratbag isn't on this PC yet", "Hearth Mouse is built on libratbag (MIT), which knows how to talk to gaming mice from many makers, like Piper does. Install Debian's own libratbag from here (it asks for the administrator's password once; its daemon starts only when Hearth Mouse asks it something).", Some(("Install libratbag".into(), Msg::InstallIt)), false);
         } else if !a.problem.is_empty() {
             return kit::missing(&p, "libratbag isn't answering", format!("Its daemon, ratbagd, didn't answer ({}). Start it (it asks once, as administrator); it's never part of starting the PC.", a.problem), Some(("Start ratbagd".into(), Msg::StartIt)), false);
         } else {

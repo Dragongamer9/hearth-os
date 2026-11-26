@@ -1,9 +1,8 @@
 //! Installing what an app is built on from its Hearth Store copy alone (the owner, Nov 26: "All this has to be updated
-//! thru the store"; Hearth OS on Debian is writable): Debian trixie's own .deb, by its exact version and SHA-256 (the
-//! pins below, read from Debian's signed package lists by CI), downloaded from deb.debian.org into Hearth's cache,
-//! checked, and installed with `hearth-admin deb-install` (it asks for the administrator's password; apt brings any
-//! missing dependencies from Debian; hearth-unlock keeps it across Hearth OS updates, device rules and services
-//! included). Or a small .deb Hearth makes itself (a device rule), built with dpkg-deb and installed the same way.
+//! thru the store"; Hearth OS on Debian is writable): Debian trixie's own packages through a small package Hearth makes
+//! (get_from_debian), or a .deb by its exact file and SHA-256 (fetch), or a small .deb of Hearth's own (a device rule),
+//! each installed with `hearth-admin deb-install` (it asks for the administrator's password; apt brings any missing
+//! dependencies from Debian; hearth-unlock keeps it across Hearth OS updates, device rules and services included).
 //! Nothing here starts a service: each app turns on only what's needed, when the person turns it on.
 #![allow(dead_code)]
 
@@ -87,11 +86,15 @@ pub fn get(pins: &[Pin]) -> Result<(), String> {
 /// A small package Hearth makes itself: `files` are (path on the system, contents, mode); `postinst` runs after it's
 /// in (as dpkg runs it). Built with Debian's own dpkg-deb.
 pub fn build(package: &str, version: &str, about: &str, files: &[(&str, String, u32)], postinst: &str) -> Result<PathBuf, String> {
+    build_with(package, version, about, "", files, postinst)
+}
+
+fn build_with(package: &str, version: &str, about: &str, depends: &str, files: &[(&str, String, u32)], postinst: &str) -> Result<PathBuf, String> {
     use std::os::unix::fs::PermissionsExt;
     let root = cache().join(format!("{package}-build"));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("DEBIAN")).map_err(|e| e.to_string())?;
-    let control = format!("Package: {package}\nVersion: {version}\nArchitecture: all\nMaintainer: Hearth OS <noreply@hearthos.fun>\nSection: admin\nPriority: optional\nDescription: {about}\n");
+    let control = format!("Package: {package}\nVersion: {version}\nArchitecture: all\nMaintainer: Hearth OS <noreply@hearthos.fun>\nSection: admin\nPriority: optional\n{}Description: {about}\n", if depends.is_empty() { String::new() } else { format!("Depends: {depends}\n") });
     std::fs::write(root.join("DEBIAN/control"), control).map_err(|e| e.to_string())?;
     if !postinst.is_empty() {
         let pi = root.join("DEBIAN/postinst");
@@ -108,4 +111,28 @@ pub fn build(package: &str, version: &str, about: &str, files: &[(&str, String, 
     let o = hearth_ui::run::blocking(&["dpkg-deb".to_string(), "--root-owner-group".into(), "--build".into(), root.to_string_lossy().to_string(), out.to_string_lossy().to_string()]);
     let _ = std::fs::remove_dir_all(&root);
     if o.ok { Ok(out) } else { Err(format!("the package couldn't be made: {}", o.why())) }
+}
+
+/// What an app is built on, from Debian itself: a small package Hearth makes that depends on Debian's own packages
+/// (`depends`, apt's words), installed with hearth-admin deb-install, so apt fetches them and their dependencies from
+/// Debian's signed lists (each file checked against the SHA-256 those lists give: the version trixie has now, even after
+/// Debian replaces an old file in its pool), and whose own step after installing turns off the services Debian's
+/// packages turn on (`units`), so nothing new starts with the PC until the person turns it on in the app.
+pub fn get_from_debian(name: &str, about: &str, depends: &str, units: &[&str]) -> Result<(), String> {
+    let off: String = units.iter().map(|u| format!("systemctl disable --now {u} 2>/dev/null || true\n")).collect();
+    let deb = build_with(name, "1", about, depends, &[], &off)?;
+    install(&deb)
+}
+
+/// OpenRGB (Hearth Lights): its server only ever as Hearth's own user service.
+pub fn openrgb() -> Result<(), String> {
+    get_from_debian("hearth-lights-openrgb", "Hearth Lights: Debian's OpenRGB, its system service left off", "openrgb", &["openrgb.service"])
+}
+/// Input Remapper (Hearth Remap): its service off until Hearth Remap turns it on (the person's OK).
+pub fn input_remapper() -> Result<(), String> {
+    get_from_debian("hearth-remap-input-remapper", "Hearth Remap: Debian's Input Remapper, its service off until you turn it on", "input-remapper-daemon", &["input-remapper.service", "input-remapper-autoload.service"])
+}
+/// libratbag's ratbagd (Hearth Mouse): started by D-Bus when Hearth Mouse asks, never at start-up.
+pub fn ratbagd() -> Result<(), String> {
+    get_from_debian("hearth-mouse-ratbagd", "Hearth Mouse: Debian's libratbag daemon, started only when asked", "ratbagd", &["ratbagd.service"])
 }

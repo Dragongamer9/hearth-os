@@ -24,4 +24,11 @@ json.dump(f, open(sys.argv[1] + '.off', 'w'))
 PY
 run shield-9-off hearth-shield 0 env XDG_CONFIG_HOME="$SCFG" HEARTH_SHIELD_FIXTURE="$SFX.off" HEARTH_SHIELD_SERVER="Nvidia PC" "$S"
 SHOT_WAIT=3 shield 10-edit-layout env HEARTH_ARRANGE_OPEN=shield:today HEARTH_ARRANGE_PICK=chart "$S"
+# Shield's own counter (count.rs, hearth-shield-count.timer: for a Hearth OS whose hearth-server-dns doesn't count),
+# one minute's count from AdGuard Home's answers
+rm -rf /tmp/shield-state
+env XDG_STATE_HOME=/tmp/shield-state HEARTH_SHIELD_FIXTURE="$SFX" "$S" --count
+if [ -s /tmp/shield-state/hearth/shield/days.json ] && [ -s /tmp/shield-state/hearth/shield/clients-today.json ]; then
+  echo "::notice title=shield counter::$(cut -c1-300 /tmp/shield-state/hearth/shield/days.json) · $(cut -c1-300 /tmp/shield-state/hearth/shield/clients-today.json)"
+else echo "::error title=shield counter::no counts written"; fi
 swaymsg output HEADLESS-1 resolution 1280x800 >/dev/null 2>&1; sleep 0.3
