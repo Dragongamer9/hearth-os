@@ -9,6 +9,7 @@
 //! $HEARTH_CLOUD_FIXTURE: made-up answers (CI's pictures; nothing is sent).
 
 mod dav;
+mod nc_app;
 
 use dav::{Acct, Contact, Entry, Event};
 use hearth_oss::prefs::Prefs;
@@ -76,6 +77,9 @@ enum Msg {
     FolderName(String),
     MakeFolder,
     AddDevice,
+    /// Hearth's own Nextcloud app on or off: the device of every change (nc_app.rs)
+    DeviceNames(bool),
+    DeviceNamesDone(bool, Result<(), String>),
     NewEvent,
     EventTitle(String),
     EventTime(String),
@@ -435,6 +439,17 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             );
         }
         Msg::AddDevice => a.adding_device = !a.adding_device,
+        Msg::DeviceNames(on) => {
+            a.said = if on { "Putting Hearth's device names into your Nextcloud…".into() } else { "Taking Hearth's device names out of your Nextcloud…".into() };
+            return Task::perform(bg(move || if on { nc_app::install() } else { nc_app::uninstall() }), move |r| Msg::DeviceNamesDone(on, r.unwrap_or_else(|| Err("it stopped".into()))));
+        }
+        Msg::DeviceNamesDone(on, r) => match r {
+            Ok(()) => {
+                a.set("deviceNames", json!(on));
+                a.said = if on { "From now on every file shows the device that changed it: phones, the desktop client and browsers too.".into() } else { "Files show who changed them again.".into() };
+            }
+            Err(e) => a.said = format!("That didn't work: {e}"),
+        },
         Msg::NewEvent => a.new_event = Some((String::new(), "18:00".into())),
         Msg::EventTitle(s) => {
             if let Some(e) = a.new_event.as_mut() {
@@ -656,7 +671,12 @@ fn home(a: &App) -> Element<'_, Msg> {
     let mut device_help = Column::new();
     if a.adding_device {
         let url = a.base();
-        device_help = device_help.push(w::card2(&p, column![tb("Add a device", 13.0, p.text), t(format!("On a phone: Nextcloud's own app (files), DAVx⁵ (calendar and contacts). On a Hearth device: Hearth Cloud. Sign in at {url} (over Tailscale) and approve it here."), 12.0, p.muted)].spacing(6.0)));
+        let names_on = a.prefs.b("deviceNames", false);
+        device_help = device_help.push(w::card2(&p, column![
+            tb("Add a device", 13.0, p.text),
+            t(format!("On a phone: Nextcloud's own app (files), DAVx⁵ (calendar and contacts). On a Hearth device: Hearth Cloud. Sign in at {url} (over Tailscale) and approve it here."), 12.0, p.muted),
+            row![t("Note the device on every change (FROM, for phones and the desktop client too)", 12.0, p.text), Space::new().width(Length::Fill), w::sw(&p, names_on, Some(Msg::DeviceNames(!names_on)))].spacing(8.0).align_y(iced::Center),
+        ].spacing(6.0)));
     }
 
     // recent files

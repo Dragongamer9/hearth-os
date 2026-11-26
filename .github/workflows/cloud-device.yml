@@ -1,0 +1,52 @@
+# Hearth Cloud's FROM for every file (hosts/hearth-ui/apps/cloud/nextcloud/hearthdevice, nc_app.rs): the real
+# Nextcloud image hearth-oss-server runs (nextcloud:31-apache), Hearth's small app put in and turned on with occ, a
+# "phone" signing in with its own app password (named as Nextcloud names it: after the phone's user agent), uploading a
+# file, and the file's {https://hearthos.fun/ns}device read back over WebDAV, as Hearth Cloud reads it. Dispatch only.
+name: Hearth Cloud device names
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nextcloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: hosts/hearth-ui/apps/cloud/nextcloud
+      - name: Nextcloud, as hearth-oss-server runs it
+        run: |
+          docker run -d --name hearth-nextcloud -p 8090:80 -e SQLITE_DATABASE=nextcloud -e NEXTCLOUD_ADMIN_USER=owner \
+            -e NEXTCLOUD_ADMIN_PASSWORD=ci-pretend-pass-123 -e NEXTCLOUD_TRUSTED_DOMAINS=localhost docker.io/library/nextcloud:31-apache
+          for i in $(seq 1 120); do
+            curl -fs http://localhost:8090/status.php | grep -q '"installed":true' && break
+            sleep 3
+          done
+          curl -fs http://localhost:8090/status.php || { docker logs hearth-nextcloud | tail -40; echo "::error title=nextcloud::it didn't start"; exit 1; }
+      - name: Hearth's app in, turned on
+        run: |
+          docker cp hosts/hearth-ui/apps/cloud/nextcloud/hearthdevice hearth-nextcloud:/var/www/html/custom_apps/hearthdevice
+          docker exec hearth-nextcloud chown -R www-data:www-data /var/www/html/custom_apps/hearthdevice
+          docker exec -u www-data hearth-nextcloud php occ app:enable hearthdevice 2>&1 | tee /tmp/enable.log
+          grep -qi 'enabled' /tmp/enable.log || { echo "::error title=hearthdevice::occ didn't turn it on: $(tr '\n' '|' < /tmp/enable.log)"; exit 1; }
+      - name: A phone uploads, Hearth Cloud reads FROM
+        run: |
+          set -o pipefail
+          U=owner; P=ci-pretend-pass-123; B=http://localhost:8090
+          tok=$(curl -fs -u "$U:$P" -H 'OCS-APIRequest: true' -A 'Pixel 7 (Nextcloud Android)' "$B/ocs/v2.php/core/getapppassword?format=json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["ocs"]["data"]["apppassword"])')
+          [ -n "$tok" ] || { echo "::error title=app password::none"; exit 1; }
+          echo "story notes" > /tmp/story.txt
+          curl -fs -u "$U:$tok" -A 'Mozilla/5.0 (Android) Nextcloud-android/3.29.0' -T /tmp/story.txt "$B/remote.php/dav/files/$U/story.txt"
+          body='<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:h="https://hearthos.fun/ns"><d:prop><h:device/><d:getlastmodified/></d:prop></d:propfind>'
+          out=$(curl -fs -u "$U:$P" -X PROPFIND -H 'Depth: 0' -H 'Content-Type: application/xml' --data "$body" "$B/remote.php/dav/files/$U/story.txt")
+          echo "$out" | head -c 1500; echo
+          if echo "$out" | grep -q 'Pixel 7'; then echo "::notice title=FROM::the phone's upload is marked with its device: $(echo "$out" | grep -o '<[a-z0-9]*:device[^<]*' | head -1)"
+          else echo "::error title=FROM::no device on the phone's upload: $(echo "$out" | tr '\n' ' ' | cut -c1-900)"; docker exec hearth-nextcloud tail -5 /var/www/html/data/nextcloud.log | cut -c1-1500; exit 1; fi
+          # a second write from the same phone keeps one value
+          curl -fs -u "$U:$tok" -T /tmp/story.txt "$B/remote.php/dav/files/$U/story.txt"
+          n=$(curl -fs -u "$U:$P" -X PROPFIND -H 'Depth: 0' --data "$body" "$B/remote.php/dav/files/$U/story.txt" | grep -o 'Pixel 7' | wc -l)
+          [ "$n" -eq 1 ] && echo "::notice title=FROM::written again: still one device" || echo "::error title=FROM::$n values after a second write"
