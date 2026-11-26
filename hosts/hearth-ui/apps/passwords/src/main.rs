@@ -325,7 +325,7 @@ impl App {
             }
             return (a, Task::none());
         }
-        (a, Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null))))
+        (a, Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null))))
     }
     fn base(&self) -> String {
         self.prefs.s("server", "http://127.0.0.1:8222").trim_end_matches('/').to_string()
@@ -743,7 +743,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Backup => {
             let local = a.base().contains("127.0.0.1") || a.base().contains("localhost");
             if local {
-                return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "backup", "vaultwarden"])), |o| {
+                return Task::perform(run::spawn(hearth_oss::server::args(&["backup", "vaultwarden"])), |o| {
                     Msg::Wrote(if o.ok { Ok(format!("Backed up on your server: {}", o.json().and_then(|j| j.get("backup").and_then(Value::as_str).map(str::to_string)).unwrap_or_default())) } else { Err(format!("The backup didn't work: {}", o.why())) })
                 });
             }
@@ -800,12 +800,12 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Server2(v) => a.srv = v,
         Msg::Install => {
             a.said = "Installing Vaultwarden on this PC (its own image, in your Podman)…".into();
-            return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "install", "vaultwarden"])), Msg::Ran);
+            return Task::perform(run::spawn(hearth_oss::server::args(&["install", "vaultwarden"])), Msg::Ran);
         }
-        Msg::TurnOn => return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "on", "vaultwarden"])), Msg::Ran),
+        Msg::TurnOn => return Task::perform(run::spawn(hearth_oss::server::args(&["on", "vaultwarden"])), Msg::Ran),
         Msg::Ran(o) => {
             a.said = if o.ok { "Done. Make your account on your server's page, then unlock here.".into() } else { format!("That didn't work: {}", o.why()) };
-            return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null)));
+            return Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null)));
         }
         Msg::OpenServerPage => run::detached(&["xdg-open", &a.base()]),
         Msg::OpenKeepass => {

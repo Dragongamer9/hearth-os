@@ -274,7 +274,7 @@ impl App {
             return (a, Task::none());
         }
         let user = a.prefs.s("user", "");
-        let mut t = vec![Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null)))];
+        let mut t = vec![Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null)))];
         if !user.is_empty() {
             t.push(Task::perform(hearth_oss::secret::lookup("hearth-cloud", &user), Msg::Secret));
         } else {
@@ -389,7 +389,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 let mut t = vec![Task::perform(hearth_oss::secret::store("hearth-cloud", &user, "Hearth Cloud", pass), |_| Msg::Done(Ok(String::new()))), a.reload()];
                 if local {
                     // links that ask for a password and end by themselves: Nextcloud's own sharing rules
-                    t.push(Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "nextcloud-links"])), |_| Msg::Done(Ok(String::new()))));
+                    t.push(Task::perform(run::spawn(hearth_oss::server::args(&["nextcloud-links"])), |_| Msg::Done(Ok(String::new()))));
                 }
                 return Task::batch(t);
             }
@@ -554,11 +554,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             Err(e) => a.said = e,
             _ => {}
         },
-        Msg::Install => return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "install", "nextcloud"])), Msg::Ran),
-        Msg::TurnOn => return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "on", "nextcloud"])), Msg::Ran),
+        Msg::Install => return Task::perform(run::spawn(hearth_oss::server::args(&["install", "nextcloud"])), Msg::Ran),
+        Msg::TurnOn => return Task::perform(run::spawn(hearth_oss::server::args(&["on", "nextcloud"])), Msg::Ran),
         Msg::Ran(o) => {
             a.said = if o.ok { "Done. Finish Nextcloud's own first-time setup on its page (Open my cloud's page), then sign in here.".into() } else { format!("That didn't work: {}", o.why()) };
-            return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null)));
+            return Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null)));
         }
         Msg::Drag => return win::drag(),
         Msg::Max => return win::toggle_maximize(),

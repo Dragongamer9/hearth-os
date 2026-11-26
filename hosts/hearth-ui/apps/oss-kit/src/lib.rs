@@ -18,6 +18,7 @@ pub mod http;
 pub mod prefs;
 pub mod proc;
 pub mod secret;
+pub mod server;
 pub mod w;
 pub mod ws;
 

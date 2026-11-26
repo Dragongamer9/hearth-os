@@ -201,7 +201,7 @@ impl App {
         }
         let t = vec![
             Task::perform(hearth_oss::secret::lookup("hearth-home", "token"), Msg::Secret),
-            Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null))),
+            Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null))),
         ];
         (a, Task::batch(t))
     }
@@ -403,11 +403,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             return Task::batch([Task::perform(hearth_oss::secret::store("hearth-home", "token", "Hearth Home (Home Assistant)", tok.trim().to_string()), |_| Msg::Done(Ok(()))), update(a, Msg::Tick)]);
         }
         Msg::Status(v) => a.status = v,
-        Msg::Install => return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "install", "homeassistant"])), Msg::Ran),
-        Msg::TurnOn => return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "on", "homeassistant"])), Msg::Ran),
+        Msg::Install => return Task::perform(run::spawn(hearth_oss::server::args(&["install", "homeassistant"])), Msg::Ran),
+        Msg::TurnOn => return Task::perform(run::spawn(hearth_oss::server::args(&["on", "homeassistant"])), Msg::Ran),
         Msg::Ran(o) => {
             a.said = if o.ok { "Done. Set your home up on Home Assistant's own page, make a long-lived token there, and paste it here.".into() } else { format!("That didn't work: {}", o.why()) };
-            return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null)));
+            return Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Status(o.json().unwrap_or(Value::Null)));
         }
         Msg::Drag => return win::drag(),
         Msg::Close => return win::close(),
