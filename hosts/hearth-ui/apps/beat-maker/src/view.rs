@@ -824,6 +824,15 @@ fn vel(a: &App) -> E<'_> {
     column![ui::hline(p.line), lane].into()
 }
 
+
+/// The credit, as the board has it: the app, and what it's built on with its licence.
+fn credit<'a>(p: &Pal, app: &'a str, built: &'a str) -> E<'a> {
+    container(row![Space::new().width(Length::Fill), t1(format!("{app} · "), 11.0, hexc(0x8f847b)), text(built).size(11.0).color(p.muted).font(ui::weight(iced::font::Weight::Semibold))])
+        .padding(pad(4.0, 24.0, 6.0, 0.0))
+        .width(Length::Fill)
+        .into()
+}
+
 // ------------------------------------------------------------------ dialogs and the export box
 fn export_box(a: &App) -> Option<E<'_>> {
     let p = a.p;
@@ -975,7 +984,7 @@ fn dialog(a: &App) -> Option<E<'_>> {
 
 // ------------------------------------------------------------------ blocks
 pub const BLOCKS: &[PageDef] = &[
-    PageDef { id: "window", title: "Hearth Beat Maker", blocks: &[bl("title", "The title bar", 0, 0, 12, 1), bl("inst", "Instruments and sounds", 0, 1, 2, 11), bl("song", "Song", 2, 1, 6, 4), bl("beat", "Beat", 8, 1, 4, 4), bl("notes", "Notes", 2, 5, 10, 7)] },
+    PageDef { id: "window", title: "Hearth Beat Maker", blocks: &[bl("title", "The title bar", 0, 0, 12, 1), bl("inst", "Instruments and sounds", 0, 1, 2, 10), bl("song", "Song", 2, 1, 6, 4), bl("beat", "Beat", 8, 1, 4, 4), bl("notes", "Notes", 2, 5, 10, 6), bl("credit", "Built on LMMS", 0, 11, 12, 1)] },
     PageDef { id: "inst", title: "Instruments and sounds", blocks: &[bl("find", "Find a sound", 0, 0, 12, 1), bl("song", "In this song", 0, 1, 12, 5), bl("library", "Library", 0, 6, 12, 4), bl("knobs", "The instrument's knobs", 0, 10, 12, 2)] },
     PageDef { id: "notes", title: "Notes", blocks: &[bl("head", "Its name and tools", 0, 0, 12, 1), bl("roll", "The piano roll", 0, 1, 12, 9), bl("vel", "How hard", 0, 10, 12, 2)] },
 ];
@@ -1034,7 +1043,7 @@ pub fn view(a: &App) -> E<'_> {
         column![container(ps.take("head")).padding(pad(0.0, 14.0, 0.0, 14.0)).height(Length::Fixed(40.0)).center_y(Length::Fixed(40.0)), ui::hline(p.line), ps.take("roll"), ps.take("vel")].into()
     }, Msg::Describe);
     let notes = paned(&p, notes);
-    let mut items: Vec<(&'static str, E)> = vec![("title", hearth_ui::studio::made(&a.describe, "window", "title", || title_bar(a))), ("inst", inst), ("song", song_pane(a)), ("beat", beat_pane(a)), ("notes", notes)];
+    let mut items: Vec<(&'static str, E)> = vec![("title", hearth_ui::studio::made(&a.describe, "window", "title", || title_bar(a))), ("inst", inst), ("song", song_pane(a)), ("beat", beat_pane(a)), ("notes", notes), ("credit", credit(&p, "Hearth Beat Maker", "Built on LMMS (GPL-2)"))];
     for (id, w) in [("pane:beat", "beat"), ("pane:knobs", "knobs"), ("pane:library", "library")] {
         if a.describe.wants_pane(w) {
             items.push((id, match w {
@@ -1052,7 +1061,7 @@ pub fn view(a: &App) -> E<'_> {
         |ps| {
             let top = row![container(ps.take("song")).width(Length::Fill), container(ps.take("beat")).width(Length::Fixed(470.0))].spacing(12.0).height(Length::Fixed(380.0));
             let right = column![top, ps.take("notes")].spacing(12.0);
-            column![ps.take("title"), container(row![container(ps.take("inst")).width(Length::Fixed(270.0)), right].spacing(12.0)).padding(12.0)].into()
+            column![ps.take("title"), container(row![container(ps.take("inst")).width(Length::Fixed(270.0)), right].spacing(12.0)).padding(pad(12.0, 12.0, 2.0, 12.0)).height(Length::Fill), ps.take("credit")].into()
         },
         Msg::Describe,
     );

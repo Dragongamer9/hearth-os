@@ -527,6 +527,15 @@ fn switching(a: &App) -> E<'_> {
     pane(&p, head(&p, "Switching scenes", None), body.into())
 }
 
+
+/// The credit, as the board has it: the app, and what it's built on with its licence.
+fn credit<'a>(p: &Pal, app: &'a str, built: &'a str) -> E<'a> {
+    container(row![Space::new().width(Length::Fill), t1(format!("{app} · "), 11.0, hexc(0x8f847b)), text(built).size(11.0).color(p.muted).font(ui::weight(iced::font::Weight::Semibold))])
+        .padding(pad(4.0, 24.0, 6.0, 0.0))
+        .width(Length::Fill)
+        .into()
+}
+
 // ------------------------------------------------------------------ dialogs
 fn dialog(a: &App) -> Option<E<'_>> {
     let p = a.p;
@@ -608,10 +617,11 @@ pub const BLOCKS: &[PageDef] = &[PageDef {
         bl("preview", "What viewers see", 0, 1, 7, 7),
         bl("live", "Going live", 7, 1, 5, 4),
         bl("health", "Stream health", 7, 5, 5, 3),
-        bl("scenes", "Scenes", 0, 8, 2, 4),
-        bl("items", "In this scene", 2, 8, 3, 4),
-        bl("sound", "Sound", 5, 8, 5, 4),
-        bl("switching", "Switching scenes", 10, 8, 2, 4),
+        bl("scenes", "Scenes", 0, 8, 2, 3),
+        bl("items", "In this scene", 2, 8, 3, 3),
+        bl("sound", "Sound", 5, 8, 5, 3),
+        bl("switching", "Switching scenes", 10, 8, 2, 3),
+        bl("credit", "Built on OBS Studio", 0, 11, 12, 1),
     ],
 }];
 
@@ -669,6 +679,7 @@ pub fn view(a: &App) -> E<'_> {
         ("items", items(a)),
         ("sound", sound(a)),
         ("switching", switching(a)),
+        ("credit", credit(&p, "Hearth Studio", "Built on OBS Studio (GPL-2)")),
     ];
     for (id, w) in [("pane:scenes", "scenes"), ("pane:sound", "sound"), ("pane:health", "health")] {
         if a.describe.wants_pane(w) {
@@ -687,7 +698,7 @@ pub fn view(a: &App) -> E<'_> {
         |ps| {
             let top = row![container(ps.take("preview")).width(Length::FillPortion(1012)), container(column![ps.take("live"), ps.take("health")].spacing(14.0)).width(Length::FillPortion(780))].spacing(14.0).height(Length::FillPortion(584));
             let bottom = row![container(ps.take("scenes")).width(Length::FillPortion(280)), container(ps.take("items")).width(Length::FillPortion(380)), container(ps.take("sound")).width(Length::FillPortion(800)), container(ps.take("switching")).width(Length::FillPortion(300))].spacing(14.0).height(Length::FillPortion(296));
-            column![ps.take("title"), container(column![top, bottom].spacing(14.0)).padding(pad(14.0, 16.0, 14.0, 16.0))].into()
+            column![ps.take("title"), container(column![top, bottom].spacing(14.0)).padding(pad(14.0, 16.0, 4.0, 16.0)).height(Length::Fill), ps.take("credit")].into()
         },
         Msg::Describe,
     );

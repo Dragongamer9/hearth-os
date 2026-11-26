@@ -477,6 +477,15 @@ fn bottom(a: &App) -> E<'_> {
         .into()
 }
 
+
+/// The credit, as the board has it: the app, and what it's built on with its licence.
+fn credit<'a>(p: &Pal, app: &'a str, built: &'a str) -> E<'a> {
+    container(row![Space::new().width(Length::Fill), t1(format!("{app} · "), 11.0, hexc(0x8f847b)), text(built).size(11.0).color(p.muted).font(ui::weight(iced::font::Weight::Semibold))])
+        .padding(pad(4.0, 24.0, 6.0, 0.0))
+        .width(Length::Fill)
+        .into()
+}
+
 // ------------------------------------------------------------------ dialogs
 fn dialog(a: &App) -> Option<E<'_>> {
     let p = a.p;
@@ -533,7 +542,7 @@ fn dialog(a: &App) -> Option<E<'_>> {
 
 // ------------------------------------------------------------------ blocks
 pub const BLOCKS: &[PageDef] = &[
-    PageDef { id: "window", title: "Retro to Steam", blocks: &[bl("title", "The title bar", 0, 0, 12, 1), bl("side", "Consoles and Steam", 0, 1, 2, 11), bl("games", "The games", 2, 1, 7, 10), bl("picked", "Picked", 9, 1, 3, 10), bl("bottom", "Add to Steam", 2, 11, 10, 1)] },
+    PageDef { id: "window", title: "Retro to Steam", blocks: &[bl("title", "The title bar", 0, 0, 12, 1), bl("side", "Consoles and Steam", 0, 1, 2, 10), bl("games", "The games", 2, 1, 7, 9), bl("picked", "Picked", 9, 1, 3, 9), bl("bottom", "Add to Steam", 2, 10, 10, 1), bl("credit", "Built on Steam ROM Manager", 0, 11, 12, 1)] },
     PageDef { id: "side", title: "Consoles and Steam", blocks: &[bls("consoles", "Consoles from Hearth Retro", 0, 0, 12, 7), bl("where", "Where the games are", 0, 7, 12, 3), bl("user", "Steam user", 0, 10, 12, 2)] },
     PageDef { id: "games", title: "The games", blocks: &[bl("head", "Found and the art", 0, 0, 12, 1), bl("filters", "Filters", 0, 1, 12, 1), bls("grid", "The games", 0, 2, 12, 10)] },
     PageDef { id: "picked", title: "Picked", blocks: &[bl("preview", "How it will look in Steam", 0, 0, 12, 7), bl("details", "Name, collection and image", 0, 7, 12, 5)] },
@@ -590,7 +599,7 @@ pub fn view(a: &App) -> E<'_> {
     let games: E = container(games).padding(pad(18.0, 24.0, 14.0, 24.0)).width(Length::Fill).height(Length::Fill).into();
     let picked = hearth_ui::arrange::parts(&a.describe, &p, "picked", vec![("preview", preview(a)), ("details", details(a))], |ps| column![ps.take("preview"), ps.take("details")].into(), Msg::Describe);
     let picked: E = container(scrollable(picked)).padding(pad(18.0, 20.0, 14.0, 20.0)).width(Length::Fixed(430.0)).height(Length::Fill).style(move |_: &Theme| container::Style { background: Some(Background::Color(Color { a: 0.5, ..hexc(0x14110f) })), ..container::Style::default() }).into();
-    let mut items: Vec<(&'static str, E)> = vec![("title", hearth_ui::studio::made(&a.describe, "window", "title", || title_bar(a))), ("side", side), ("games", games), ("picked", picked), ("bottom", bottom(a))];
+    let mut items: Vec<(&'static str, E)> = vec![("title", hearth_ui::studio::made(&a.describe, "window", "title", || title_bar(a))), ("side", side), ("games", games), ("picked", picked), ("bottom", bottom(a)), ("credit", credit(&p, "Retro to Steam", "Built on Steam ROM Manager (GPL-3)"))];
     if a.describe.wants_pane("preview") {
         items.push(("pane:preview", preview(a)));
     }
@@ -604,7 +613,7 @@ pub fn view(a: &App) -> E<'_> {
         items,
         |ps| {
             let right = column![row![ps.take("games"), ui::vline(p.line), ps.take("picked")].height(Length::Fill), ps.take("bottom")];
-            column![ps.take("title"), row![ps.take("side"), ui::vline(p.line), right].height(Length::Fill)].into()
+            column![ps.take("title"), row![ps.take("side"), ui::vline(p.line), right].height(Length::Fill), ps.take("credit")].into()
         },
         Msg::Describe,
     );

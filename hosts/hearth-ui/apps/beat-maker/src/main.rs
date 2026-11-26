@@ -449,7 +449,8 @@ fn add_take(a: &mut App, at: f32, secs: f32, path: &Path) {
         }
     };
     let bars = secs / a.song.sec_per_beat() / a.song.per_bar();
-    a.song.tracks[ti].clips.push(Clip { start: a.bar_at(at), len: bars.max(0.25), pat });
+    let start = a.bar_at(at);
+    a.song.tracks[ti].clips.push(Clip { start, len: bars.max(0.25), pat });
     a.save();
 }
 
