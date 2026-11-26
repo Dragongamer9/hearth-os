@@ -198,6 +198,20 @@ fn unchunk(b: &[u8]) -> Vec<u8> {
     out
 }
 
+/// A multipart/form-data body (an upload): its fields, then one file. Returns the body and its Content-Type.
+pub fn multipart(fields: &[(&str, &str)], file: (&str, &str, &str, &[u8])) -> (Vec<u8>, String) {
+    let b = "HearthBoundary7MA4YWxkTrZu0gW";
+    let mut o: Vec<u8> = Vec::new();
+    for (k, v) in fields {
+        o.extend_from_slice(format!("--{b}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+    }
+    let (name, filename, ctype, data) = file;
+    o.extend_from_slice(format!("--{b}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: {ctype}\r\n\r\n").as_bytes());
+    o.extend_from_slice(data);
+    o.extend_from_slice(format!("\r\n--{b}--\r\n").as_bytes());
+    (o, format!("multipart/form-data; boundary={b}"))
+}
+
 /// `send` on its own thread; ready when it's answered.
 pub fn go(r: Req) -> impl Future<Output = Result<Resp, String>> + Send + 'static {
     let (tx, rx) = futures::channel::oneshot::channel();

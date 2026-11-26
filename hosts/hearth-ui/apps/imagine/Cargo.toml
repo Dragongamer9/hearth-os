@@ -1,0 +1,21 @@
+# Hearth Imagine (pure Rust, hearth-ui; docs/mockups/checklists/open-source-06-imagine.md, the approved board
+# docs/mockups/open-source-apps/06-imagine.png): pictures from words with ComfyUI (GPL-3) on the Nvidia PC, through
+# ComfyUI's own local API: Type and make beside the node graph it runs, the results and the queue.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-imagine"
+edition = "2021"
+description = "Hearth Imagine: pictures from words on your own PC (built on ComfyUI)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-imagine-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
+iced = { workspace = true, features = ["canvas", "image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }

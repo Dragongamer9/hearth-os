@@ -10,6 +10,7 @@
 //! * [`prefs`]: the app's choices, written only when the person changes one, through settings_file (atomic, .bak,
 //!   merged; red flag 9);
 //! * [`secret`]: a token kept in the desktop's own keyring (Secret Service through `secret-tool`), never in a file;
+//! * [`ws`]: a WebSocket reader for a service's live news (ComfyUI's progress, Home Assistant's changes);
 //! * [`b64`]: base64 both ways.
 
 pub mod b64;
@@ -18,6 +19,7 @@ pub mod prefs;
 pub mod proc;
 pub mod secret;
 pub mod w;
+pub mod ws;
 
 /// The folder an app keeps its own things in: $XDG_DATA_HOME/hearth/<app> (~/.local/share/hearth/<app>).
 pub fn data_dir(app: &str) -> std::path::PathBuf {

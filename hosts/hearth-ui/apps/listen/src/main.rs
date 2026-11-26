@@ -22,7 +22,7 @@ use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use hearth_ui::ui::{self, t, tb, TitleMsgs, G};
 use hearth_ui::Pal;
-use iced::widget::{canvas, column, container, mouse_area, row, scrollable, slider, text_input, Column, Space};
+use iced::widget::{canvas, column, container, mouse_area, row, scrollable, slider, Column, Space};
 use iced::{mouse, Color, Element, Length, Padding, Subscription, Task};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -487,9 +487,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Copy => {
-            if let Some(r) = a.rec() {
+            if let Some(text) = a.rec().map(|r| whisper::to_txt(&r.segs)) {
                 a.said = "Copied.".into();
-                return iced::clipboard::write(whisper::to_txt(&r.segs));
+                return iced::clipboard::write(text);
             }
         }
         Msg::Export(ext) => {

@@ -29,6 +29,7 @@ PAGES = {
     'notes': ['window', 'files', 'search', 'today', 'board', 'graph', 'modes', 'sync', 'conflict', 'settings'],
     # the open-source apps (docs/mockups/open-source-apps)
     'listen': ['window', 'side', 'recording', 'how'],
+    'imagine': ['window', 'type', 'graph', 'results'],
 }
 
 BLOCK = re.compile(r'\bbls?\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)')
