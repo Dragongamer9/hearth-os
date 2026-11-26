@@ -52,7 +52,7 @@ class OssServer(unittest.TestCase):
             self.assertNotIn('[Install]', svc, u)
             self.assertIn('ConditionPathExists=%h/.local/state/nimbus/oss-server/', svc)
             self.assertIn('[Install]', (UNITS / ('hearth-%s.timer' % u)).read_text())
-            build = (ROOT / 'os-bases/anatase/build.sh').read_text()
+            build = (ROOT / 'os-bases/peppermint/build.sh').read_text()
             self.assertIn('hearth-%s.timer' % u, build, 'disabled for everyone in the image')
 
 

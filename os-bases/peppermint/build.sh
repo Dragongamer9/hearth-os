@@ -722,12 +722,13 @@ systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev
 # checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
 HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer \
+  hearth-vaultwarden.timer hearth-nextcloud.timer hearth-home-assistant.timer 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
          nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-colibri.timer; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-colibri.timer hearth-vaultwarden.timer hearth-nextcloud.timer hearth-home-assistant.timer; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
 # AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): user services with no [Install] (only their timers, off here,
@@ -1349,7 +1350,7 @@ fi
 # and /usr/bin/<name> the Store's two-line start: the Hearth Store's newer copy only when one is installed (hearth-part
 # checks it's for this Hearth OS and hasn't failed), else the built-in one. Mantel's own apps keep their names; these
 # are the -app ones Mantel in Rust and the Store open. One that wasn't built or can't start is left out.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-layout; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # (Mantel's own command of the same name, if there is one, stays: the Rust one is used only where nothing else is.)
   [ -e "/usr/bin/$b" ] && { echo "note: /usr/bin/$b is already Mantel's; the Rust one goes to /usr/libexec/hearth/apps only"; install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"; continue; }
@@ -1377,6 +1378,10 @@ else
   rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
 fi
 [ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
+# The open-source apps (docs/mockups/open-source-apps): their menu entries only when the app was built.
+for oss in listen imagine passwords cloud home; do
+  [ -x "/usr/bin/hearth-$oss-app" ] || rm -f "/usr/share/applications/hearth-$oss.desktop"
+done
 
 # ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, and its app (hearth-g15-app,
 # menu entry hearth-g15-app.desktop from os/system_files), built by CI next to the
