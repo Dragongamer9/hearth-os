@@ -290,7 +290,7 @@ fn key_row<'a>(a: &'a App, k: &'static str, label: &str, hint: &str) -> Element<
     column![
         t(label.to_string(), 13.0, p.text),
         t(hint.to_string(), 12.0, p.muted),
-        row![w::secret_input(&p, "Paste it here", &v, move |s| Msg::KeyEdit(k, s), Msg::KeySave(k)).width(Length::Fixed(360.0)), w::chip(&p, "Keep it", true, Sz::Sm, (!v.trim().is_empty()).then_some(Msg::KeySave(k)))].spacing(8.0).align_y(iced::Center),
+        row![w::secret_input(&p, "Paste it here", &v, move |s| Msg::KeyEdit(k, s), Msg::KeySave(k)).width(Length::Fixed(360.0)), w::chip(&p, "Keep it", !v.trim().is_empty(), Sz::Sm, (!v.trim().is_empty()).then_some(Msg::KeySave(k)))].spacing(8.0).align_y(iced::Center),
     ]
     .spacing(4.0)
     .into()

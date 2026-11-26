@@ -1035,7 +1035,7 @@ fn view_middle(a: &App) -> Element<'_, Msg> {
     }
     if a.prefs.b("compare", true) {
         if let Some(h) = a.thumb(&id) {
-            layers.push(container(image(h.clone()).opacity(0.18).content_fit(iced::ContentFit::Contain).height(Length::Fixed(420.0))).center(Length::Fill).into());
+            layers.push(container(image(h.clone()).opacity(0.10).content_fit(iced::ContentFit::Contain).height(Length::Fixed(420.0))).center(Length::Fill).into());
         }
     }
     let mut top = Row::new().push(container(note_box(&p, "Drag to turn it · scroll to zoom · right-drag to move")).align_y(iced::alignment::Vertical::Top));
