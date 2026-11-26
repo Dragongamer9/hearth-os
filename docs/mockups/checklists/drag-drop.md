@@ -60,18 +60,18 @@ nothing made here can stop the desktop or an app from starting.
 - [ ] The small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this
 
 ## 3. The same in every app (board 3, Hearth Files shown)
-- [ ] The app's window marked EDITING; every part of it outlined (dashed, accent)
-- [ ] A label on each part with its size ("COMMAND BAR · 48 px", "SIDEBAR · 216 px · DRAG ITS EDGE")
-- [ ] The app's own blocks window ("Files' blocks", "drag into Files"): Find a block (count), All, Buttons, Panes, Info, Your own
-- [ ] BUTTONS (Files: Sort my Downloads, Share, Open in terminal, Compress, and the rest)
-- [ ] PANES (Files: Preview, Details, Folder tree, Second folder)
-- [ ] MAKE YOUR OWN: Button · runs anything; Count · words · spacer
-- [ ] A block dragged into a bar of the app, with a lit line where it lands
-- [ ] A pane sized by dragging its edge, with a guide and a note ("Preview: 514 px · lined up with Search")
-- [ ] The sidebar sized by dragging its edge
-- [ ] The same toolbar: Undo, Redo, Snap to grid · 8 px, Guides, Layers, Start from, Menus…, Cancel, Try it, Keep this
-- [ ] Right-click any part › Customize opens board 2's side panel for it
-- [ ] "THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE …"
+- [x] The app's window marked EDITING; every part of it outlined (dashed, accent) (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "Dashes { anchors.fill: parent; anchors.margins: 3; lit: po.lit"
+- [x] A label on each part with its size ("COMMAND BAR · 48 px", "SIDEBAR · 216 px · DRAG ITS EDGE") (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/app-blocks.js: "return n + \" · \" + Math.round(r.w) + \" px · DRAG ITS EDGE\";"
+- [x] The app's own blocks window ("Files' blocks", "drag into Files"): Find a block (count), All, Buttons, Panes, Info, Your own (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "[[\"all\", \"All\"], [\"buttons\", \"Buttons\"], [\"panes\", \"Panes\"], [\"info\", \"Info\"], [\"own\", \"Your own\"]]"
+- [x] BUTTONS (Files: Sort my Downloads, Share, Open in terminal, Compress, and the rest) (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/FileManager.qml: "{ id: \"terminal\", label: \"Open in terminal\", icon: \"window\" }, { id: \"compress\", label: \"Compress\", icon: \"archive\" },"
+- [x] PANES (Files: Preview, Details, Folder tree, Second folder) (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/FileManager.qml: "{ id: \"tree\", label: \"Folder tree\", icon: \"folder\", part: \"sidebar\" }, { id: \"second\", label: \"Second folder\", icon: \"grid\", part: \"split\" },"
+- [x] MAKE YOUR OWN: Button · runs anything; Count · words · spacer (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "LibTile { label: \"Count · words · spacer\"; icon: \"edit\"; dashed: true; bid: \"make:count\" }"
+- [x] A block dragged into a bar of the app, with a lit line where it lands (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "note = L.dropNote(ab.labelOf(q.id), after, false);"
+- [x] A pane sized by dragging its edge, with a guide and a note ("Preview: 514 px · lined up with Search") (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/app-blocks.js: "(lined ? \" · lined up with \" + lined : \"\")"
+- [x] The sidebar sized by dragging its edge (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "(po.kind === \"side\" && edge.across)"
+- [x] The same toolbar: Undo, Redo, Snap to grid · 8 px, Guides, Layers, Start from, Menus…, Cancel, Try it, Keep this (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "Btn { label: \"Menus…\"; on: !!ed.ab && ed.ab.menuEditor;"
+- [x] Right-click any part › Customize opens board 2's side panel for it (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "setSource(\"AppBlockCustomize.qml\", { ab: ed.ab })"
+- [x] "THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE …" (Mantel's half, in Files, Settings, Task Manager, Capture, Resource Monitor, Reliability history and System Restore; the Rust apps' half isn't proven here) — hosts/linux/desktop/shell/AppBlocksEditor.qml: "text: \"THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE … · RIGHT-CLICK ANY PART › CUSTOMIZE\""
 - [ ] Files (Rust and Mantel's)
 - [ ] Settings
 - [ ] Task Manager
