@@ -22,7 +22,7 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-game-fixer, hearth-link,
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-game-fixer, hearth-proton-manager, hearth-overlay, hearth-bottles, hearth-3d, hearth-link,
                   hearth-layout, hearth-game-mode, hearth-home-server-helper, hearth-storage-helper, hearth-ai-share-helper,
                   hearth-controller-lab, hearth-saves, hearth-mods, hearth-gamestore, hearth-gamma, hearth-steam,
                   decky-hearth-sync, decky-hearth-link, decky-hearth-music]
