@@ -1,0 +1,21 @@
+# Retro to Steam (pure Rust, hearth-ui; docs/mockups/checklists/open-source-05-retro-to-steam.md, the approved board
+# docs/mockups/open-source-apps/05-retro-to-steam.png): Hearth Retro's emulator games in the Steam library, with art,
+# built on Steam ROM Manager (GPL-3). Steam's own files only, with Steam closed: never a sign-in, an account or a token.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-retro-to-steam"
+edition = "2021"
+description = "Retro to Steam: your emulator games in the Steam library, with art (Steam ROM Manager)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-retro-to-steam-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-retro = { path = "../retro" }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }

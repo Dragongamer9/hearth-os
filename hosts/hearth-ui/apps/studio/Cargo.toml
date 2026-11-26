@@ -1,0 +1,21 @@
+# Hearth Studio (pure Rust, hearth-ui; docs/mockups/checklists/open-source-12-studio.md, the approved board
+# docs/mockups/open-source-apps/12-studio.png): going live and recording, built on OBS Studio (GPL-2) and driven
+# through OBS's own remote control, obs-websocket (a small WebSocket client of its own, ws.rs). No version line: the
+# owner picks every version number.
+[package]
+name = "hearth-studio"
+edition = "2021"
+description = "Hearth Studio: scenes, going live, recording and the sound mixer, built on OBS Studio"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-studio-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
