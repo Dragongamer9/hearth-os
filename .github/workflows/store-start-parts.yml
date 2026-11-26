@@ -45,10 +45,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build the part, then start it, a good copy and broken ones
+        shell: bash
         run: |
           base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
           mkdir -p /tmp/out
-          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/store-gamescope-check.sh 2>&1 | tee /tmp/check.log | grep -E '^::|^run ' | tail -40
+          rc=0
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/store-gamescope-check.sh > /tmp/check.log 2>&1 || rc=$?
+          grep -E '^::|^run ' /tmp/check.log | tail -40
+          if [ "$rc" != 0 ]; then echo "::error title=gamescope part (real)::ended with $rc: $(grep -v '^::' /tmp/check.log | tail -25 | tr '\n' '|' | cut -c1-3500)"; exit 1; fi
+          grep -q 'passed:' /tmp/check.log || { echo "::error title=gamescope part (real)::no verdict"; exit 1; }
 
   login-screen:
     runs-on: ubuntu-latest
@@ -95,7 +100,8 @@ jobs:
             cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
             cp -a /src/hosts/linux/desktop/shell/screens /tmp/w/hosts/linux/desktop/shell/
             cd /tmp/w/hosts/hearth-ui
-            if cargo test -p hearth-store > /tmp/w/t.log 2>&1; then
+            # (with the controller app: it turns on the log crate's std feature the workspace build relies on)
+            if cargo test -p hearth-store -p hearth-pad-host > /tmp/w/t.log 2>&1; then
               echo "::notice title=Hearth Store tests::$(grep -E "^test result" /tmp/w/t.log | tr "\n" " ")"
             else
               echo "::error title=Hearth Store tests::$(grep -E "^error|^test .* FAILED|panicked" -A6 /tmp/w/t.log | head -40 | tr "\n" "|" | cut -c1-3500)"

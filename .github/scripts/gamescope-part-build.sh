@@ -11,6 +11,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 SUITE="${GAMESCOPE_SUITE:-trixie-backports}"
 ann() { echo "::$1 title=gamescope part::$(echo "$2" | tr '\n' '|' | cut -c1-3000)"; }
+trap 'ann error "stopped at line $LINENO: $BASH_COMMAND"' ERR
 cat > /etc/apt/sources.list.d/hearth-part-build.sources <<EOF
 Types: deb deb-src
 URIs: http://deb.debian.org/debian
@@ -18,7 +19,7 @@ Suites: trixie trixie-updates trixie-backports
 Components: main contrib non-free non-free-firmware
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
-apt-get update -qq >/dev/null
+apt-get update -qq > /tmp/apt-update.log 2>&1 || { ann error "apt-get update: $(tail -5 /tmp/apt-update.log)"; exit 1; }
 apt-get install -y -qq --no-install-recommends build-essential dpkg-dev devscripts fakeroot ca-certificates file >/dev/null
 mkdir -p /tmp/g && cd /tmp/g
 # The source of the version the image would install from that suite (what `apt-get install -t SUITE gamescope` picks).
