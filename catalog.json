@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 36,
+  "serial": 37,
   "apps": [
     {
       "id": "command-center",
@@ -1251,6 +1251,27 @@
       },
       "group": "apps",
       "open": "hearth-imagine-app"
+    },
+    {
+      "id": "part-hearth-retro-app",
+      "name": "Hearth Retro",
+      "kind": "builtin",
+      "part": {
+        "id": "hearth-retro-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-retro-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-retro-app-1.18.1/hearth-retro-app-1.18.1.tar.gz",
+        "sha256": "29d8295d4cc46321a36aac2ef46b71d93916a316db5f9771b93b19ac23dbdbc9",
+        "size": 7345069,
+        "notes": [
+          "New: your emulator games as shelves in Game Mode, every emulator set up in one go, the BIOS check",
+          "Built on RetroDECK and EmuDeck (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-retro-app"
     }
   ],
   "tests": [
