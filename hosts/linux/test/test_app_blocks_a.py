@@ -159,8 +159,9 @@ class EditLayoutIsRightThere(unittest.TestCase):
         a = read(UI / 'src/arrange.rs')
         for f in ['pub fn edit_at(', 'pub fn right_edit<', 'pub fn arrange_key(']:
             self.assertIn(f, a)
-        self.assertIn('Key::Named(Named::Escape) => Some(DMsg::ArrKeep)', a)
-        self.assertIn('Some(DMsg::ArrUndo)', a)
+        # Esc and Ctrl+Z while editing are board 3's now (studio.rs: Esc cancels, nothing kept until Keep this);
+        # arrange_key stays for the apps that call it and passes the keys on
+        self.assertIn('N::Escape', read(UI / 'src/studio.rs'))
 
     def test_each_app_uses_them(self):
         for app in ['store', 'files', 'family', 'settings']:

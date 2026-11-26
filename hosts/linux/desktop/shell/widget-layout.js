@@ -12,7 +12,7 @@
 .pragma library
 
 var CATALOG = [
-    { type: "clock", name: "Clock", icon: "clock", w: 300, h: 220, minW: 180, minH: 130, bar: true,
+    { type: "clock", name: "Big clock", icon: "clock", w: 300, h: 220, minW: 180, minH: 130, bar: true,
       about: "Analog or digital, with as many cities as you like" },
     { type: "calendar", name: "Calendar", icon: "calendar", w: 340, h: 420, minW: 260, minH: 260, bar: false,
       about: "This month and what's coming up" },
@@ -24,7 +24,7 @@ var CATALOG = [
       about: "CPU, graphics, memory, disk and network graphs" },
     { type: "battery", settings: false, name: "Battery", icon: "batt", w: 260, h: 150, minW: 180, minH: 110, bar: true,
       about: "Charge, time left and connected devices" },
-    { type: "media", settings: false, name: "Media player", icon: "headphones", w: 380, h: 160, minW: 260, minH: 120, bar: false,
+    { type: "media", settings: false, name: "Now playing", icon: "headphones", w: 380, h: 160, minW: 260, minH: 120, bar: false,
       about: "What's playing, with play, pause and skip" },
     { type: "folder", name: "Folder view", icon: "folder", w: 400, h: 320, minW: 220, minH: 180, bar: false,
       about: "A folder's files right on the desktop" },
