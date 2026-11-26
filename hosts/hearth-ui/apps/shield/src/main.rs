@@ -475,7 +475,7 @@ fn today_page(a: &App) -> E<'_, Msg> {
     } else {
         row![t(format!("{} days ago", bars.len()), 12.0, p.muted), Space::new().width(Length::Fill), t("today", 12.0, p.muted)].into()
     };
-    let chart = kit::card(&p, column![row![ts("Through the day", 18.0, p.text), Space::new().width(Length::Fill), legend].align_y(iced::Center), canvas::Canvas::new(Bars { bars, acc: p.accent }).width(Length::Fill).height(Length::Fixed(170.0)), labels].spacing(10.0));
+    let chart = kit::card(&p, column![row![ts(if a.range == "today" { "Through the day" } else { "Day by day" }, 18.0, p.text), Space::new().width(Length::Fill), legend].align_y(iced::Center), canvas::Canvas::new(Bars { bars, acc: p.accent }).width(Length::Fill).height(Length::Fixed(170.0)), labels].spacing(10.0));
     // the devices that had the most blocked
     let mut devs: Vec<&Dev> = d.devices.iter().collect();
     devs.sort_by(|x, y| y.blocked.cmp(&x.blocked));

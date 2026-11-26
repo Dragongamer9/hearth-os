@@ -791,7 +791,7 @@ fn side_row<'a>(p: &Pal, on: bool, lead: E<'a, Msg>, name: String, sub: String, 
     let r = row![lead, column![t(name, 13.0, p.text), t(sub, 11.0, p.muted)].spacing(2.0).width(Length::Fill)].spacing(10.0).align_y(iced::Center);
     let body = container(r).padding(pad(9.0, 10.0, 9.0, 10.0)).width(Length::Fill);
     let el: E<'a, Msg> = if on {
-        container(row![container(Space::new()).width(Length::Fixed(3.0)).height(Length::Fill).style(ui::boxed(p.accent, 0.0, None)), body]).clip(true).style(ui::boxed(Color::from_rgb8(0x3b, 0x2a, 0x1d), 9.0, None)).into()
+        container(row![container(Space::new()).width(Length::Fixed(3.0)).height(Length::Fixed(48.0)).style(ui::boxed(p.accent, 0.0, None)), body].height(Length::Shrink)).clip(true).style(ui::boxed(Color::from_rgb8(0x3b, 0x2a, 0x1d), 9.0, None)).into()
     } else {
         body.into()
     };
