@@ -343,7 +343,7 @@ enum Row {
 fn files(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let head = row![look::caps(&p, "Files"), Space::new().width(Length::Fill), click(t("＋", f(16.0), tn.muted), Some(Msg::NewOpen)), gap(z(16.0), 1.0), t("⇅", f(16.0), tn.muted), gap(z(16.0), 1.0), t("⋯", f(16.0), tn.muted)].align_y(iced::Center);
+    let head = row![look::caps(&p, "Files"), Space::new().width(Length::Fill), click(t("+", f(16.0), tn.muted), Some(Msg::NewOpen)), gap(z(16.0), 1.0), t("⇅", f(16.0), tn.muted), gap(z(16.0), 1.0), t("⋯", f(16.0), tn.muted)].align_y(iced::Center);
     let mut rows: Vec<Row> = vec![Row::Atlas];
     if a.tree_open.contains("atlas") {
         rows.push(Row::Moc("home".into(), "Home".into(), 1));

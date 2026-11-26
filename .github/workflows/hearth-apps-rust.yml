@@ -62,7 +62,7 @@ jobs:
           ls -la target/release/ | grep hearth-
           # Describe it in the apps asks hearth-layout (hosts/hearth-layout), built here into the same target folder
           cargo build --release --manifest-path ../hearth-layout/Cargo.toml --target-dir target 2>&1 | tail -3
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app; do
             echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
           done
       - name: Tests
@@ -73,7 +73,7 @@ jobs:
       - name: Gather
         run: |
           mkdir -p bin
-          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-store-app hosts/hearth-ui/target/release/hearth-server-app hosts/hearth-ui/target/release/hearth-resmon-app hosts/hearth-ui/target/release/hearth-family-app hosts/hearth-ui/target/release/hearth-notes-app hosts/hearth-ui/target/release/hearth-ideas-app hosts/hearth-ui/target/release/hearth-retro-app hosts/hearth-ui/target/release/hearth-retro-to-steam-app hosts/hearth-ui/target/release/hearth-studio-app hosts/hearth-ui/target/release/hearth-beat-maker-app hosts/hearth-ui/target/release/hearth-layout bin/
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-store-app hosts/hearth-ui/target/release/hearth-server-app hosts/hearth-ui/target/release/hearth-resmon-app hosts/hearth-ui/target/release/hearth-family-app hosts/hearth-ui/target/release/hearth-notes-app hosts/hearth-ui/target/release/hearth-game-fixer hosts/hearth-ui/target/release/hearth-proton-manager hosts/hearth-ui/target/release/hearth-overlay hosts/hearth-ui/target/release/hearth-bottles hosts/hearth-ui/target/release/hearth-3d hosts/hearth-ui/target/release/hearth-ideas-app hosts/hearth-ui/target/release/hearth-retro-app hosts/hearth-ui/target/release/hearth-retro-to-steam-app hosts/hearth-ui/target/release/hearth-studio-app hosts/hearth-ui/target/release/hearth-beat-maker-app hosts/hearth-ui/target/release/hearth-layout bin/
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-apps-rust
@@ -109,7 +109,7 @@ jobs:
         run: |
           dnf -y install --skip-unavailable git sway cage wlopm grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
             mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl \
-            fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd kdialog qt6-qtwayland >/dev/null
+            fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd kdialog qt6-qtwayland mangohud vulkan-tools >/dev/null
           for b in sway cage wlopm grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
           fc-list | grep -qi inter && echo "::notice title=fonts::Inter is here" || echo "::warning title=fonts::no Inter (the mockups' font)"
       - uses: actions/checkout@v4

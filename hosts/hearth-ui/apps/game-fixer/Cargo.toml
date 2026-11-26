@@ -1,0 +1,21 @@
+# Hearth Game Fixer (pure Rust, hearth-ui; docs/mockups/checklists/open-source-01-game-fixer.md, the approved board
+# docs/mockups/open-source-apps/01-game-fixer.png): any Windows game, with the community's fixes. Built on Lutris
+# (GPL-3): its command, its games' settings files and lutris.net's install scripts. Made of blocks.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-game-fixer"
+edition = "2021"
+description = "Hearth Game Fixer: any Windows game, with the community's fixes (built on Lutris)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-game-fixer"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit-a = { path = "../oss-kit-a" }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }

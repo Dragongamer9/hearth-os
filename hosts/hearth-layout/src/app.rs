@@ -172,9 +172,15 @@ window_app!(RESTORE, "system-restore", "System Restore");
 window_app!(RELIABILITY, "reliability", "Reliability history");
 window_app!(G15, "g15", "Logitech G15");
 window_app!(IDEAS, "ideas", "Hearth Ideas");
+// The open-source apps for the Hearth Store (docs/mockups/open-source-apps).
+window_app!(GAME_FIXER, "game-fixer", "Hearth Game Fixer");
+window_app!(PROTON_MANAGER, "proton-manager", "Proton Manager");
+window_app!(OVERLAY, "overlay", "Hearth Overlay");
+window_app!(BOTTLES, "bottles", "Hearth Bottles");
+window_app!(HEARTH_3D, "hearth-3d", "Hearth 3D");
 
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
-pub const APPS: &[&AppSchema] = &[&FILES, &SETTINGS, &STORE, &TASK_MANAGER, &NOTES, &CAPTURE, &RESMON, &FAMILY, &SERVER, &RESTORE, &RELIABILITY, &G15, &IDEAS];
+pub const APPS: &[&AppSchema] = &[&FILES, &SETTINGS, &STORE, &TASK_MANAGER, &NOTES, &CAPTURE, &RESMON, &FAMILY, &SERVER, &RESTORE, &RELIABILITY, &G15, &IDEAS, &GAME_FIXER, &PROTON_MANAGER, &OVERLAY, &BOTTLES, &HEARTH_3D];
 
 pub fn find(app: &str) -> Option<&'static AppSchema> {
     APPS.iter().copied().find(|a| a.app == app)
