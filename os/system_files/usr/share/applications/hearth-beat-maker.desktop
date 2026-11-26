@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Beat Maker
+GenericName=Music maker
+Comment=A song from patterns, the piano roll and instruments, for Hearth's trailer music (built on LMMS)
+Exec=/usr/bin/hearth-beat-maker-app
+TryExec=/usr/bin/hearth-beat-maker-app
+Icon=hearth-beat-maker
+Categories=AudioVideo;Audio;Music;Midi;Sequencer;
+Keywords=lmms;music;beat;drums;piano roll;synth;song;pattern;trailer;daw;
+StartupWMClass=hearth-beat-maker

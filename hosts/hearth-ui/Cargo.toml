@@ -19,7 +19,7 @@ publish = false
 path = "src/lib.rs"
 
 [workspace]
-members = ["apps/task-manager", "apps/system-restore", "apps/reliability", "apps/settings", "apps/files", "apps/capture", "apps/pad", "apps/g15", "apps/store", "apps/server", "apps/resmon", "apps/family", "apps/notes", "apps/ideas"]
+members = ["apps/task-manager", "apps/system-restore", "apps/reliability", "apps/settings", "apps/files", "apps/capture", "apps/pad", "apps/g15", "apps/store", "apps/server", "apps/resmon", "apps/family", "apps/notes", "apps/ideas", "apps/retro", "apps/retro-to-steam", "apps/studio", "apps/beat-maker", "apps/oss-kit-a", "apps/game-fixer", "apps/proton-manager", "apps/overlay", "apps/bottles", "apps/hearth-3d", "apps/lights", "apps/remap", "apps/mouse", "apps/shield", "apps/oss-kit", "apps/listen", "apps/imagine", "apps/passwords", "apps/cloud", "apps/home"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -32,7 +32,8 @@ libc = "0.2"
 [dependencies]
 # "advanced": Edit layout (arrange.rs) draws its menus as overlays; asked for here, not only by Settings, so Mantel in
 # Rust (which builds this crate on its own) gets it too.
-iced = { workspace = true, features = ["advanced"] }
+# "image": drag and drop's Shows › A picture (studio.rs), any picture the person picks.
+iced = { workspace = true, features = ["advanced", "image"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }

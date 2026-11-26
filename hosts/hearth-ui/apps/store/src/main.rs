@@ -336,7 +336,7 @@ impl App {
         // Mantel has no program to open: it's here when its desktop is (Quickshell and its shell).
         let here = cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && (which(&e.open) || (e.id == "mantel" && which("quickshell")))).map(|e| e.id.clone()).collect();
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("store", "Hearth Store").with_pages(view::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("store", "Hearth Store").with_pages(view::BLOCKS).with_kit(&view::KIT),
             p: hearth_ui::theme::load(),
             seen: release::read_seen(),
             prefs: prefs::load(),
@@ -823,6 +823,10 @@ fn detached(cmd: &str) {
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
         Msg::Describe(dm) => {
+            // one of the Store's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(view::block_action) {
+                return update(a, m);
+            }
             // Arrange's page chips go to that page too, so what's arranged is what you see
             let go = match &dm {
                 hearth_ui::describe::DMsg::Arrange(Some(pg)) => match *pg {

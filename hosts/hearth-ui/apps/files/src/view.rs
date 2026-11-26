@@ -96,11 +96,126 @@ pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[
     hearth_ui::blocks::PageDef { id: "bars", title: "Hearth Files", blocks: BAR_BLOCKS },
 ];
 
-/// A bar a right-click edits (Edit layout with it picked). While the bars are being arranged, the bar's own content
-/// sits under its block's bar (Arrange's bar is drawn over the top of each block), so it stays visible.
-fn bar_part<'a>(a: &App, id: &'static str, el: El<'a>) -> (&'static str, El<'a>) {
-    let el = if a.describe.arr.as_ref().map(|x| x.page) == Some("bars") { container(el).padding(pad(26.0, 0.0, 0.0, 0.0)).into() } else { el };
+/// A bar a right-click edits (Edit layout with it picked).
+fn bar_part<'a>(_a: &App, id: &'static str, el: El<'a>) -> (&'static str, El<'a>) {
     (id, hearth_ui::arrange::right_edit(el, Msg::EditAt("bars", Some(id))))
+}
+
+// ------------------------------------------------------------------ drag and drop (board 3: Hearth Files shown)
+use hearth_ui::studio::{tile, Kit, MenuDef};
+use hearth_ui::ui::G;
+/// Files' blocks (its blocks window, "Files' blocks", "drag into Files"): its buttons, its panes, its info, the bars
+/// that hand over their pieces (a block lands between them), and its menus (Menus…).
+pub const KIT: Kit = Kit {
+    name: "Files",
+    buttons: &[
+        tile("sort-downloads", "Sort my Downloads", G::Down),
+        tile("share", "Share", G::Link),
+        tile("open-in-terminal", "Open in terminal", G::Keyboard),
+        tile("compress", "Compress", G::Doc),
+        tile("new-folder", "New folder", G::Folder),
+        tile("new-file", "New file", G::Doc),
+        tile("rename", "Rename", G::Pencil),
+        tile("delete", "Delete", G::Close),
+        tile("copy-path", "Copy path", G::Link),
+        tile("select-all", "Select all", G::Check),
+        tile("show-hidden", "Hidden files", G::Moon),
+        tile("properties", "Properties", G::Info),
+        tile("extract-here", "Extract here", G::Down),
+        tile("terminal-panel", "Terminal panel", G::Keyboard),
+        tile("split-view", "Split view", G::Columns),
+        tile("new-tab", "New tab", G::Plus),
+        tile("refresh", "Refresh", G::Sync),
+        tile("up", "Up a folder", G::Arrow),
+        tile("back", "Back", G::Arrow),
+        tile("undo", "Undo", G::Sync),
+        tile("empty-trash", "Empty Trash", G::Close),
+        tile("details-pane", "Details pane", G::Columns),
+    ],
+    panes: &[tile("preview", "Preview", G::Camera), tile("details", "Details", G::Info), tile("tree", "Folder tree", G::Folder), tile("second", "Second folder", G::Columns)],
+    info: &[
+        tile("items", "Items here", G::List),
+        tile("selected", "Selected", G::Check),
+        tile("free", "Free space", G::Drive),
+        tile("loose", "Loose in Downloads", G::Down),
+        tile("folder", "This folder", G::Folder),
+    ],
+    pane_page: "window",
+    bars: &[("bars", "toolbar"), ("bars", "address")],
+    menus: &[
+        MenuDef { id: "context", title: "The right-click menu (on files and on empty space)", items: &[("open", "Open"), ("openwith", "Open with"), ("newtab", "Open in new tab"), ("cut", "Cut"), ("copy", "Copy"), ("paste", "Paste"), ("copywin", "Copy as path"), ("rename", "Rename…"), ("compress", "Compress to ZIP"), ("extracthere", "Extract here"), ("trash", "Move to Trash"), ("bookmark", "Pin to the left menu"), ("terminal", "Open in Terminal"), ("props", "Properties"), ("describe", "Describe it…"), ("edit-layout", "Edit layout")] },
+        MenuDef { id: "view", title: "View", items: &[("navpane", "Navigation pane"), ("detailspane", "Details pane"), ("compactview", "Compact view"), ("hidden", "Hidden items"), ("exts", "File name extensions"), ("edit-layout", "Edit layout"), ("describe", "Describe it…"), ("layout-original", "Back to the original")] },
+        MenuDef { id: "sort", title: "Sort and group", items: &[("sortname", "Name"), ("sortdate", "Date"), ("sorttype", "Type"), ("sortsize", "Size"), ("asc", "Ascending"), ("desc", "Descending")] },
+        MenuDef { id: "new", title: "New", items: &[("newfolder", "Folder"), ("newfile", "Empty file"), ("bc-new", "Briefcase")] },
+        MenuDef { id: "more", title: "More (⋯)", items: &[("undo", "Undo"), ("redo", "Redo"), ("markall", "Select all"), ("unmarkall", "Select none"), ("invert", "Invert selection"), ("newtab", "New tab"), ("terminal", "Open in Terminal"), ("termpanel", "Terminal panel"), ("splitview", "Split view"), ("props", "Properties")] },
+    ],
+};
+
+/// One of Files' buttons dragged in, pressed: what it does.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "sort-downloads" => Msg::Sort(crate::sortdl::SMsg::Open),
+        "share" => Msg::Cmd("share"),
+        "open-in-terminal" => Msg::Cmd("terminal"),
+        "compress" => Msg::Cmd("compress"),
+        "new-folder" => Msg::Cmd("newfolder"),
+        "new-file" => Msg::Cmd("newfile"),
+        "rename" => Msg::Cmd("rename"),
+        "delete" => Msg::Cmd("delete"),
+        "copy-path" => Msg::Cmd("copypath"),
+        "select-all" => Msg::Cmd("markall"),
+        "show-hidden" => Msg::Cmd("hidden"),
+        "properties" => Msg::Cmd("props"),
+        "extract-here" => Msg::Cmd("extracthere"),
+        "terminal-panel" => Msg::Cmd("termpanel"),
+        "split-view" => Msg::Cmd("splitview"),
+        "new-tab" => Msg::NewTab,
+        "refresh" => Msg::Refresh,
+        "up" => Msg::Up,
+        "back" => Msg::Back,
+        "undo" => Msg::Cmd("undo"),
+        "empty-trash" => Msg::Cmd("empty"),
+        "details-pane" => Msg::Cmd("details"),
+        _ => return None,
+    })
+}
+
+/// Files' values for its info blocks and {count}-style words.
+fn studio_values(a: &App) {
+    let free = a.listing.as_ref().and_then(|l| l.free).map(model::fmt_space).unwrap_or_default();
+    a.describe.values(vec![
+        ("items", a.entries.len().to_string()),
+        ("selected", a.marked.len().to_string()),
+        ("free", free),
+        ("loose", crate::sortdl::loose(a).to_string()),
+        ("folder", a.title_of(&a.path)),
+    ]);
+}
+
+/// Preview (a pane of its own): the picked file's picture big, its name, what it is.
+fn preview_pane(a: &App) -> El<'_> {
+    let p = a.p;
+    let Some(e) = a.current() else { return t("Pick a file to see it here.", 13.0, p.muted).into() };
+    let th = a.thumbs.get(&e.path);
+    let pic: El = match th.and_then(|t| t.1.as_ref()) {
+        Some(h) => img(h).width(Length::Fill).height(Length::Fill).content_fit(ContentFit::Cover).border_radius(p.r(8.0)).into(),
+        None => container(entry_icon(a, e, 96.0)).center_x(Length::Fill).center_y(Length::Fill).style(ui::boxed(row_bg(&p), p.r(8.0), None)).into(),
+    };
+    let meta = match th.filter(|t| t.2 > 0) {
+        Some(t) => format!("{} · {}×{}", model::fmt_size(e.size), t.2, t.3),
+        None if e.dir => model::kind_name(e),
+        None => format!("{} · {}", model::kind_name(e), model::fmt_size(e.size)),
+    };
+    column![container(pic).height(Length::FillPortion(5)), column![t1(ui::fit(&e.name, 40), 14.0, p.text), t1(meta, 12.5, p.muted)].spacing(2.0)].spacing(10.0).into()
+}
+
+/// Second folder (a pane of its own): split view's second folder, or a way to open it.
+fn second_pane(a: &App) -> El<'_> {
+    let p = a.p;
+    if a.split.is_some() {
+        return crate::split::view(a);
+    }
+    column![t("A second folder beside this one: copy and move between them.", 13.0, p.muted), ui::btn(&p, "Open a second folder here", ui::Kind::Normal, false, Some(Msg::Cmd("splitview")))].spacing(10.0).into()
 }
 
 pub fn view(a: &App) -> El<'_> {
@@ -117,14 +232,14 @@ pub fn view(a: &App) -> El<'_> {
     let has_nav = a.nav_shown() && a.describe.knob("sidebar") != "hidden";
     let mut pieces: Vec<(&'static str, El)> = Vec::new();
     if has_nav {
-        pieces.push(("sidebar", hearth_ui::describe::outline(&p, a.describe.changing("sidebar"), nav_pane(a))));
+        pieces.push(("sidebar", hearth_ui::describe::outline(&p, a.describe.changing("sidebar"), hearth_ui::studio::made(&a.describe, "window", "sidebar", || nav_pane(a)))));
     }
     // The folder, with Act as administrator's red bar above it and the terminal panel (F4) under it.
     let mut mid = Column::new().width(Length::FillPortion(64)).height(Length::Fill);
     if crate::extras::admin_here(a) {
         mid = mid.push(admin_bar(a));
     }
-    let folder: El = container(main_area(a)).width(Length::Fill).height(Length::Fill).into();
+    let folder: El = container(hearth_ui::studio::made(&a.describe, "window", "folder", || main_area(a))).width(Length::Fill).height(Length::Fill).into();
     let folder: El = if a.drag.is_some() && a.path.starts_with('/') {
         mouse_area(folder).on_enter(Msg::Dnd(crate::dnd::DMsg::Over(1, a.path.clone()))).on_exit(Msg::Dnd(crate::dnd::DMsg::Out(1, a.path.clone()))).into()
     } else {
@@ -137,7 +252,7 @@ pub fn view(a: &App) -> El<'_> {
     }
     let mut folder_row = Row::new().height(Length::Fill).push(mid);
     // Split view (F9): a second folder beside this one.
-    if a.split.is_some() && !picking {
+    if a.split.is_some() && !picking && !a.describe.wants_pane("second") {
         folder_row = folder_row.push(vline(p.line)).push(container(crate::split::view(a)).width(Length::FillPortion(36)).height(Length::Fill));
     }
     pieces.push(("folder", folder_row.into()));
@@ -145,7 +260,23 @@ pub fn view(a: &App) -> El<'_> {
     let preview = a.describe.knob("preview");
     let has_preview = (a.details_pane || preview.starts_with("right")) && preview != "off" && !picking;
     if has_preview {
-        pieces.push(("preview", hearth_ui::describe::outline(&p, a.describe.changing("preview"), details_pane(a))));
+        pieces.push(("preview", hearth_ui::describe::outline(&p, a.describe.changing("preview"), hearth_ui::studio::made(&a.describe, "window", "preview", || details_pane(a)))));
+    }
+    // drag and drop: Files' panes where they were dragged in, its values for its info blocks
+    studio_values(a);
+    if !picking {
+        if a.describe.wants_pane("preview") {
+            pieces.push(("pane:preview", preview_pane(a)));
+        }
+        if a.describe.wants_pane("details") {
+            pieces.push(("pane:details", details_pane(a)));
+        }
+        if a.describe.wants_pane("tree") {
+            pieces.push(("pane:tree", nav_pane(a)));
+        }
+        if a.describe.wants_pane("second") {
+            pieces.push(("pane:second", second_pane(a)));
+        }
     }
     // its blocks (hearth_ui::blocks): the sidebar, the folder and the preview, moved, sized, hidden or restyled; the
     // file chooser has its own; as it was when nothing is
@@ -414,7 +545,7 @@ fn zone_titlebar(a: &App) -> El<'_> {
         };
         r = r.push(el);
         if i == "title" || i == "newtab" || i == "tabs" {
-            if a.describe.open && !items.iter().skip_while(|x| *x != i).skip(1).any(|x| x == "title" || x == "tabs" || x == "newtab") {
+            if (a.describe.open || a.describe.studio_editing()) && !items.iter().skip_while(|x| *x != i).skip(1).any(|x| x == "title" || x == "tabs" || x == "newtab") {
                 r = r.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(pad(0.0, 0.0, 0.0, 10.0)));
             }
         }
@@ -623,20 +754,53 @@ fn zone_row<'a>(a: &'a App, zone: &str) -> Option<El<'a>> {
     if items.iter().all(|i| i == "sep" || i == "spacer") {
         return None;
     }
-    let mut r = Row::new().align_y(iced::Center).spacing(if zone == "top" { 4.0 } else { 2.0 });
-    for i in &items {
-        if let Some(e) = piece(a, i) {
-            r = r.push(e);
-        }
-    }
+    // drag and drop: the toolbar's and the address bar's pieces handed over one by one (a block lands between them),
+    // made in the font the bar was given
+    let part: Option<&'static str> = match zone {
+        "top" => Some("address"),
+        "bar" => Some("toolbar"),
+        _ => None,
+    };
     let (t, b) = match a.describe.knob("density").as_str() {
         "roomy" => (12.0, 10.0),
         "compact" => (2.0, 2.0),
         _ => if zone == "top" { (8.0, 6.0) } else { (2.0, 6.0) },
     };
+    let spacing = if zone == "top" { 4.0 } else { 2.0 };
+    let build = || -> El<'a> {
+        let mut its: Vec<(&'static str, &'static str, El<'a>)> = Vec::new();
+        for i in &items {
+            if let Some(e) = piece(a, i) {
+                let (id, title) = piece_name(i);
+                its.push((id, title, e));
+            }
+        }
+        let els: Vec<El<'a>> = match part {
+            Some(pt) => hearth_ui::studio::pieces(&a.describe, &a.p, "bars", pt, its, Msg::Describe),
+            None => its.into_iter().map(|x| x.2).collect(),
+        };
+        let r = Row::with_children(els).align_y(iced::Center).spacing(spacing);
+        container(r).padding(pad(t, 12.0, b, 12.0)).width(Length::Fill).into()
+    };
+    let el = match part {
+        Some(pt) => hearth_ui::studio::made(&a.describe, "bars", pt, build),
+        None => build(),
+    };
     let feats = zone == "bar" && a.describe.open && a.describe.trying().map(|r| r.get("features").and_then(Value::as_array).map(|f| !f.is_empty()).unwrap_or(false)).unwrap_or(false);
     let on = a.describe.zone_changing(zone) || (zone == "bar" && a.describe.changing("toolbar")) || feats;
-    Some(hearth_ui::describe::outline(&a.p, on, container(r).padding(pad(t, 12.0, b, 12.0)).width(Length::Fill).into()))
+    Some(hearth_ui::describe::outline(&a.p, on, el))
+}
+
+/// A bar piece's id as Files has it, and its name (for where a block lands: "after Sort").
+fn piece_name(id: &str) -> (&'static str, &'static str) {
+    const NAMES: &[(&str, &str)] = &[
+        ("back", "Back"), ("forward", "Forward"), ("up", "Up"), ("refresh", "Refresh"), ("address", "the address"), ("search", "Search"),
+        ("new", "New"), ("cut", "Cut"), ("copy", "Copy"), ("paste", "Paste"), ("rename", "Rename"), ("share", "Share"), ("delete", "Delete"),
+        ("sort", "Sort"), ("view", "View"), ("tools", "the Briefcase's buttons"), ("sortdl", "Sort my Downloads"), ("features", "your features"),
+        ("details", "Details"), ("more", "More"), ("sep", "the divider"), ("spacer", "the space"), ("tabs", "the tabs"), ("newtab", "New tab"),
+        ("title", "the folder's name"), ("minimize", "Minimize"), ("maximize", "Maximize"), ("close", "Close"),
+    ];
+    NAMES.iter().copied().find(|x| x.0 == id).unwrap_or(("piece", "it"))
 }
 
 /// Inside a Briefcase, the command bar's own buttons: Update All, Unlock or Lock, Customize (FileManager.qml).

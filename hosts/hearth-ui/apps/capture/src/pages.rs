@@ -121,6 +121,100 @@ pub fn recent_key(a: &mut App, key: &Key) -> Task<Msg> {
     Task::none()
 }
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::Kit;
+/// Capture's blocks window: its buttons (take, record, what to capture, the wait, its pages), its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "Capture",
+    buttons: &[
+        hearth_ui::studio::tile("take", "Take a screenshot", G::Camera),
+        hearth_ui::studio::tile("record", "Record", G::Play),
+        hearth_ui::studio::tile("area", "An area", G::Grid),
+        hearth_ui::studio::tile("window", "A window", G::Display),
+        hearth_ui::studio::tile("screen", "This screen", G::Display),
+        hearth_ui::studio::tile("all", "All screens", G::Columns),
+        hearth_ui::studio::tile("scroll", "Scrolling", G::Down),
+        hearth_ui::studio::tile("no-wait", "No wait", G::Clock),
+        hearth_ui::studio::tile("wait-3", "Wait 3 s", G::Clock),
+        hearth_ui::studio::tile("wait-5", "Wait 5 s", G::Clock),
+        hearth_ui::studio::tile("wait-10", "Wait 10 s", G::Clock),
+        hearth_ui::studio::tile("pointer", "The pointer in or out", G::Mouse),
+        hearth_ui::studio::tile("take-page", "Take (the page)", G::Camera),
+        hearth_ui::studio::tile("edit-page", "Edit (the page)", G::Pencil),
+        hearth_ui::studio::tile("recent-page", "Recent (the page)", G::Clock),
+    ],
+    panes: &[hearth_ui::studio::tile("recent", "Recent pictures", G::Grid), hearth_ui::studio::tile("last", "The last picture", G::Camera), hearth_ui::studio::tile("keys", "Shortcuts", G::Keyboard)],
+    info: &[
+        hearth_ui::studio::tile("count", "Pictures kept", G::Grid),
+        hearth_ui::studio::tile("last", "The last one", G::Camera),
+        hearth_ui::studio::tile("mode", "What it captures", G::Display),
+        hearth_ui::studio::tile("delay", "The wait", G::Clock),
+    ],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Capture's buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "take" => Msg::Take,
+        "record" => Msg::Record,
+        "area" => Msg::SetMode("area"),
+        "window" => Msg::SetMode("window"),
+        "screen" => Msg::SetMode("screen"),
+        "all" => Msg::SetMode("all"),
+        "scroll" => Msg::SetMode("scroll"),
+        "no-wait" => Msg::SetDelay(0),
+        "wait-3" => Msg::SetDelay(3),
+        "wait-5" => Msg::SetDelay(5),
+        "wait-10" => Msg::SetDelay(10),
+        "pointer" => Msg::TogglePointer,
+        "take-page" => Msg::Page(Page::Take),
+        "edit-page" => Msg::Page(Page::Edit),
+        "recent-page" => Msg::Page(Page::Recent),
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let last = a.recent.first().map(|it| it.path.rsplit('/').next().unwrap_or("").to_string()).unwrap_or_default();
+    let mode = TILES.iter().find(|x| x.0 == a.mode()).map(|x| x.2).unwrap_or("").to_string();
+    a.describe.values(vec![("count", a.recent.len().to_string()), ("last", last), ("mode", mode), ("delay", if a.delay() == 0 { "No wait".into() } else { format!("{} s", a.delay()) })]);
+}
+
+/// Recent pictures (a pane of its own): the last four, each a press away from Edit.
+fn recent_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.p;
+    if a.recent.is_empty() {
+        return label("Screenshots you save show up here.", 13.0, p.muted, false).into();
+    }
+    let mut c = Column::new().spacing(10.0);
+    for (i, it) in a.recent.iter().take(4).enumerate() {
+        c = c.push(container(thumb(a, it, i, false, false)).height(Length::Fixed(110.0)));
+    }
+    scrollable(c).height(Length::Fill).into()
+}
+
+/// The last picture (a pane of its own), as big as the pane.
+fn last_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.p;
+    match a.recent.first().and_then(|it| a.thumbs.get(&it.path).map(|h| (it, h))) {
+        Some((it, h)) => mouse_area(image(h.clone()).width(Length::Fill).height(Length::Fill).content_fit(ContentFit::Contain)).on_press(Msg::RecentEdit(it.path.clone())).into(),
+        None => label("The last screenshot shows here.", 13.0, p.muted, false).into(),
+    }
+}
+
+/// Shortcuts (a pane of its own).
+fn keys_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.p;
+    let mut c = Column::new().spacing(6.0);
+    for (k, what) in [("Print Screen", "the whole screen, saved"), ("Super+Shift+S", "pick an area"), ("Ctrl+Z", "undo (Edit)"), ("Ctrl+C", "copy (Edit)"), ("Ctrl+S", "save (Edit)")] {
+        c = c.push(row![label(k, 13.0, p.text, true), Space::new().width(Length::Fill), label(what, 13.0, p.muted, false)].spacing(10.0));
+    }
+    c.into()
+}
+
 // ------------------------------------------------------------------ the window
 pub fn main_view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
@@ -131,11 +225,22 @@ pub fn main_view(a: &App) -> Element<'_, Msg> {
         Page::Recent => recent_page(a),
     };
     // its blocks (hearth_ui::blocks "window"): the header with the pages, and the page under it
+    studio_values(a);
+    let mut items: Vec<(&'static str, Element<'_, Msg>)> = vec![("header", hearth_ui::studio::made(&a.describe, "window", "header", || header(a))), ("page", container(body).width(Length::Fill).height(Length::Fill).into())];
+    if a.describe.wants_pane("recent") {
+        items.push(("pane:recent", recent_pane(a)));
+    }
+    if a.describe.wants_pane("last") {
+        items.push(("pane:last", last_pane(a)));
+    }
+    if a.describe.wants_pane("keys") {
+        items.push(("pane:keys", keys_pane(a)));
+    }
     let page = hearth_ui::arrange::parts(
         &a.describe,
         &p,
         "window",
-        vec![("header", header(a)), ("page", container(body).width(Length::Fill).height(Length::Fill).into())],
+        items,
         |ps| column![ps.take("header"), ps.take("page")].into(),
         Msg::Describe,
     );

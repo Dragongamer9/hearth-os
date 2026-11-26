@@ -106,6 +106,72 @@ fn panel<'a>(k: f32, title: &str, inner: E<'a>, h: Length) -> E<'a> {
         .into()
 }
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::Kit;
+use hearth_ui::ui::G as Gl;
+/// Server mode's blocks window: its buttons, its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "Server mode",
+    buttons: &[
+        hearth_ui::studio::tile("play", "Play (Game Mode)", Gl::Play),
+        hearth_ui::studio::tile("switch-now", "Switch now", Gl::Pad),
+        hearth_ui::studio::tile("cancel-switch", "Cancel the switch", Gl::Close),
+        hearth_ui::studio::tile("remote-now", "Remote play now", Gl::Display),
+        hearth_ui::studio::tile("remote-cancel", "Cancel remote play", Gl::Close),
+        hearth_ui::studio::tile("wake", "Wake the screen", Gl::Moon),
+        hearth_ui::studio::tile("back", "Back", Gl::Arrow),
+        hearth_ui::studio::tile("close", "Close", Gl::Close),
+    ],
+    panes: &[hearth_ui::studio::tile("clock", "The clock", Gl::Clock), hearth_ui::studio::tile("usage", "Usage graphs", Gl::Pulse), hearth_ui::studio::tile("said", "What it said last", Gl::Info)],
+    info: &[hearth_ui::studio::tile("host", "This PC", Gl::Server), hearth_ui::studio::tile("time", "The time", Gl::Clock), hearth_ui::studio::tile("said", "What it said last", Gl::Info)],
+    pane_page: "dashboard",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Server mode's buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "play" => Msg::Play,
+        "switch-now" => Msg::SwitchNow,
+        "cancel-switch" => Msg::CancelSwitch,
+        "remote-now" => Msg::RemoteNow,
+        "remote-cancel" => Msg::RemoteCancel,
+        "wake" => Msg::Wake,
+        "back" => Msg::Back,
+        "close" => Msg::Close,
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let host = a.d.as_ref().map(|d| s(d, "host")).unwrap_or_default();
+    a.describe.values(vec![("host", host), ("time", clock(a.now, true)), ("said", a.toast.clone())]);
+}
+
+/// A pane of Server mode's own: the clock, the usage graphs, what it said last.
+fn studio_pane<'a>(a: &'a App, which: &str, k: f32) -> E<'a> {
+    match which {
+        "clock" => {
+            let lt = hearth_ui::time::local(a.now as i64);
+            column![txb(clock(a.now, true), 54.0 * k, G::hi()), tx(format!("{} {} {}", DAYS[lt.wday], lt.day, MONS[lt.mon]), 17.0 * k, G::muted())].spacing(6.0 * k).into()
+        }
+        "usage" => {
+            let mut c = Column::new().spacing(10.0 * k);
+            for (i, (label, colour)) in [("Graphics memory", rgb(0xe8d66e)), ("Storage", G::acc()), ("Power", G::warn()), ("Network", rgb(0x7fb2ff))].into_iter().enumerate() {
+                let g = hearth_ui::ui::graph(
+                    hearth_ui::ui::Graph { values: a.hist[i].clone(), dashed: vec![], max: a.hist[i].iter().copied().fold(1.0, f32::max), min: 0.0, color: colour, grid: Color::TRANSPARENT, fill: true, width: 1.5, centred: false, gridlines: vec![] },
+                    Length::Fill,
+                    Length::Fixed(40.0 * k),
+                );
+                c = c.push(column![tx(label, 13.0 * k, G::muted()), g].spacing(4.0 * k));
+            }
+            c.into()
+        }
+        _ => txw(if a.toast.is_empty() { "Nothing to say yet.".to_string() } else { a.toast.clone() }, 15.0 * k, G::text()).into(),
+    }
+}
+
 /// Server mode's blocks (hearth_ui::blocks).
 use hearth_ui::blocks::bl;
 pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
@@ -217,6 +283,12 @@ pub fn view(a: &App) -> E<'_> {
     items.extend(left);
     items.extend(right);
     items.push(("hints", hints.into()));
+    studio_values(a);
+    for (id, which) in [("pane:clock", "clock"), ("pane:usage", "usage"), ("pane:said", "said")] {
+        if a.describe.wants_pane(which) {
+            items.push((id, studio_pane(a, which, k)));
+        }
+    }
     let blocks = hearth_ui::arrange::parts(
         &a.describe,
         &a.pal,

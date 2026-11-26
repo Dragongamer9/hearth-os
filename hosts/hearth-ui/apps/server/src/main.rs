@@ -222,7 +222,7 @@ impl App {
             .unwrap_or(false);
         let t = now();
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("server", "Server mode").with_pages(view::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("server", "Server mode").with_pages(view::BLOCKS).with_kit(&view::KIT),
             pal: hearth_ui::theme::load(),
             helper,
             rundir,
@@ -1039,7 +1039,13 @@ impl App {
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     a.now = now();
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Server mode's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(view::block_action) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Dash(o) => {
             a.reading = false;
             match o.json().filter(|v| v.get("tiles").map(Value::is_array).unwrap_or(false)) {

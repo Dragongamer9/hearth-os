@@ -15,6 +15,10 @@
 // re-fits maximized windows (the Game Mode return fix the dock has).
 // Loaded by shell.qml by file name: if this file can't load, the classic taskbar (Bar.qml) comes up instead.
 // Handheld screens (1440 px wide or less) keep only the essentials here; the rest is in Quick settings.
+// Drag and drop board 2 (the desktop editor, DesktopEditor.qml): every block in its look (BlockLook.qml, bar.json
+// "s:<block id>"), and the bar's own settings (bar.json "bar", widget-tools.js barLook): its edge or anywhere on the
+// screen, its length and offset from the corner, thickness, corners, fill, see-through, blur, the gap between blocks,
+// how they line up, islands or one strip, hide until pointed at, over windows or keeping their space, which screen.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -24,6 +28,8 @@ import Quickshell.Widgets
 import Quickshell.Services.SystemTray
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
+import "widget-tools.js" as T
+import "block-look.js" as BL
 
 PanelWindow {
     id: isl
@@ -45,12 +51,22 @@ PanelWindow {
     property bool holdsApps: false         // the floating app menu is off: your apps are in this bar
 
     readonly property bool vertical: edge === "left" || edge === "right"
-    readonly property string style: vertical && Theme.mainStyle === "shelf" ? "bar" : Theme.mainStyle   // floating | bar | shelf
+    // the bar's own settings (drag and drop board 2); nothing set: as the look and Settings have it
+    readonly property var mb: BarLayout.mainBar
+    readonly property bool free: mb.edge === "free"
+    readonly property bool onThisScreen: T.onScreen(mb.screen, screen ? screen.name : "", Quickshell.screens.map(s => s.name))
+    readonly property bool fullLength: !free && mb.len === "full"
+    readonly property bool centredAlong: !free && !fullLength && mb.offset < 0
+    readonly property real screenAlong: screen ? (vertical ? screen.height : screen.width) : 1920
+    readonly property real fitLength: (vertical ? mainRow.implicitHeight : mainRow.implicitWidth) + (pillCentred ? pill.width + 24 : 0) + (centred ? centreIsland.width + 24 : 0) + inner.along * 2 + 16
+    readonly property real alongLen: T.lengthOf(mb.len === "full" && free ? "fit" : mb.len, mb.lenV, screenAlong, fitLength)
+    readonly property string style: mb.islands === "islands" ? "floating" : mb.islands === "strip" ? "bar"
+        : vertical && Theme.mainStyle === "shelf" ? "bar" : Theme.mainStyle   // floating | bar | shelf
     readonly property bool floating: style === "floating"
     readonly property bool shelf: style === "shelf"
     readonly property bool compact: screen && screen.width <= 1440 && !shelf
     readonly property real k: shelf ? 1.4 : 1
-    readonly property int islandH: shelf ? 72 : vertical ? (compact ? 52 : 56) : Theme.thin ? 32 : style === "bar" ? 44 : compact ? 48 : 52
+    readonly property int islandH: mb.thick > 0 ? mb.thick : shelf ? 72 : vertical ? (compact ? 52 : 56) : Theme.thin ? 32 : style === "bar" ? 44 : compact ? 48 : 52
     readonly property int gapOut: floating ? 10 : shelf ? 18 : 0      // from the screen's edge
     readonly property int gapIn: floating ? 6 : shelf ? 10 : 0        // toward the windows
     readonly property int gapTop: gapOut                                // (the old name, kept for the look's parts)
@@ -67,18 +83,26 @@ PanelWindow {
     readonly property bool centred: !vertical && !shelf && (BarLayout.layout.centre || []).length > 0
 
     // ---- auto-hide
-    readonly property bool autoHide: Theme.barAutoHide && !shelf
+    readonly property bool autoHide: (mb.autoHide === "on" || (mb.autoHide === "" && Theme.barAutoHide)) && !shelf
     readonly property bool hiddenNow: autoHide && !hov.hovered && !DeskState.dockPeek && !holdOpen.running && !quickOpen && !calendarOpen && !DeskState.overlayShown
-    readonly property int reserved: autoHide ? 0 : band
+    readonly property int reserved: autoHide || free || mb.over || !onThisScreen ? 0 : band
     Timer { id: holdOpen; interval: 700 }
 
-    anchors { top: edge !== "bottom"; bottom: edge !== "top"; left: edge !== "right"; right: edge !== "left" }
-    implicitHeight: vertical ? 0 : band
-    implicitWidth: vertical ? band : 0
+    // on its edge, full length or shorter at an offset (or centred); anywhere: from the top-left corner
+    anchors {
+        top: free || edge === "top" || (vertical && (fullLength || !centredAlong))
+        bottom: !free && (edge === "bottom" || (vertical && fullLength))
+        left: free || edge === "left" || (!vertical && (fullLength || !centredAlong))
+        right: !free && (edge === "right" || (!vertical && fullLength))
+    }
+    margins.left: free && screen ? Math.round(mb.fx * Math.max(0, screen.width - implicitWidth)) : !free && !vertical && !fullLength && !centredAlong ? Math.min(mb.offset, Math.max(0, screenAlong - alongLen)) : 0
+    margins.top: free && screen ? Math.round(mb.fy * Math.max(0, screen.height - implicitHeight)) : !free && vertical && !fullLength && !centredAlong ? Math.min(mb.offset, Math.max(0, screenAlong - alongLen)) : 0
+    implicitHeight: vertical ? (fullLength ? 0 : alongLen) : band
+    implicitWidth: vertical ? band : (fullLength ? 0 : alongLen)
     exclusiveZone: reserved
     color: "transparent"
     WlrLayershell.namespace: "hearth-islands"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: mb.layer === "bottom" ? WlrLayer.Bottom : WlrLayer.Top
     // Only the bar (or, hidden, the thin handle at the edge) takes clicks.
     mask: Region { item: isl.hiddenNow ? handle : whole }
     Item { id: whole; anchors.fill: parent }
@@ -108,7 +132,9 @@ PanelWindow {
     Timer { interval: 4000; running: !isl.settingsReady; onTriggered: isl.settingsReady = true }
     property bool remapping: false
     Timer { id: remapTimer; interval: 150; onTriggered: isl.remapping = false }
-    visible: settingsReady && !remapping && !SettingsNav.fireholdDesk && !SettingsNav.fireholdCouch   // Firehold's Desk has its own bar (FireholdDesk.qml), its Couch none
+    visible: settingsReady && !remapping && !SettingsNav.fireholdDesk && !SettingsNav.fireholdCouch && onThisScreen   // Firehold's Desk has its own bar (FireholdDesk.qml), its Couch none; a bar set to another screen isn't drawn here
+    // the desktop you're on, for blocks shown only on some desktops (DeskNow.qml; without it they show on every one)
+    Loader { active: isl.primary; source: "DeskNow.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the desktop you're on can't be told (DeskNow.qml); blocks show on every desktop") }
     property int lastReserved: -1
     onSettingsReadyChanged: refit()
     function refit() {
@@ -229,17 +255,23 @@ PanelWindow {
             }
             // One full-width bar (Steam-style, Zen, and One main bar in those looks): a flat strip along the edge.
             Rectangle {
+                id: strip
                 anchors.fill: parent
                 visible: isl.style === "bar"
-                color: Theme.glass
+                // its fill, see-through and corners (the bar's own settings), else the look's
+                color: isl.mb.fill !== "" ? BL.argb(isl.mb.fill, 1 - isl.mb.see / 100)
+                    : isl.mb.see > 0 ? Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 1 - isl.mb.see / 100) : Theme.glass
+                radius: isl.mb.corners >= 99 ? Math.min(width, height) / 2 : isl.mb.corners >= 0 ? isl.mb.corners : (isl.free || !isl.fullLength ? Theme.r(10) : 0)
+                Loader { z: -1; anchors.fill: parent; active: isl.mb.blur && isl.style === "bar"; source: "Frost.qml"; onLoaded: item.rad = Qt.binding(() => strip.radius) }
                 Rectangle {   // the line on the side toward the windows
+                    visible: isl.fullLength && !isl.free
                     color: Theme.line
                     width: isl.vertical ? 1 : parent.width
                     height: isl.vertical ? parent.height : 1
                     x: isl.edge === "left" ? parent.width - 1 : 0
                     y: isl.edge === "top" ? parent.height - 1 : 0
                 }
-                Loader { anchors.fill: parent; active: Theme.frame === "frost" && isl.style === "bar"; source: "Frame.qml" }
+                Loader { anchors.fill: parent; active: Theme.frame === "frost" && isl.style === "bar" && !isl.mb.blur && isl.mb.fill === ""; source: "Frame.qml" }
             }
 
             GridLayout {
@@ -252,8 +284,11 @@ PanelWindow {
                 flow: isl.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
                 rows: isl.vertical ? -1 : 1
                 columns: isl.vertical ? 1 : -1
-                rowSpacing: isl.floating ? 10 : 6
-                columnSpacing: isl.floating ? 10 : 6
+                rowSpacing: isl.mb.gap >= 0 ? isl.mb.gap : isl.floating ? 10 : 6
+                columnSpacing: isl.mb.gap >= 0 ? isl.mb.gap : isl.floating ? 10 : 6
+
+                // ---- line up (the bar's own setting): start, centre or end put the room before and after
+                Item { Layout.fillWidth: !isl.vertical && (isl.mb.lineup === "end" || isl.mb.lineup === "centre"); Layout.fillHeight: isl.vertical && (isl.mb.lineup === "end" || isl.mb.lineup === "centre") }
 
                 // ---- Game Mode first (a layout's choice)
                 Loader { active: Settings.gameModeAt === "start"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
@@ -263,14 +298,16 @@ PanelWindow {
                     id: leftIsland
                     visible: isl.zoneItems("start").length > 0
                     along: (isl.vertical ? leftRow.implicitHeight : leftRow.implicitWidth) + (isl.floating ? 16 : 4)
+                    grows: isl.zoneFills("start")
                     GridLayout {
                         id: leftRow
-                        anchors.centerIn: parent
+                        anchors.centerIn: leftIsland.grows ? undefined : parent
+                        anchors.fill: leftIsland.grows ? parent : undefined
                         flow: isl.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
                         rows: isl.vertical ? -1 : 1
                         columns: isl.vertical ? 1 : -1
-                        rowSpacing: 8 * isl.k
-                        columnSpacing: 8 * isl.k
+                        rowSpacing: isl.mb.gap >= 0 ? isl.mb.gap : 8 * isl.k
+                        columnSpacing: isl.mb.gap >= 0 ? isl.mb.gap : 8 * isl.k
                         // 1.14: the bar's own items in your order (Arrange the bar: BarArrange.qml, BarLayout.qml)
                         Repeater { model: isl.zoneItems("start"); delegate: BarSlot {} }
                     }
@@ -313,7 +350,7 @@ PanelWindow {
                     Loader { id: barWidgets; anchors.centerIn: parent; active: !isl.vertical; source: "BarWidgets.qml" }
                 }
 
-                Item { Layout.fillWidth: !isl.vertical; Layout.fillHeight: isl.vertical }
+                Item { Layout.fillWidth: !isl.vertical && isl.mb.lineup === "spread"; Layout.fillHeight: isl.vertical && isl.mb.lineup === "spread" }
 
                 // ---- the compact clock (with your apps in the bar, or down a side): click for the dashboard
                 Loader { active: !isl.pillCentred && !isl.shelf && !isl.clockLast; visible: active; sourceComponent: cClock; Layout.fillHeight: !isl.vertical; Layout.fillWidth: isl.vertical; Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : (item ? item.along : 0); Layout.preferredHeight: isl.vertical ? (item ? item.along : 0) : (isl.islandH || 52) }
@@ -327,15 +364,17 @@ PanelWindow {
                     lit: isl.quickOpen
                     pill: Settings.statusPill === "on"
                     along: (isl.vertical ? statusRow.implicitHeight : statusRow.implicitWidth) + (isl.floating ? 16 : 4)
+                    grows: isl.zoneFills("end")
                     MouseArea { anchors.fill: parent; onClicked: isl.quickRequested() }   // the island's gaps open Quick settings too
                     GridLayout {
                         id: statusRow
-                        anchors.centerIn: parent
+                        anchors.centerIn: statusIsland.grows ? undefined : parent
+                        anchors.fill: statusIsland.grows ? parent : undefined
                         flow: isl.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
                         rows: isl.vertical ? -1 : 1
                         columns: isl.vertical ? 1 : -1
-                        rowSpacing: isl.shelf ? 12 : 2
-                        columnSpacing: isl.shelf ? 12 : 2
+                        rowSpacing: isl.mb.gap >= 0 ? isl.mb.gap : isl.shelf ? 12 : 2
+                        columnSpacing: isl.mb.gap >= 0 ? isl.mb.gap : isl.shelf ? 12 : 2
                         Repeater { model: isl.zoneItems("end"); delegate: BarSlot {} }
                     }
                 }
@@ -348,6 +387,7 @@ PanelWindow {
                 Loader { active: Settings.gameModeAt !== "start" && Settings.gameModeAt !== "before-status"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
                 // ---- a layout's Show desktop strip, last
                 Loader { active: isl.showLast; visible: active; sourceComponent: cBlock; Layout.alignment: Qt.AlignCenter; onLoaded: item.kind = "showdesktop" }
+                Item { Layout.fillWidth: !isl.vertical && (isl.mb.lineup === "start" || isl.mb.lineup === "centre"); Layout.fillHeight: isl.vertical && (isl.mb.lineup === "start" || isl.mb.lineup === "centre") }
             }
 
             // ---- the middle of the bar (desktop layouts): the blocks put there, then your apps when the bar holds them
@@ -360,7 +400,7 @@ PanelWindow {
                 RowLayout {
                     id: centreRow
                     anchors.centerIn: parent
-                    spacing: 8 * isl.k
+                    spacing: isl.mb.gap >= 0 ? isl.mb.gap : 8 * isl.k
                     Repeater { model: isl.centred ? isl.zoneItems("centre") : []; delegate: BarSlot {} }
                     Loader {
                         id: centreApps
@@ -460,7 +500,11 @@ PanelWindow {
         }
         return out;
     }
-    function compFor(id) {
+    // a block in this part of the bar set to Fill (drag and drop board 2: Width › Fill)
+    function zoneFills(z) { return zoneItems(z).some(id => BL.normalize(BarLayout.lookOf(id)).w === "fill"); }
+    function compFor(id0) {
+        const id = T.baseId(id0);
+        if (id.indexOf("panel:") === 0) return cNested;   // a panel inside the bar (NestedPanel.qml)
         switch (id) {
         case "menu": return cMenu;
         case "search": return cSearch;
@@ -490,18 +534,53 @@ PanelWindow {
         case "showdesktop": return cBlock;
         case "power": return cBlock;
         }
+        if (id.indexOf("own:") === 0) return cOwn;   // a block you made (OwnBarBlock.qml)
         return null;
     }
-    component BarSlot: Loader {
+    // a block of the bar in its look (BlockLook.qml: drag and drop board 2)
+    component BarSlot: BlockLook {
+        id: slot
         required property string modelData
+        bid: modelData
+        vert: isl.vertical
+        side: isl.islandH
+        screenName: isl.screen ? isl.screen.name : ""
         Layout.alignment: Qt.AlignCenter
-        visible: status === Loader.Ready && !!item && item.wanted !== false
-        sourceComponent: isl.compFor(modelData)
-        onLoaded: if (item && item.objectName === "layoutBlock") item.kind = modelData
-        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the bar's " + modelData + " couldn't load")
+        Layout.fillWidth: wantsFill && !isl.vertical
+        Layout.fillHeight: wantsFill && isl.vertical
+        visible: shownNow && slotLd.status === Loader.Ready && !!slotLd.item && slotLd.item.wanted !== false
+        Loader {
+            id: slotLd
+            sourceComponent: isl.compFor(slot.modelData)
+            onLoaded: {
+                if (item && item.objectName === "layoutBlock") item.kind = T.baseId(slot.modelData);
+                if (item && item.objectName === "ownBlock") item.kind = slot.modelData;
+                if (item && item.objectName === "nestedPanel") item.kind = slot.modelData;
+            }
+            onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the bar's " + slot.modelData + " couldn't load")
+        }
+    }
+    // a panel inside the main bar (NestedPanel.qml, by file name: a problem there only loses the panel inside)
+    Component {
+        id: cNested
+        Loader {
+            objectName: "nestedPanel"
+            property string kind: ""
+            readonly property bool wanted: status === Loader.Ready && !!item && item.wanted
+            source: "NestedPanel.qml"
+            onLoaded: {
+                item.pid = Qt.binding(() => kind.indexOf("panel:") === 0 ? kind.slice(6) : "");
+                item.hostSize = Qt.binding(() => Math.max(26, isl.islandH - 8));
+                item.hostVertical = Qt.binding(() => isl.vertical);
+                item.hostEdge = Qt.binding(() => isl.edge);
+                item.hostScreen = Qt.binding(() => isl.screen);
+            }
+            onStatusChanged: if (status === Loader.Error) console.warn("Mantel: a panel inside the bar couldn't load (NestedPanel.qml)")
+        }
     }
 
     // Desktop layouts' own blocks (LayoutBlock.qml: the same in the extra panels)
+    Component { id: cOwn; OwnBarBlock { objectName: "ownBlock"; side: Math.max(26, isl.islandH - 12); vert: isl.vertical } }
     Component {
         id: cBlock
         LayoutBlock {
@@ -885,13 +964,27 @@ PanelWindow {
     component Island: Item {
         property bool lit: false
         property real along: 0
-        property real rad: isl.gaming ? 0 : Theme.r(isl.islandH / 2.4)
+        property real rad: isl.mb.corners >= 99 ? Math.round(isl.islandH / 2) : isl.mb.corners >= 0 ? isl.mb.corners : isl.gaming ? 0 : Theme.r(isl.islandH / 2.4)
         property bool pill: false              // framed even in a full-width bar (a layout's status pill)
-        Layout.fillHeight: !isl.vertical
-        Layout.fillWidth: isl.vertical
+        property bool grows: false             // a block in it is set to Fill: it takes the room the bar has
+        readonly property bool framed: isl.floating || pill
+        // the bar's own fill, see-through or blur (drag and drop board 2) instead of the look's frame
+        readonly property bool ownFill: isl.mb.fill !== "" || isl.mb.see > 0 || isl.mb.blur
+        Layout.fillHeight: !isl.vertical || grows
+        Layout.fillWidth: isl.vertical || grows
         Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : along
         Layout.preferredHeight: isl.vertical ? along : (isl.islandH || 52)
-        Frame { anchors.fill: parent; flat: !isl.floating && !parent.pill; lit: parent.lit; rad: parent.pill && !isl.floating ? Theme.r(height / 2) : parent.rad }
+        Frame { anchors.fill: parent; visible: !(parent.ownFill && parent.framed); flat: !isl.floating && !parent.pill; lit: parent.lit; rad: parent.pill && !isl.floating ? Theme.r(height / 2) : parent.rad }
+        Rectangle {
+            id: ownIsland
+            anchors.fill: parent
+            visible: parent.ownFill && parent.framed
+            radius: parent.pill && !isl.floating ? Theme.r(height / 2) : parent.rad
+            color: isl.mb.fill !== "" ? BL.argb(isl.mb.fill, 1 - isl.mb.see / 100) : Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 1 - isl.mb.see / 100)
+            border.width: 1
+            border.color: parent.lit ? Theme.accent : Theme.line
+            Loader { z: -1; anchors.fill: parent; active: isl.mb.blur && ownIsland.visible; source: "Frost.qml"; onLoaded: item.rad = Qt.binding(() => ownIsland.radius) }
+        }
     }
 
     // Back to Game Mode: dressed per look, hidden only while Game Mode is off on this PC (Settings › System › Startup).

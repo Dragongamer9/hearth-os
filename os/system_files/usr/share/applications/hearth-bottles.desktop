@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Bottles
+Comment=Windows apps, each in its own bottle (built on Bottles)
+Exec=/usr/bin/hearth-bottles
+TryExec=/usr/bin/hearth-bottles
+Icon=hearth-bottles
+Categories=Utility;System;
+Keywords=bottles;wine;windows;apps;exe;msi;prefix;office;
+StartupWMClass=hearth-bottles

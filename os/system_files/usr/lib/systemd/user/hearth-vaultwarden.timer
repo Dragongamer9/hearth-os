@@ -1,0 +1,10 @@
+# Vaultwarden (Hearth Passwords' vault): started a minute after you sign in. Off in the image and while it's off (its app enables it for your
+# account together with the service).
+[Unit]
+Description=Hearth home server: Vaultwarden (Hearth Passwords' vault), a minute after sign-in
+
+[Timer]
+OnStartupSec=1min
+
+[Install]
+WantedBy=timers.target

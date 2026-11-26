@@ -1,0 +1,21 @@
+# OpenRGB's SDK server (OpenRGB, GPL-2), which Hearth Lights talks to: OpenRGB from the system when it's there, else
+# its Flathub copy (hearth-openrgb-server). Started by Hearth Lights when you use your lights, and at sign-in once you
+# have. Nothing waits for it and nothing needs it to start, so it can never hold up Game Mode or the desktop; if it
+# fails it's tried a few times, then left alone (your lights just keep what they last had).
+[Unit]
+Description=OpenRGB's server for Hearth Lights
+ConditionPathExists=/usr/libexec/nimbus/hearth-openrgb-server
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+ExecStart=/usr/libexec/nimbus/hearth-openrgb-server
+Restart=on-failure
+RestartSec=15
+Nice=10
+CPUWeight=20
+MemoryMax=256M
+TimeoutStopSec=8
+
+[Install]
+WantedBy=default.target

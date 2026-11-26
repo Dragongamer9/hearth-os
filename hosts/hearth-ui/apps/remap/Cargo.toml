@@ -1,0 +1,19 @@
+# Hearth Remap (pure Rust, hearth-ui; board docs/mockups/open-source-apps/10-remap.png, checklist
+# docs/mockups/checklists/open-source-10-remap.md): any key, mouse or controller button, your way, built on Input
+# Remapper (GPL-3): its presets and its service. No version line: the owner picks every version number.
+[package]
+name = "hearth-remap"
+edition = "2021"
+description = "Hearth Remap: any key, mouse or controller button, your way (built on Input Remapper)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-remap-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

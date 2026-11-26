@@ -4,6 +4,11 @@
 // notifications, the keyboard layout, Game Mode, and the bar widgets). Made and changed in Arrange the bar
 // (BarArrange.qml) and kept in bar.json (BarLayout.qml, one key per panel). A panel on a screen that isn't plugged in
 // waits in the file until it's back. Each one reserves its own room like the main bar, on KWin and on labwc.
+// Drag and drop board 2: each block in its look (BlockLook.qml), and each panel's own settings (widget-tools.js
+// panelOf): any length at any offset along its edge (so more than one shares an edge), corners, fill, see-through,
+// blur, the gap between blocks, how they line up, islands or one strip, hide until pointed at, over windows or keeping
+// their space, under or above them; a panel inside a bar or a panel is drawn there (NestedPanel.qml).
+// What a panel can hold is in PanelBlocks.qml.
 // Loaded by shell.qml by file name: a problem here only loses the extra panels, never the main bar.
 //   quickshell ipc -p <shell folder> call panels list|count|add <screen> <edge>|clone <screen> <edge>|remove <id>|arrange <tab>
 //                                              |move <item> <dir> <zone>|layout|reset|clock <key> <json>
@@ -17,6 +22,7 @@ import Quickshell.Services.SystemTray
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 import "widget-tools.js" as T
+import "block-look.js" as BL
 
 Scope {
     id: root
@@ -33,52 +39,86 @@ Scope {
     }
 
     Variants {
-        model: BarLayout.panels.filter(p => root.screenFor(p.screen || root.mainScreen) !== null)
+        // a panel inside a bar or a panel (inside: …) is drawn there (NestedPanel.qml), not on its own
+        model: BarLayout.panels.filter(p => !p.inside && root.screenFor(p.screen || root.mainScreen) !== null)
         delegate: Component {
             PanelWindow {
                 id: pw
                 required property var modelData
                 readonly property var p: modelData
-                readonly property bool vertical: p.edge === "left" || p.edge === "right"
+                readonly property bool vertical: p.free ? p.orient === "down" : (p.edge === "left" || p.edge === "right")
                 readonly property int size: p.size
                 // desktop layouts' panel styles: "" full width, "floating" (off the edge, rounded), "centred" (only as
-                // long as what it holds, in the middle of its edge)
-                readonly property bool floats: p.style === "floating" || p.style === "centred"
-                readonly property int gap: floats ? 8 : 0
+                // long as what it holds, in the middle of its edge); and (drag and drop board 2) any length along its
+                // edge, at any offset from the corner, so more than one can share an edge
+                readonly property bool floats: p.free || p.style === "floating" || p.style === "centred" || p.len !== "full"
+                readonly property int gap: p.free ? 0 : floats ? 8 : 0
+                readonly property real alongScreen: screen ? (vertical ? screen.height : screen.width) : 1920
+                // its length: a free one as asked (or as what it holds); on an edge full, fit, a share or px
+                readonly property real bodyLen: p.free ? (p.length > 0 ? p.length : Math.max(60, body.want))
+                    : T.lengthOf(p.len, p.lenV, alongScreen - gap * 2, body.want)
+                // Hide until pointed at: a thin handle at its edge brings it back
+                property bool peek: false
+                readonly property bool hiddenNow: p.autoHide && !peek && !hov.hovered
                 screen: root.screenFor(p.screen || root.mainScreen)
-                anchors { top: p.edge !== "bottom"; bottom: p.edge !== "top"; left: p.edge !== "right"; right: p.edge !== "left" }
-                implicitHeight: vertical ? 0 : size + gap * 2
-                implicitWidth: vertical ? size + gap * 2 : 0
-                exclusiveZone: size + gap * 2
+                anchors { top: p.free || p.edge !== "bottom"; bottom: !p.free && p.edge !== "top"; left: p.free || p.edge !== "right"; right: !p.free && p.edge !== "left" }
+                margins.left: p.free && screen ? Math.round(p.fx * Math.max(0, screen.width - implicitWidth)) : 0
+                margins.top: p.free && screen ? Math.round(p.fy * Math.max(0, screen.height - implicitHeight)) : 0
+                implicitHeight: p.free ? (vertical ? bodyLen : size) : vertical ? 0 : size + gap * 2
+                implicitWidth: p.free ? (vertical ? size : bodyLen) : vertical ? size + gap * 2 : 0
+                // above windows (over them) or keeping their space; hidden until pointed at keeps none
+                exclusiveZone: p.free || p.over || p.autoHide ? 0 : size + gap * 2
                 // only the panel itself takes clicks (a centred one's empty sides don't)
-                mask: Region { item: body }
+                mask: Region { item: pw.hiddenNow ? handle : body }
                 color: "transparent"
                 WlrLayershell.namespace: "hearth-panel"
-                WlrLayershell.layer: WlrLayer.Top
+                WlrLayershell.layer: p.layer === "bottom" ? WlrLayer.Bottom : WlrLayer.Top
                 WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+                PanelBlocks { id: pb }
+
+                Item {
+                    id: handle
+                    width: pw.vertical ? 6 : Math.max(60, Math.min(220, body.width))
+                    height: pw.vertical ? Math.max(60, Math.min(220, body.height)) : 6
+                    x: pw.vertical ? (pw.p.edge === "right" ? pw.width - width : 0) : body.x + (body.width - width) / 2
+                    y: pw.vertical ? body.y + (body.height - height) / 2 : (pw.p.edge === "bottom" ? pw.height - height : 0)
+                    Rectangle { anchors.centerIn: parent; width: pw.vertical ? 3 : 60; height: pw.vertical ? 60 : 3; radius: 2; color: Theme.muted; opacity: pw.hiddenNow ? 0.6 : 0 }
+                    HoverHandler { onHoveredChanged: if (hovered) { pw.peek = true; peekOff.restart(); } }
+                }
+                Timer { id: peekOff; interval: 900; onTriggered: { if (!hov.hovered) pw.peek = false; else peekOff.restart(); } }
 
                 Rectangle {
                     id: body
                     readonly property real along: pw.vertical ? pw.height : pw.width
                     readonly property real want: (pw.vertical ? row.implicitHeight : row.implicitWidth) + 24
-                    readonly property real len: pw.p.style === "centred" ? Math.min(along - pw.gap * 2, want) : along - pw.gap * 2
-                    x: pw.vertical ? pw.gap : (pw.width - width) / 2
-                    y: pw.vertical ? (pw.height - height) / 2 : pw.gap
+                    readonly property real len: pw.p.free ? along : Math.max(40, Math.min(along - pw.gap * 2, pw.bodyLen))
+                    readonly property real start: pw.p.free ? 0 : pw.p.offset >= 0 ? Math.max(pw.gap, Math.min(along - len - pw.gap, pw.p.offset + pw.gap)) : (along - len) / 2
+                    x: pw.vertical ? pw.gap : start
+                    y: pw.vertical ? start : pw.gap
                     width: pw.vertical ? pw.size : len
                     height: pw.vertical ? len : pw.size
-                    radius: pw.floats ? Theme.r(Math.min(14, pw.size / 2)) : 0
-                    border.width: pw.floats ? 1 : 0
+                    opacity: pw.hiddenNow ? 0 : 1
+                    Behavior on opacity { enabled: !Settings.reduceMotion; NumberAnimation { duration: Theme.quick } }
+                    radius: pw.p.corners >= 99 ? Math.min(width, height) / 2 : pw.p.corners >= 0 ? pw.p.corners : pw.floats ? Theme.r(Math.min(14, pw.size / 2)) : 0
+                    border.width: pw.floats && !pw.p.islands ? 1 : 0
                     border.color: Theme.line
-                    color: Theme.glass
+                    // its fill and see-through (islands: each block has its own, the panel none)
+                    color: pw.p.islands ? "transparent"
+                        : pw.p.fill !== "" ? BL.argb(pw.p.fill, 1 - pw.p.see / 100)
+                        : pw.p.see > 0 ? Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 1 - pw.p.see / 100) : Theme.glass
+                    HoverHandler { id: hov }
+                    // blur behind it: the wallpaper, blurred (Frost.qml), under its fill
+                    Loader { z: -1; anchors.fill: parent; active: pw.p.blur && !pw.p.islands; source: "Frost.qml"; onLoaded: item.rad = Qt.binding(() => body.radius) }
                     Rectangle {   // the line toward the windows
-                        visible: !pw.floats
+                        visible: !pw.floats && !pw.p.islands
                         color: Theme.line
                         width: pw.vertical ? 1 : parent.width
                         height: pw.vertical ? parent.height : 1
                         x: pw.p.edge === "left" ? parent.width - 1 : 0
                         y: pw.p.edge === "top" ? parent.height - 1 : 0
                     }
-                    Loader { anchors.fill: parent; active: Theme.frame === "frost"; source: "Frame.qml" }
+                    Loader { anchors.fill: parent; active: Theme.frame === "frost" && !pw.p.islands && !pw.p.blur && pw.p.fill === ""; source: "Frame.qml" }
                 }
                 MouseArea {
                     anchors.fill: body
@@ -88,210 +128,39 @@ Scope {
                 GridLayout {
                     id: row
                     anchors { fill: body; leftMargin: pw.vertical ? 4 : 8; rightMargin: pw.vertical ? 4 : 8; topMargin: pw.vertical ? 8 : 4; bottomMargin: pw.vertical ? 8 : 4 }
+                    opacity: body.opacity
                     flow: pw.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
                     rows: pw.vertical ? -1 : 1
                     columns: pw.vertical ? 1 : -1
-                    rowSpacing: 6; columnSpacing: 6
+                    rowSpacing: pw.p.gap >= 0 ? pw.p.gap : 6
+                    columnSpacing: pw.p.gap >= 0 ? pw.p.gap : 6
+                    // its blocks, lined up (start, centre, end or spread: "~" is a stretch), each in its look
                     Repeater {
-                        model: pw.p.items
-                        delegate: Loader {
+                        model: T.lineup(pw.p.items, pw.p.lineup)
+                        delegate: BlockLook {
+                            id: slot
                             required property string modelData
+                            readonly property bool stretch: modelData === "~" || T.baseId(modelData) === "spacer" || wantsFill
+                            bid: modelData === "~" ? "" : modelData
+                            vert: pw.vertical
+                            side: pw.size
+                            island: pw.p.islands && !stretch
+                            screenName: pw.screen ? pw.screen.name : ""
                             Layout.alignment: Qt.AlignCenter
-                            Layout.fillWidth: modelData === "spacer" && !pw.vertical
-                            Layout.fillHeight: modelData === "spacer" && pw.vertical
-                            sourceComponent: modelData === "spacer" ? cSpacer : modelData === "menu" ? cMenu : modelData === "apps" ? cApps
-                                : modelData === "windows" ? cWindows : modelData === "clock" ? cClock : modelData === "tray" ? cTray
-                                : modelData === "status" ? cStatus : modelData === "notifications" ? cNotes : modelData === "layout" ? cLayout
-                                : modelData === "gamemode" ? cGame : root.blocks.indexOf(modelData) >= 0 ? cBlock : cWidget
-                            onLoaded: { if (item.panel !== undefined) item.panel = pw; if (item.kind !== undefined) item.kind = modelData; }
-                            onStatusChanged: if (status === Loader.Error) console.warn("panels: " + modelData + " couldn't load")
+                            Layout.fillWidth: stretch && !pw.vertical
+                            Layout.fillHeight: stretch && pw.vertical
+                            visible: modelData === "~" || (shownNow && ld.status !== Loader.Error && (!ld.item || ld.item.wanted !== false))
+                            Loader {
+                                id: ld
+                                active: slot.modelData !== "~"
+                                sourceComponent: pb.compFor(slot.modelData)
+                                onLoaded: { if (item.panel !== undefined) item.panel = pw; if (item.kind !== undefined) item.kind = T.baseId(slot.modelData); }
+                                onStatusChanged: if (status === Loader.Error) console.warn("panels: " + slot.modelData + " couldn't load")
+                            }
                         }
                     }
                 }
             }
-        }
-    }
-
-    // ------------------------------------------------------------------ what a panel can hold
-    // Desktop layouts' own blocks: LayoutBlock.qml, the same as in the main bar
-    readonly property var blocks: ["overview", "taskview", "appname", "appmenus", "quickaccess", "showdesktop", "power"]
-    Component {
-        id: cBlock
-        LayoutBlock {
-            property var panel: null
-            side: panel ? panel.size - 10 : 34
-            vertical: !!panel && panel.vertical
-            edge: panel ? panel.p.edge : "bottom"
-        }
-    }
-    Component { id: cSpacer; Item { implicitWidth: 8; implicitHeight: 8 } }
-    Component {
-        id: cMenu
-        PBtn {
-            tip: "Apps"
-            onClicked: root.ipc("launcher", "toggle")
-            Image { anchors.centerIn: parent; width: parent.side * 0.62; height: width; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
-        }
-    }
-    Component {
-        id: cApps
-        Loader {
-            property var panel: null
-            source: "TaskStrip.qml"
-            onLoaded: {
-                item.screen = Qt.binding(() => panel ? panel.screen : null);
-                item.vertical = Qt.binding(() => !!panel && panel.vertical);
-                item.edge = Qt.binding(() => panel ? panel.p.edge : "bottom");
-                item.side = Qt.binding(() => panel ? panel.size - 8 : 36);
-                item.barW = Qt.binding(() => panel ? panel.width : 0);
-                item.barH = Qt.binding(() => panel ? panel.height : 0);
-                item.primary = false;
-            }
-        }
-    }
-    Component {
-        id: cWindows
-        Row {   // every window: its icon (lit when in front); click to bring it forward or minimize it
-            property var panel: null
-            spacing: 2
-            Repeater {
-                model: (WinList.toplevels ? WinList.toplevels.values : []).filter(t => !/quickshell/i.test(t.appId || "") && (t.title || t.appId)).slice(0, 14)
-                delegate: PBtn {
-                    id: wb
-                    required property var modelData
-                    tip: modelData.title || modelData.appId || ""
-                    lit: modelData.activated
-                    onClicked: { if (modelData.activated && !modelData.minimized) { if (modelData.setMinimized) modelData.setMinimized(true); else modelData.minimized = true; } else modelData.activate(); }
-                    AppIcon { anchors.centerIn: parent; size: wb.side * 0.62; appId: wb.modelData.appId || ""; icon: "" }
-                }
-            }
-        }
-    }
-    Component {
-        id: cClock
-        Item {
-            property var panel: null
-            readonly property bool vert: !!panel && panel.vertical
-            implicitWidth: ct.implicitWidth + (vert ? 4 : 16); implicitHeight: ct.implicitHeight + 6
-            SystemClock { id: sc; precision: SystemClock.Minutes }
-            Column {   // across: 7:12 PM over Tue 17 Nov; down a side: the hours over the minutes
-                id: ct
-                anchors.centerIn: parent
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(sc.date, parent.parent.vert ? (Settings.clock24 ? "HH" : "h") : Settings.clock24 ? "HH:mm" : "h:mm AP"); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                Text { visible: parent.parent.vert; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(sc.date, "mm"); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: parent.parent.vert ? Qt.formatDate(sc.date, "d MMM") : Qt.formatDate(sc.date, "ddd d MMM"); color: Theme.muted; font.family: Theme.font; font.pixelSize: parent.parent.vert ? 9 : 10 }
-            }
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ipc("calendar", "toggle") }
-        }
-    }
-    Component {
-        id: cTray
-        Row {
-            spacing: 2
-            Repeater {
-                model: SystemTray.items
-                delegate: PBtn {
-                    id: tb
-                    required property SystemTrayItem modelData
-                    tip: modelData.tooltipTitle || modelData.title || modelData.id || ""
-                    onClicked: { if (modelData.onlyMenu && modelData.hasMenu) menuNow(); else modelData.activate(); }
-                    onRightClicked: { if (modelData.hasMenu) menuNow(); else modelData.secondaryActivate(); }
-                    function menuNow() { const w = tb.QsWindow.window; const q = tb.mapToItem(null, 0, tb.height); if (w) modelData.display(w, q.x, q.y); }
-                    IconImage { anchors.centerIn: parent; implicitSize: parent.side * 0.55; source: tb.modelData.icon }
-                }
-            }
-        }
-    }
-    Component {
-        id: cStatus
-        PBtn {
-            id: sbtn
-            readonly property var sink: Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
-            readonly property var batt: UPower.displayDevice
-            PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
-            implicitWidth: st.implicitWidth + 16
-            implicitHeight: Math.max(side, st.implicitHeight + 12)
-            tip: (sink ? (sink.muted ? "Muted" : "Volume " + Math.round(sink.volume * 100) + "%") : "") + (batt && batt.isLaptopBattery ? "\nBattery " + Math.round(batt.percentage * 100) + "%" : "")
-            onClicked: root.ipc("quick", "toggle")
-            onScrolled: d => { if (sink) sink.volume = Math.max(0, Math.min(Buttons.maxVolume, sink.volume + (d > 0 ? 0.05 : -0.05))); }
-            Grid {
-                id: st
-                anchors.centerIn: parent
-                columns: sbtn.panel && sbtn.panel.vertical ? 1 : 3
-                spacing: 6
-                Icon { name: "wifi"; size: 16 }
-                Icon { name: !sbtn.sink || sbtn.sink.muted ? "vol-mute" : "vol"; size: 16 }
-                Icon { visible: !!sbtn.batt && sbtn.batt.isLaptopBattery; name: "batt"; size: 16 }
-            }
-        }
-    }
-    Component {
-        id: cNotes
-        PBtn {
-            tip: NotifyHub.quiet ? "Quiet" : DeskState.unseen + " new"
-            badge: NotifyHub.quiet ? 0 : DeskState.unseen
-            onClicked: root.ipc("calendar", "toggle")
-            Icon { anchors.centerIn: parent; name: NotifyHub.quiet ? "bell-off" : "bell"; size: 17 }
-        }
-    }
-    Component {
-        id: cLayout
-        PBtn {
-            tip: NotifyHub.layoutName
-            onClicked: NotifyHub.nextLayout()
-            Text { anchors.centerIn: parent; text: NotifyHub.layoutShort || "—"; color: Theme.text; font.family: Theme.font; font.pixelSize: 12; font.bold: true }
-        }
-    }
-    Component {
-        id: cGame
-        Rectangle {   // Game Mode, always one press away in a panel too (down a side: the controller only); hidden while it's off
-            property var panel: null
-            visible: !Settings.gameModeOff
-            readonly property bool vert: !!panel && panel.vertical
-            implicitWidth: vert ? 34 : gr.implicitWidth + 24; implicitHeight: vert ? 34 : 30
-            radius: Theme.r(15)
-            color: ga.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
-            Row { id: gr; anchors.centerIn: parent; spacing: 6; Icon { name: "pad"; size: 16; color: Theme.accentInk } Text { visible: !gr.parent.vert; text: "Game Mode"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.bold: true } }
-            MouseArea { id: ga; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Quickshell.execDetached(["nimbus-mode", "game"]) }
-        }
-    }
-    Component {
-        id: cWidget
-        Loader {   // a bar widget's small form (widget:weather, widget:monitor…), with its own defaults
-            property string kind: ""
-            readonly property string type: kind.indexOf("widget:") === 0 ? kind.slice(7) : ""
-            source: type ? "Widget" + type.charAt(0).toUpperCase() + type.slice(1) + ".qml" : ""
-            onLoaded: { item.compact = true; item.height = 28; }
-        }
-    }
-
-    component PBtn: Item {
-        id: b
-        property string tip: ""
-        property bool lit: false
-        property int badge: 0
-        property var panel: null
-        default property alias content: holder.data
-        readonly property real side: 34
-        signal clicked()
-        signal rightClicked()
-        signal scrolled(int delta)
-        implicitWidth: side; implicitHeight: side
-        Rectangle { anchors.fill: parent; radius: Theme.r(9); color: ma.containsMouse ? Theme.panel3 : b.lit ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.1) : "transparent" }
-        Rectangle { visible: b.lit; anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom } width: 14; height: 3; radius: 1.5; color: Theme.accent }
-        Item { id: holder; anchors.fill: parent; readonly property real side: b.side }   // what's put in reads side from here
-        Rectangle {
-            visible: b.badge > 0
-            x: b.side / 2 + 2; y: 2; width: Math.max(15, bt.implicitWidth + 7); height: 15; radius: 7.5; color: Theme.accent
-            Text { id: bt; anchors.centerIn: parent; text: b.badge > 9 ? "9+" : String(b.badge); color: Theme.accentInk; font.pixelSize: 9; font.bold: true; font.family: Theme.font }
-        }
-        MouseArea {
-            id: ma
-            anchors.fill: parent
-            hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: m => { if (m.button === Qt.RightButton) b.rightClicked(); else b.clicked(); }
-            onWheel: w => b.scrolled(w.angleDelta.y)
         }
     }
 

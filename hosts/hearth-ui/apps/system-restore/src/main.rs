@@ -95,7 +95,7 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let helper = std::env::var("HEARTH_RESTORE_HELPER").unwrap_or_else(|_| run::shell_helper("hearth_restore.py"));
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("system-restore", "System Restore").with_pages(BLOCKS),
+            describe: hearth_ui::describe::Describe::new("system-restore", "System Restore").with_pages(BLOCKS).with_kit(&KIT),
             p: hearth_ui::theme::load(),
             helper,
             ov: None,
@@ -243,7 +243,13 @@ impl App {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of System Restore's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(|id| block_action(a, id)) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Overview(o) => {
             match o.json() {
@@ -470,6 +476,86 @@ const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
     ],
 }];
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// System Restore's blocks window: its buttons, its panes, its info.
+const KIT: Kit = Kit {
+    name: "System Restore",
+    buttons: &[
+        tile("make", "Make a restore point now", G::Plus),
+        tile("restore", "Restore", G::Restore),
+        tile("see", "See every changed setting", G::List),
+        tile("older", "Show older restore points", G::Clock),
+        tile("newest", "The newest point", G::Clock),
+        tile("oldest", "The oldest point", G::Clock),
+    ],
+    panes: &[tile("picked", "The point picked", G::Restore), tile("changes", "What will change", G::List), tile("points", "Every restore point", G::List)],
+    info: &[tile("points", "Restore points", G::List), tile("picked", "The point picked", G::Restore), tile("changes", "Settings that change", G::List)],
+    pane_page: "main",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of System Restore's buttons dragged in, pressed.
+fn block_action(a: &App, id: &str) -> Option<Msg> {
+    Some(match id {
+        "make" => Msg::MakePoint,
+        "restore" => Msg::AskRestore,
+        "see" => Msg::SeeChanges,
+        "older" => Msg::ToggleOlder,
+        "newest" => Msg::Pick(0),
+        "oldest" => Msg::Pick(a.points().len().saturating_sub(1)),
+        _ => return None,
+    })
+}
+
+fn point_name(v: &Value) -> String {
+    for k in ["title", "name", "label", "desc"] {
+        let x = s(v, k);
+        if !x.is_empty() {
+            return x;
+        }
+    }
+    s(v, "id")
+}
+
+fn studio_values(a: &App) {
+    let pts = a.points();
+    a.describe.values(vec![("points", pts.len().to_string()), ("picked", pts.get(a.sel).map(point_name).unwrap_or_default()), ("changes", a.change_list.len().to_string())]);
+}
+
+/// A pane of System Restore's own: the point picked, what will change, every point.
+fn studio_pane<'a>(a: &'a App, which: &str) -> Element<'a, Msg> {
+    let p = a.p;
+    let pts = a.points();
+    let mut c = Column::new().spacing(6.0);
+    match which {
+        "picked" => {
+            if let Some(v) = pts.get(a.sel) {
+                c = c.push(ts(point_name(v), 15.0, p.text));
+                let when = n(v, "time");
+                if when > 0 {
+                    c = c.push(t(time::long(when), 12.0, p.muted));
+                }
+            }
+        }
+        "changes" => {
+            for ch in a.change_list.iter().take(14) {
+                c = c.push(t1(ui::fit(&format!("{} → {}", s(ch, "key"), s(ch, "to")), 44), 13.0, p.text));
+            }
+            if a.change_list.is_empty() {
+                c = c.push(t("Pick a restore point to see what changes.", 13.0, p.muted));
+            }
+        }
+        _ => {
+            for (i, v) in pts.iter().enumerate().take(14) {
+                c = c.push(mouse_area(t1(ui::fit(&point_name(v), 44), 13.0, if i == a.sel { p.accent } else { p.text })).on_press(Msg::Pick(i)).interaction(mouse::Interaction::Pointer));
+            }
+        }
+    }
+    scrollable(c).height(Length::Fill).into()
+}
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Restore, "System Restore", Some(hearth_ui::arrange::edit_button(&p, Msg::Describe(hearth_ui::arrange::edit_layout()))), TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
@@ -557,17 +643,26 @@ fn view(a: &App) -> Element<'_, Msg> {
         &a.describe,
         &p,
         "main",
-        vec![
-            ("header", header.into()),
-            ("heads", heads.into()),
-            ("points", points.into()),
-            ("older", older.into()),
-            ("changes", aside.into()),
-            ("see", see.into()),
-            ("make", make),
-            ("status", status.into()),
-            ("go", go.into()),
-        ],
+        {
+            studio_values(a);
+            let mut items: Vec<(&'static str, Element<'_, Msg>)> = vec![
+                ("header", header.into()),
+                ("heads", heads.into()),
+                ("points", points.into()),
+                ("older", older.into()),
+                ("changes", aside.into()),
+                ("see", see.into()),
+                ("make", make),
+                ("status", status.into()),
+                ("go", go.into()),
+            ];
+            for (id, which) in [("pane:picked", "picked"), ("pane:changes", "changes"), ("pane:points", "points")] {
+                if a.describe.wants_pane(which) {
+                    items.push((id, studio_pane(a, which)));
+                }
+            }
+            items
+        },
         |ps| {
             let left = column![ps.take("heads"), gap(1.0, 4.0), ps.take("points"), ps.take("older")].width(Length::Fill).height(Length::Fill);
             let aside = container(column![ps.take("changes"), iced::widget::Space::new().height(Length::Fill), ps.take("see")].spacing(12.0))

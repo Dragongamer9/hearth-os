@@ -50,11 +50,13 @@ ShellRoot {
                 property var dockWin: null
                 property bool newFailed: false
                 property string builtKey: ""
+                // the bar's look and, from the desktop editor (drag and drop board 2), the main bar's own edge
+                function wantKey() { return Theme.barKey + "|" + BarLayout.mainKey; }
                 function makeNew() {
                     dropNew();
                     // Build anything: a whole-screen desktop that does what the bar and dock do (its guide, menu and
                     // Game Mode) has them away while it's drawn; they come back the moment it isn't.
-                    if (perScreen.primary && ScreenLayout.hidesBars && perScreen.screenWin) { builtKey = Theme.barKey; newFailed = false; return; }
+                    if (perScreen.primary && ScreenLayout.hidesBars && perScreen.screenWin) { builtKey = perScreen.wantKey(); newFailed = false; return; }
                     const wantDock = Theme.dockFloats;
                     const ci = Qt.createComponent("Islands.qml"), cd = wantDock ? Qt.createComponent("Dock.qml") : null;
                     if (ci.status !== Component.Ready || cd && cd.status !== Component.Ready) {
@@ -62,8 +64,8 @@ ShellRoot {
                         newFailed = true;
                         return;
                     }
-                    builtKey = Theme.barKey;
-                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock && !Theme.appsNowhere });
+                    builtKey = perScreen.wantKey();
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: BarLayout.mainSide(Theme.barEdge), holdsApps: !wantDock && !Theme.appsNowhere });
                     dockWin = wantDock ? cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu }) : null;
                     if (!islandsWin || wantDock && !dockWin) {
                         console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");
@@ -101,9 +103,13 @@ ShellRoot {
                 onSettingsReadyChanged: if (settingsReady && !portrait) makeNew()
                 Connections {
                     target: Theme
-                    function onBarKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && Theme.barKey !== perScreen.builtKey) rebuild.restart(); }
+                    function onBarKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && perScreen.wantKey() !== perScreen.builtKey) rebuild.restart(); }
                 }
-                Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && Theme.barKey !== perScreen.builtKey) perScreen.makeNew() }
+                Connections {
+                    target: BarLayout
+                    function onMainKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && perScreen.wantKey() !== perScreen.builtKey) rebuild.restart(); }
+                }
+                Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && perScreen.wantKey() !== perScreen.builtKey) perScreen.makeNew() }
                 onPortraitChanged: { if (portrait) dropNew(); else if (settingsReady) makeNew(); }
                 Component.onCompleted: { makeHints(); if (ScreenLayout.loaded) makeScreen(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
                 Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); if (screenWin) screenWin.destroy(); }
@@ -213,6 +219,55 @@ ShellRoot {
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the overview couldn't load (Overview.qml)")
         function toggle() { if (!active) active = true; else if (item) item.toggle(); }
     }
+    // Edit desktop: drag and drop (DesktopEditor.qml, loaded the first time it's opened, so a problem there only loses
+    // the editor). Opened from the desktop's menu (Edit desktop…) and Settings › Desktop layout.
+    Loader {
+        id: deskEdit
+        active: false
+        source: "DesktopEditor.qml"
+        property string pending: ""
+        onLoaded: item.open(pending)
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the desktop editor couldn't load (DesktopEditor.qml)")
+        function openOn(n) { pending = n || ""; if (!active) active = true; else if (item) item.open(pending); }
+    }
+    IpcHandler {
+        target: "deskedit"
+        function open(screen: string): void { deskEdit.openOn(screen); }
+        function close(): void { if (deskEdit.item) deskEdit.item.cancel(); }
+        function keep(): void { if (deskEdit.item && deskEdit.item.shown) deskEdit.item.keep(); }
+        function shown(): bool { return !!deskEdit.item && deskEdit.item.shown; }
+        // for the checks' pictures: a block from Blocks held at x, y (where it would land, its note), let go, picked
+        function hold(id: string, x: real, y: real): string {
+            const e = deskEdit.item; if (!e) return "";
+            e.startDrag(id, { kind: "lib" }, Qt.point(x, y)); return JSON.stringify({ target: e.target, note: e.note });
+        }
+        function letGo(): void { if (deskEdit.item) deskEdit.item.endDrag(); }
+        function pick(what: string): void { if (deskEdit.item) deskEdit.item.picked = what; }
+        function addPanel(edge: string): void { if (deskEdit.item) deskEdit.item.addPanel(edge); }
+        function undo(): void { if (deskEdit.item) deskEdit.item.undo(); }
+        function draft(): string { return deskEdit.item ? JSON.stringify(deskEdit.item.draft) : ""; }
+        // board 2 (one block picked): pick a block, its right-click menu, a tab of the side panel, a look set, the
+        // bar itself picked and its settings set; what's kept in bar.json for a block
+        function pickBlock(id: string): bool { return !!deskEdit.item && deskEdit.item.pickById(id); }
+        function menu(id: string): bool { return !!deskEdit.item && deskEdit.item.menuAtBlock(id); }
+        function closeMenu(): void { if (deskEdit.item) { deskEdit.item.menuBlk = null; deskEdit.item.popup = ""; } }
+        function tab(name: string): void { if (deskEdit.item) { deskEdit.item.tab = name; deskEdit.item.popup = ""; } }
+        function popup(name: string): void { if (deskEdit.item) deskEdit.item.popup = name; }
+        function look(id: string, json: string): string {
+            const e = deskEdit.item; if (!e) return "";
+            if (!e.blk || e.blk.id !== id) e.pickById(id);
+            try { e.setLook(JSON.parse(json), "ipc"); } catch (x) { return "bad json: " + x; }
+            return JSON.stringify(e.draft.looks[id] || null);
+        }
+        function pickBar(which: string): void { const e = deskEdit.item; if (!e) return; e.blk = null; e.menuBlk = null; e.picked = which === "main" || which === "" ? "main" : "p:" + which; }
+        function barSet(json: string): string {
+            const e = deskEdit.item; if (!e) return "";
+            try { const o = JSON.parse(json); for (const k in o) { if (k === "edge") e.setBarEdge(o[k]); else e.setBarKey(k, o[k]); } } catch (x) { return "bad json: " + x; }
+            return JSON.stringify(e.picked === "main" ? e.draft.bar : e.draft.panels[e.picked.slice(2)] || null);
+        }
+        function panels(): string { return deskEdit.item ? Object.keys(deskEdit.item.draft.panels).join(" ") : ""; }
+        function kept(id: string): string { return JSON.stringify(BarLayout.lookOf(id)); }
+    }
     // Describe it (DescribeIt.qml, loaded the first time it's asked for)
     Loader {
         id: describe
@@ -237,6 +292,40 @@ ShellRoot {
         function edit(app: string): void { const b = AppBlocksHub.get(app); if (b) b.edit(""); }
         function pick(app: string, id: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) b.picked = id; }
         function done(app: string): void { const b = AppBlocksHub.get(app); if (b) { b.menuShown = false; if (b.editing) b.done(); } }
+        // drag and drop board 3 (AppBlocksEditor.qml): a block held at x, y (from the app's Blocks window: "action:share",
+        // "pane:details", "make:button", or one already placed, by its id), let go; a part's edge held and moved; Customize
+        function hold(app: string, id: string, x: real, y: real): string {
+            const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "";
+            if (id.indexOf(":") > 0) e.grabLib(id, Qt.point(x, y)); else e.grabBlock(id, Qt.point(x, y));
+            return JSON.stringify({ target: e.target, note: e.note, line: e.lineX >= 0 });
+        }
+        function barItems(app: string, bar: string): string {
+            const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "[]";
+            const row = b.rowOf(b.parts[bar]); const p = b.draft.parts.find(q => q.id === bar);
+            if (!row || !p) return "[]";
+            return JSON.stringify(e.visibleKids(row).map(v => ({ name: e.itemName(v.item), x: Math.round(v.cx), y: Math.round(p.y + p.h / 2) })));
+        }
+        function marks(app: string): string { const b = AppBlocksHub.get(app); return b && b.editorItem ? JSON.stringify(b.editorItem.marksNow()) : "[]"; }
+        function letGo(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) b.editorItem.endDrag(); }
+        function size(app: string, id: string, edge: string, dx: real, dy: real): string {
+            const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "";
+            const p = b.draft.parts.find(q => q.id === id); if (!p) return "";
+            const ed = {}; ed[edge] = 1;
+            const at = edge === "l" ? Qt.point(p.x, p.y + p.h / 2) : edge === "r" ? Qt.point(p.x + p.w, p.y + p.h / 2) : edge === "t" ? Qt.point(p.x + p.w / 2, p.y) : Qt.point(p.x + p.w / 2, p.y + p.h);
+            e.grabPart(id, ed, at); e.movePart(Qt.point(at.x + dx, at.y + dy));
+            return JSON.stringify({ note: e.note, guides: e.guides });
+        }
+        function sizeLetGo(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) b.editorItem.letGoPart(); }
+        function customize(app: string, id: string, tab: string): void { const b = AppBlocksHub.get(app); if (b) b.customize(id, tab || "look"); }
+        function look(app: string, id: string, json: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) { try { b.setLook(id, JSON.parse(json)); } catch (e) {} } }
+        function layers(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) { b.editorItem.layersShown = !b.editorItem.layersShown; b.editorItem.startShown = false; } }
+        function startFrom(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) { b.editorItem.startShown = !b.editorItem.startShown; b.editorItem.layersShown = false; } }
+        function keep(app: string): void { const b = AppBlocksHub.get(app); if (b) b.keepThis(); }
+        function tryIt(app: string): void { const b = AppBlocksHub.get(app); if (b) b.tryIt(); }
+        function goBack(app: string): void { const b = AppBlocksHub.get(app); if (b) b.goBack(); }
+        function cancel(app: string): void { const b = AppBlocksHub.get(app); if (b && (b.editing || b.trying)) b.cancel(); }
+        function undo(app: string): void { const b = AppBlocksHub.get(app); if (b) b.undo(); }
+        function draft(app: string): string { const b = AppBlocksHub.get(app); return b && b.editing ? JSON.stringify(b.draft) : ""; }
         function partMenu(app: string, id: string): void { const b = AppBlocksHub.get(app); if (b) b.partMenu(id !== "" ? id : (b.defs.length ? b.defs[b.defs.length > 1 ? 1 : 0].id : ""), 160, 140); }
         function menus(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) b.openMenus(); }
         function describe(app: string): void { const b = AppBlocksHub.get(app); if (b) b.describe(); }
@@ -249,7 +338,9 @@ ShellRoot {
         function state(app: string): string {
             const b = AppBlocksHub.get(app);
             if (!b) return JSON.stringify({ open: false });
-            return JSON.stringify({ open: true, page: b.pageId, mode: b.mode, editing: b.editing, picked: b.picked, unreadable: b.unreadable,
+            return JSON.stringify({ open: true, page: b.pageId, mode: b.mode, editing: b.editing, trying: b.trying, picked: b.picked, unreadable: b.unreadable,
+                                    editor: !!b.editorItem, customize: b.customizeFor, added: b.effAdded.map(x => x.id + ":" + x.kind + ":" + (x.in || "window")),
+                                    looks: Object.keys(b.effLooks), lib: b.editorItem ? b.editorItem.lib.length : 0, bars: b.barIds, actions: b.actions.map(a => a.id),
                                     blocks: b.defs.map(d => d.id), parts: Object.keys(b.parts).filter(k => !!b.parts[k]),
                                     hidden: b.placed.filter(p => p.hidden).map(p => p.id), menus: b.menus.map(m => m.id),
                                     layoutItems: b.menuItems().map(i => i.label) });

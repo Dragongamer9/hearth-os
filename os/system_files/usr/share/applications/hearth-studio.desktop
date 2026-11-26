@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Studio
+GenericName=Streaming and recording
+Comment=Scenes, going live, recording and the sound mixer (built on OBS Studio)
+Exec=/usr/bin/hearth-studio-app
+TryExec=/usr/bin/hearth-studio-app
+Icon=hearth-studio
+Categories=AudioVideo;Recorder;Video;
+Keywords=obs;stream;streaming;live;twitch;youtube;record;recording;scenes;capture;mixer;
+StartupWMClass=hearth-studio

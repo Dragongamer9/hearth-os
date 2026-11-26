@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Imagine
+GenericName=Pictures from words
+Comment=Make pictures from words on your own Nvidia PC: Type and make beside the node graph (built on ComfyUI)
+Exec=/usr/bin/hearth-imagine-app
+TryExec=/usr/bin/hearth-imagine-app
+Icon=hearth-imagine
+Categories=Graphics;
+Keywords=ai;picture;image;generate;stable;diffusion;comfyui;art;wallpaper;
+StartupWMClass=hearth-imagine

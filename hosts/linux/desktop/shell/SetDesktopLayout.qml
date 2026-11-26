@@ -177,6 +177,8 @@ SetPage {
                     text: "Where the bars, the dock, the app menu and the window buttons go. Your look's colours stay as they are."
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
                 }
+                // drag and drop on the real desktop, everything anywhere (DesktopEditor.qml)
+                SetButton { icon: "edit"; text: "Edit on the desktop"; primary: true; onActivated: Quickshell.execDetached(["hearth-mantel-ipc", "call", "deskedit", "open", ""]) }
                 SetButton { icon: "share"; text: "Share…"; onActivated: page.share() }
                 SetButton { text: "Open a layout file…"; onActivated: openFile.running = true }
                 SetButton { visible: page.baseId !== "" && !!page.draft && /-mine$/.test(page.draft.id); text: "Back to " + page.baseName(); onActivated: page.use(page.baseId) }

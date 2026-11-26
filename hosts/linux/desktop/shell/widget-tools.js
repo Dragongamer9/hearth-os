@@ -162,7 +162,24 @@ var BAR_ITEMS = [
     { id: "showdesktop", name: "Show desktop", icon: "desktops", zone: "end", extra: true },
     { id: "power", name: "Power (shut down, restart, sign out)", icon: "power", zone: "end", extra: true }
 ];
-function barItem(id) { for (var i = 0; i < BAR_ITEMS.length; i++) if (BAR_ITEMS[i].id === id) return BAR_ITEMS[i]; return null; }
+function barItem(id) {
+    var b = baseId(id);
+    for (var i = 0; i < BAR_ITEMS.length; i++) if (BAR_ITEMS[i].id === b) return BAR_ITEMS[i];
+    return ownItem(id) || innerPanelItem(id);
+}
+// A second copy of a block (Duplicate, drag and drop board 2): "<id>#<key>", drawn as <id>, with its own look
+// ("s:<id>#<key>" in bar.json). baseId gives the block it's a copy of.
+function baseId(id) { return typeof id === "string" ? id.replace(/#[a-z0-9]{1,24}$/, "") : id; }
+function isCopy(id) { return typeof id === "string" && baseId(id) !== id; }
+// A panel inside a bar or a panel ("panel:<id>"; the panel's record has inside: <where>): its blocks drawn there.
+function innerPanelItem(id) {
+    return typeof id === "string" && /^panel:[a-z0-9]{1,24}$/.test(id) ? { id: id, name: "A panel inside", icon: "grid", zone: "end", extra: true, inner: true } : null;
+}
+// A block you made in the desktop editor ("own:<id>", its look in bar.json "b:<id>"; OwnBarBlock.qml): only where
+// you put it, never added by itself.
+function ownItem(id) {
+    return typeof id === "string" && /^own:[a-z0-9]{1,24}$/.test(id) ? { id: id, name: "Your block", icon: "dot", zone: "start", extra: true, own: true } : null;
+}
 // The saved order ({start: [...], end: [...], hidden: [...]}, or nothing) → the full layout: every known item exactly
 // once, new items (a newer Hearth's) in their default place, unknown ids dropped, the flame never hidden.
 function barLayout(saved) {
@@ -174,6 +191,8 @@ function barLayout(saved) {
             var it = barItem(l[i]);
             if (!it || seen[l[i]]) continue;
             seen[l[i]] = true;
+            // a copy or a panel inside is only where it's put: taken out, it's gone (not kept hidden)
+            if (z === "hidden" && (isCopy(l[i]) || it.inner)) continue;
             out[z === "hidden" && it.keep ? it.zone : z].push(l[i]);
         }
     });
@@ -233,7 +252,7 @@ var PANEL_ITEMS = [
     { id: "showdesktop", name: "Show desktop", icon: "desktops" },
     { id: "power", name: "Power (shut down, restart, sign out)", icon: "power" }
 ];
-function panelItem(id) { for (var i = 0; i < PANEL_ITEMS.length; i++) if (PANEL_ITEMS[i].id === id) return PANEL_ITEMS[i]; return null; }
+function panelItem(id) { var b = baseId(id); for (var i = 0; i < PANEL_ITEMS.length; i++) if (PANEL_ITEMS[i].id === b) return PANEL_ITEMS[i]; return ownItem(id) || innerPanelItem(id); }
 var EDGES = ["top", "bottom", "left", "right"];
 // One saved panel ({screen, edge, items, size}) as the shell uses it, or null when it can't be shown.
 function panelOf(id, rec) {
@@ -244,8 +263,81 @@ function panelOf(id, rec) {
              size: typeof rec.size === "number" && rec.size >= 28 && rec.size <= 96 ? Math.round(rec.size) : 44,
              autoHide: rec.autoHide === true,
              // desktop layouts: "" full width, "floating" (off the edge, rounded), "centred" (only as long as it holds)
-             style: rec.style === "floating" || rec.style === "centred" ? rec.style : "" };
+             style: rec.style === "floating" || rec.style === "centred" ? rec.style : "",
+             // anywhere on the screen (drag and drop, the owner Nov 26: "dont want them locked to just 4 sides"):
+             // place "free", its top-left corner as a share of the screen (fx, fy), its length in px (0: as long as it
+             // holds) and which way it runs ("across" or "down"); it keeps no room from the windows
+             free: rec.place === "free",
+             fx: clamp01(rec.fx), fy: clamp01(rec.fy),
+             length: typeof rec.length === "number" && rec.length >= 40 && rec.length <= 8000 ? Math.round(rec.length) : 0,
+             orient: rec.orient === "down" ? "down" : "across",
+             // the bar's own settings (drag and drop board 2: pick the bar itself), the same as the main bar's
+             // (barLook): its length and offset, corners, fill, see-through, blur, the gap between blocks, how they
+             // line up, islands or one strip, hide until pointed at, above windows, under or over windows
+             len: lenMode(rec, rec.style === "centred" ? "fit" : "full"),
+             lenV: num(rec.lenV, 1, 8000, 0),
+             offset: num(rec.offset, -1, 8000, -1),
+             corners: num(rec.corners, -1, 99, -1),
+             fill: hexOr(rec.fill),
+             see: num(rec.see, 0, 100, 0),
+             blur: rec.blur === true,
+             gap: num(rec.gap, -1, 60, -1),
+             lineup: LINEUPS.indexOf(rec.lineup) >= 0 ? rec.lineup : "spread",
+             islands: rec.islands === true,
+             over: rec.over === true,
+             layer: rec.layer === "bottom" ? "bottom" : "top",
+             inside: typeof rec.inside === "string" && /^[a-z0-9]{1,24}$/.test(rec.inside) ? rec.inside : "" };
 }
+var LINEUPS = ["start", "centre", "end", "spread"];
+function num(v, lo, hi, def) { return typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? Math.round(v) : def; }
+function hexOr(v) { return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : ""; }
+function lenMode(rec, def) { return ["full", "fit", "pct", "px"].indexOf(rec.len) >= 0 ? rec.len : def; }
+
+// The main bar's own settings (bar.json "bar"; DesktopEditor.qml's bar picked). Nothing set: the bar as the look and
+// Settings › Bar and dock have it. edge "" follows Settings; "free" is anywhere on the screen (fx, fy, orient).
+function barLook(rec) {
+    var r = rec && typeof rec === "object" && !Array.isArray(rec) ? rec : {};
+    return { edge: ["top", "bottom", "left", "right", "free"].indexOf(r.edge) >= 0 ? r.edge : "",
+             fx: clamp01(r.fx), fy: clamp01(r.fy), orient: r.orient === "down" ? "down" : "across",
+             len: lenMode(r, "full"), lenV: num(r.lenV, 1, 8000, 0), offset: num(r.offset, -1, 8000, -1),
+             thick: num(r.thick, 0, 120, 0),
+             corners: num(r.corners, -1, 99, -1), fill: hexOr(r.fill), see: num(r.see, 0, 100, 0), blur: r.blur === true,
+             gap: num(r.gap, -1, 60, -1),
+             lineup: LINEUPS.indexOf(r.lineup) >= 0 ? r.lineup : "spread",
+             islands: r.islands === "islands" || r.islands === "strip" ? r.islands : "",
+             autoHide: r.autoHide === "on" || r.autoHide === "off" ? r.autoHide : "",
+             over: r.over === true, layer: r.layer === "bottom" ? "bottom" : "top",
+             screen: typeof r.screen === "string" ? r.screen : "" };
+}
+// The side the main bar behaves like (its menus open from it): its edge, or for one anywhere the nearest side.
+function barSide(look, fallback) {
+    if (look.edge === "free") return look.orient === "down" ? (look.fx < 0.5 ? "left" : "right") : (look.fy < 0.5 ? "top" : "bottom");
+    return look.edge || fallback || "top";
+}
+// The bar's length along its edge: full, as long as its blocks (want), a share of the screen or px.
+function lengthOf(len, lenV, along, want) {
+    if (len === "fit") return Math.max(40, Math.min(along, want));
+    if (len === "pct") return Math.max(40, Math.round(along * Math.max(1, Math.min(100, lenV || 50)) / 100));
+    if (len === "px") return Math.max(40, Math.min(along, lenV || 400));
+    return along;
+}
+// Whether a bar meant for SCREEN shows on THIS one: "" every screen; a screen that isn't plugged in: every screen
+// (so the bar, and Game Mode in it, never goes missing).
+function onScreen(want, here, screens) {
+    if (!want) return true;
+    if ((screens || []).indexOf(want) < 0) return true;
+    return want === here;
+}
+// The blocks in order with the space that lines them up: "~" marks a stretch. start: all at the start; centre: in
+// the middle; end: at the end; spread: a stretch where the bar had its own (a "spacer" stays a stretch too).
+function lineup(items, how) {
+    var l = (items || []).slice();
+    if (how === "start") return l.concat(["~"]);
+    if (how === "end") return ["~"].concat(l);
+    if (how === "centre") return ["~"].concat(l).concat(["~"]);
+    return l;
+}
+function clamp01(v) { return typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.1; }
 // The main bar as a panel's items (Clone the main bar).
 function cloneMain(layout) {
     var l = barLayout(layout), out = [];
@@ -261,6 +353,6 @@ function cloneMain(layout) {
 function panelClash(panels, screen, edge, mainScreen, mainEdge, dockOn) {
     if (screen === mainScreen && edge === mainEdge) return "The main bar is there";
     if (screen === mainScreen && edge === "bottom" && dockOn) return "The dock is there";
-    for (var i = 0; i < panels.length; i++) if (panels[i].screen === screen && panels[i].edge === edge) return "There's a panel there already";
+    for (var i = 0; i < panels.length; i++) if (!panels[i].free && panels[i].screen === screen && panels[i].edge === edge) return "There's a panel there already";
     return "";
 }

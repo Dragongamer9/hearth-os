@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Retro to Steam
+GenericName=Add emulator games to Steam
+Comment=Your emulator games in the Steam library, with art (built on Steam ROM Manager)
+Exec=/usr/bin/hearth-retro-to-steam-app
+TryExec=/usr/bin/hearth-retro-to-steam-app
+Icon=hearth-retro-to-steam
+Categories=Game;Utility;
+Keywords=steam;rom;manager;srm;shortcuts;non-steam;emulator;retro;grid;art;steamgriddb;
+StartupWMClass=hearth-retro-to-steam

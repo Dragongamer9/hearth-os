@@ -172,9 +172,15 @@ window_app!(RESTORE, "system-restore", "System Restore");
 window_app!(RELIABILITY, "reliability", "Reliability history");
 window_app!(G15, "g15", "Logitech G15");
 window_app!(IDEAS, "ideas", "Hearth Ideas");
+// The open-source apps for the Hearth Store (docs/mockups/open-source-apps).
+window_app!(GAME_FIXER, "game-fixer", "Hearth Game Fixer");
+window_app!(PROTON_MANAGER, "proton-manager", "Proton Manager");
+window_app!(OVERLAY, "overlay", "Hearth Overlay");
+window_app!(BOTTLES, "bottles", "Hearth Bottles");
+window_app!(HEARTH_3D, "hearth-3d", "Hearth 3D");
 
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
-pub const APPS: &[&AppSchema] = &[&FILES, &SETTINGS, &STORE, &TASK_MANAGER, &NOTES, &CAPTURE, &RESMON, &FAMILY, &SERVER, &RESTORE, &RELIABILITY, &G15, &IDEAS];
+pub const APPS: &[&AppSchema] = &[&FILES, &SETTINGS, &STORE, &TASK_MANAGER, &NOTES, &CAPTURE, &RESMON, &FAMILY, &SERVER, &RESTORE, &RELIABILITY, &G15, &IDEAS, &GAME_FIXER, &PROTON_MANAGER, &OVERLAY, &BOTTLES, &HEARTH_3D];
 
 pub fn find(app: &str) -> Option<&'static AppSchema> {
     APPS.iter().copied().find(|a| a.app == app)
@@ -272,6 +278,16 @@ pub fn check_layout(a: &AppSchema, l: &Map<String, Value>) -> Result<Map<String,
             match check_blocks(a, v, &catalog()) {
                 Ok(b) => {
                     out.insert(k.clone(), b);
+                }
+                Err(mut e) => errs.append(&mut e),
+            }
+            continue;
+        }
+        if k == "studio" {
+            // drag and drop (board 3): the app's parts placed anywhere, restyled, and the blocks dragged in
+            match crate::studio_model::check(v) {
+                Ok(s) => {
+                    out.insert(k.clone(), s);
                 }
                 Err(mut e) => errs.append(&mut e),
             }
@@ -630,6 +646,16 @@ pub fn keep(a: &AppSchema, change: &Value) -> Result<Value, String> {
                 }
                 continue;
             }
+            if k == "studio" {
+                // the pages named replace those pages (an empty one: the app's own page again); "own" when named
+                let m = crate::studio_model::merge(l.get("studio"), &v);
+                if m["pages"].as_object().map(|p| p.is_empty()).unwrap_or(true) && m["own"].as_array().map(|o| o.is_empty()).unwrap_or(true) {
+                    l.remove("studio");
+                } else {
+                    l.insert(k, m);
+                }
+                continue;
+            }
             if k == "zones" {
                 // the zones named replace those zones; the others stay
                 let mut z = l.get("zones").and_then(Value::as_object).cloned().unwrap_or_default();
@@ -804,6 +830,30 @@ mod tests {
         assert!(get("task-manager")["layout"].get("blocks").is_none(), "an empty page: the app's own again");
         let chips = chips(&TASK_MANAGER, &check_layout(&TASK_MANAGER, &json!({"blocks": {"main": {"rail": {"hidden": true}, "page": {"x": 0, "w": 12}}}}).as_object().cloned().unwrap()).unwrap(), &[]);
         assert_eq!(chips.len(), 2, "{chips:?}");
+    }
+
+    #[test]
+    fn drag_and_drop_is_checked_and_kept_page_by_page() {
+        // board 3: a part sized, a block dragged into a bar, a pane free in the window; then a page put back
+        let page = json!({"parts": {"preview": {"style": {"width": "fixed", "w": 514}}, "sidebar": {"at": [0, 48, 216, 0], "from": "ssse"}},
+            "adds": [{"uid": "b1", "block": "act:sort-downloads", "title": "Sort my Downloads", "in": "toolbar", "after": "sort"},
+                     {"uid": "b2", "block": "pane:tree", "title": "Folder tree", "at": [300, 200, 200, 100], "from": "ssee"}]});
+        assert!(check_layout(&FILES, &json!({"studio": {"pages": {"window": page.clone()}}}).as_object().cloned().unwrap()).is_ok());
+        assert!(check_layout(&FILES, &json!({"studio": {"pages": {"window": {"adds": [{"uid": "b1", "block": "run:rm", "title": "x", "in": "bar"}]}}}}).as_object().cloned().unwrap()).is_err());
+        assert!(check_layout(&FILES, &json!({"studio": {"pages": {"window": {"parts": {"side": {"style": {"does": {"press": "rm -rf ~"}}}}}}}}).as_object().cloned().unwrap()).is_err());
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", d.path());
+        keep(&FILES, &json!({"layout": {"studio": {"pages": {"window": page, "bars": {"adds": [{"uid": "b3", "block": "own:spacer", "title": "Space", "in": "status"}]}}}}})).unwrap();
+        let g = get("files");
+        assert_eq!(g["layout"]["studio"]["pages"]["window"]["adds"][0]["after"], "sort");
+        keep(&FILES, &json!({"layout": {"studio": {"pages": {"bars": {}}}}})).unwrap();
+        let g = get("files");
+        assert!(g["layout"]["studio"]["pages"].get("bars").is_none(), "an empty page: the app's own again");
+        assert!(g["layout"]["studio"]["pages"].get("window").is_some(), "a page not named stays");
+        undo("files").unwrap();
+        assert!(get("files")["layout"]["studio"]["pages"].get("bars").is_some(), "Undo has it back");
+        keep(&FILES, &json!({"layout": {"studio": {"pages": {"bars": {}, "window": {}}}}})).unwrap();
+        assert!(get("files")["layout"].get("studio").is_none(), "nothing left: the whole app its own again");
     }
 
     #[test]

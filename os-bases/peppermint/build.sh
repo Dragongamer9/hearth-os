@@ -722,12 +722,13 @@ systemctl disable nut.target nut-driver.target nut-driver-enumerator.path 2>/dev
 # checked) into /var/lib/hearth/apps; their services have no [Install] and don't start without that and Hearth's drop-in.
 HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
 for t in $HS_TIMERS; do systemctl disable "$t" 2>/dev/null || true; done
-systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer \
+  hearth-vaultwarden.timer hearth-nextcloud.timer hearth-home-assistant.timer 2>/dev/null || true
 for u in smbd.service nmbd.service tailscaled.service smartmontools.service nftables.service nut-server.service nut-monitor.service \
          nut-driver-enumerator.service nut.target syncthing-resume.service hearth-ollama.service hearth-jellyfin.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: home server services stay off until the owner turns them on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-colibri.timer; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service hearth-comfyui.timer hearth-kokoro.timer hearth-colibri.timer hearth-vaultwarden.timer hearth-nextcloud.timer hearth-home-assistant.timer; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
 # AI pictures (ComfyUI) and AI voices (Kokoro-FastAPI): user services with no [Install] (only their timers, off here,
@@ -1349,7 +1350,7 @@ fi
 # and /usr/bin/<name> the Store's two-line start: the Hearth Store's newer copy only when one is installed (hearth-part
 # checks it's for this Hearth OS and hasn't failed), else the built-in one. Mantel's own apps keep their names; these
 # are the -app ones Mantel in Rust and the Store open. One that wasn't built or can't start is left out.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-layout; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-lights-app hearth-remap-app hearth-mouse-app hearth-shield-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # (Mantel's own command of the same name, if there is one, stays: the Rust one is used only where nothing else is.)
   [ -e "/usr/bin/$b" ] && { echo "note: /usr/bin/$b is already Mantel's; the Rust one goes to /usr/libexec/hearth/apps only"; install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"; continue; }
@@ -1377,6 +1378,17 @@ else
   rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
 fi
 [ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
+# Open-source apps in Rust (feature/open-source-apps; docs/mockups/checklists/open-source-*.md): Hearth Retro, Retro to
+# Steam, Hearth Studio and Hearth Beat Maker, built in like Hearth's other hearth-ui apps (Built in, in the Store); each
+# finds the open-source project it's built on and offers to install it from Flathub for you. No service, no timer.
+# Not built: its entry goes too.
+for app in retro:hearth-retro-app retro-to-steam:hearth-retro-to-steam-app studio:hearth-studio-app beat-maker:hearth-beat-maker-app; do
+  [ -x "/usr/bin/${app#*:}" ] || rm -f "/usr/share/applications/hearth-${app%%:*}.desktop"
+done
+# The open-source apps (docs/mockups/open-source-apps): their menu entries only when the app was built.
+for oss in listen imagine passwords cloud home; do
+  [ -x "/usr/bin/hearth-$oss-app" ] || rm -f "/usr/share/applications/hearth-$oss.desktop"
+done
 
 # ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, and its app (hearth-g15-app,
 # menu entry hearth-g15-app.desktop from os/system_files), built by CI next to the
@@ -1783,6 +1795,17 @@ else
   echo "warning: couldn't install LACT $LACT_VER; GPU tuning stays unavailable"
 fi
 rm -f "/tmp/$LACT_DEB"
+# ------------------------------------------------------------------ the open-source apps' projects (Hearth Lights, Remap, Mouse)
+# What Hearth's open-source apps drive (docs/mockups/open-source-apps): OpenRGB (Hearth Lights; its udev rules let the
+# person at the PC reach the lights), Input Remapper (Hearth Remap) and libratbag's ratbagd (Hearth Mouse). None of their
+# services is on at start-up: ratbagd starts when Hearth Mouse asks D-Bus for it, input-remapper only once Hearth Remap
+# turns it on (the person's OK), OpenRGB's server only as the user service hearth-openrgb.service. A package that isn't
+# there only leaves its app saying so; it never stops the build.
+for x in openrgb input-remapper ratbagd; do pkg_cost "$x"; done
+optional openrgb input-remapper ratbagd
+for s in openrgb.service input-remapper.service input-remapper-autoload.service; do systemctl disable "$s" 2>/dev/null || true; done
+echo "::notice title=open-source apps' projects::$(for x in openrgb input-remapper ratbagd; do dpkg -s "$x" >/dev/null 2>&1 && printf '%s ' "$x" || printf 'no-%s ' "$x"; done)"
+
 # ------------------------------------------------------------------ Ludusavi: every game's saves (1.11)
 # github.com/mtkennerly/ludusavi (MIT), pinned: Settings › Gaming › Saved games (hearth-saves) backs them up into
 # ~/Saved Games/Backups and puts them back. Only when you press it. Optional.

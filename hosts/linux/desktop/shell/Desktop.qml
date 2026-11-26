@@ -357,6 +357,8 @@ PanelWindow {
         }
         list.push({ label: "Show desktop icons", group: "View", checked: DeskState.desktopIcons, run: () => DeskState.setDesktopIcons(!DeskState.desktopIcons) });
         list.push({ separator: true });
+        // ---- drag and drop (DesktopEditor.qml): every bar, panel and widget, anywhere
+        list.push({ label: "Edit desktop…", short: "Edit", icon: "edit", group: "Widgets", run: () => Quickshell.execDetached(["hearth-mantel-ipc", "call", "deskedit", "open", screen ? screen.name : ""]) });
         // ---- 1.14: desktop widgets and activities (Widgets.qml, Activities.qml)
         const wg = SettingsNav.widgets;
         if (wg) {

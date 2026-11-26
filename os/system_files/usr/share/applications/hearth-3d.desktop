@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth 3D
+Comment=Modelling with Blender as the engine
+Exec=/usr/bin/hearth-3d
+TryExec=/usr/bin/hearth-3d
+Icon=hearth-3d
+Categories=Graphics;3DGraphics;
+Keywords=blender;3d;model;modelling;animation;render;blend;gltf;stl;godot;
+StartupWMClass=hearth-3d

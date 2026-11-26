@@ -1,0 +1,11 @@
+#!/bin/sh
+# OpenRGB's SDK server for Hearth Lights (hearth-openrgb.service): the system's OpenRGB, else its Flathub copy, on
+# this PC only (127.0.0.1:6742), without its window. Exit 3: OpenRGB isn't on this PC (Hearth Lights offers to get it).
+if command -v openrgb >/dev/null 2>&1; then
+  exec openrgb --server --server-host 127.0.0.1 --server-port 6742
+fi
+if command -v flatpak >/dev/null 2>&1 && flatpak info org.openrgb.OpenRGB >/dev/null 2>&1; then
+  exec flatpak run --command=openrgb org.openrgb.OpenRGB --server --server-host 127.0.0.1 --server-port 6742
+fi
+echo "hearth-openrgb-server: OpenRGB isn't on this PC" >&2
+exit 3

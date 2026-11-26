@@ -1,0 +1,19 @@
+# Hearth Mouse (pure Rust, hearth-ui; board docs/mockups/open-source-apps/11-mouse.png, checklist
+# docs/mockups/checklists/open-source-11-mouse.md): your gaming mouse, built on libratbag (MIT) and its daemon
+# ratbagd, the same API Piper (GPL-2) uses. No version line: the owner picks every version number.
+[package]
+name = "hearth-mouse"
+edition = "2021"
+description = "Hearth Mouse: your gaming mouse, set up on Hearth (built on libratbag and Piper)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-mouse-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

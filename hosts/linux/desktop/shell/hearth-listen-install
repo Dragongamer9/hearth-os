@@ -1,0 +1,50 @@
+#!/bin/bash
+# hearth-listen-install: whisper.cpp (MIT, github.com/ggml-org/whisper.cpp) for Hearth Listen, installed the Hearth
+# way: only when you press Install in Hearth Listen, as you, in a transient unit of your own (systemd-run --user, low
+# priority), into your own folder. Its release tag is cloned and its commit checked against the one Hearth pins (or
+# nothing is installed); whisper-cli is built for this PC (with CUDA when the Nvidia toolkit, nvcc, is here) and put in
+# ~/.local/share/hearth/listen/bin. Nothing of the system changes, nothing starts at boot or with Game Mode; a failed
+# build leaves whatever was there before.
+# Progress for the app: ~/.local/share/hearth/listen/install.json ({running, step, error, tag}), written whole.
+set -u
+TAG=v1.8.7
+COMMIT=48f628a84833905ee4a0658ee6d4a5c915ce1997
+REPO=https://github.com/ggml-org/whisper.cpp
+HOME_DIR="${HEARTH_LISTEN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/hearth/listen}"
+SRC="$HOME_DIR/whisper.cpp"
+STATE="$HOME_DIR/install.json"
+mkdir -p "$HOME_DIR/bin"
+
+say() { # running step error
+  local tmp="$STATE.part"
+  python3 -c 'import json,sys; print(json.dumps({"running": sys.argv[1] == "1", "step": sys.argv[2], "error": sys.argv[3], "tag": sys.argv[4]}))' "$1" "$2" "$3" "$TAG" > "$tmp" && mv -f "$tmp" "$STATE"
+}
+fail() { say 0 "stopped" "$1"; echo "hearth-listen-install: $1" >&2; exit 1; }
+
+say 1 "checking what's needed" ""
+missing=""
+for t in git cmake make; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
+command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 || missing="$missing g++"
+[ -z "$missing" ] || fail "building whisper.cpp needs:$missing (Hearth Store › Developer tools)"
+
+say 1 "getting whisper.cpp $TAG" ""
+rm -rf "$SRC.new"
+git clone --quiet --depth 1 --branch "$TAG" "$REPO" "$SRC.new" || fail "whisper.cpp couldn't be got from GitHub"
+got=$(git -C "$SRC.new" rev-parse HEAD)
+[ "$got" = "$COMMIT" ] || { rm -rf "$SRC.new"; fail "whisper.cpp's $TAG isn't the one Hearth checked ($got), so nothing was installed"; }
+
+cuda=OFF
+command -v nvcc >/dev/null 2>&1 && cuda=ON
+say 1 "building whisper-cli (graphics card: $cuda)" ""
+cmake -S "$SRC.new" -B "$SRC.new/build" -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=$cuda -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_SDL2=OFF -DBUILD_SHARED_LIBS=OFF >"$HOME_DIR/build.log" 2>&1 \
+  || fail "whisper.cpp couldn't be set up to build (its log: $HOME_DIR/build.log)"
+nice -n 10 cmake --build "$SRC.new/build" --config Release -j "$(nproc)" --target whisper-cli >>"$HOME_DIR/build.log" 2>&1 \
+  || fail "whisper.cpp didn't build (its log: $HOME_DIR/build.log)"
+test -x "$SRC.new/build/bin/whisper-cli" || fail "whisper-cli wasn't made"
+"$SRC.new/build/bin/whisper-cli" --help >/dev/null 2>&1 || fail "the whisper-cli that was built doesn't start"
+
+say 1 "putting it in place" ""
+install -m 755 "$SRC.new/build/bin/whisper-cli" "$HOME_DIR/bin/whisper-cli.new" && mv -f "$HOME_DIR/bin/whisper-cli.new" "$HOME_DIR/bin/whisper-cli"
+rm -rf "$SRC" && mv "$SRC.new" "$SRC"
+say 0 "ready" ""
+echo "hearth-listen-install: whisper.cpp $TAG is ready ($HOME_DIR/bin/whisper-cli, CUDA $cuda)"

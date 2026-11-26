@@ -1,0 +1,20 @@
+# Hearth Overlay (pure Rust, hearth-ui; docs/mockups/checklists/open-source-03-overlay.md, the approved board
+# docs/mockups/open-source-apps/03-overlay.png): the numbers over your games. Built on MangoHud (MIT), which draws them,
+# and GOverlay (GPL-3), whose settings these are: MangoHud's own files. Made of blocks.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-overlay"
+edition = "2021"
+description = "Hearth Overlay: the numbers over your games (built on MangoHud and GOverlay)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-overlay"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit-a = { path = "../oss-kit-a" }
+iced = { workspace = true }
+serde_json = { workspace = true }

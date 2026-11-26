@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Overlay
+Comment=The numbers over your games (built on MangoHud and GOverlay)
+Exec=/usr/bin/hearth-overlay
+TryExec=/usr/bin/hearth-overlay
+Icon=hearth-overlay
+Categories=Game;Utility;
+Keywords=mangohud;goverlay;overlay;fps;frame rate;hud;performance;benchmark;
+StartupWMClass=hearth-overlay

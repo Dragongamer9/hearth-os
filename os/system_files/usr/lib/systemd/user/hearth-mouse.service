@@ -1,0 +1,21 @@
+# Hearth Mouse's runner (hosts/hearth-ui/apps/mouse, `hearth-mouse-app --run`): when a game starts, it switches the
+# mouse to its profile of the same name (Switch with the game: yes, or "ask me" and you said yes). On only once you
+# turn Switch with the game on. Nothing waits for it and nothing at start-up needs it, so it can never hold up Game Mode
+# or the desktop; it gives up after a few failed starts. Light: it looks every 2 seconds.
+[Unit]
+Description=Hearth Mouse (the mouse's profile switches with the game)
+ConditionPathExists=/usr/bin/hearth-mouse-app
+StartLimitIntervalSec=300
+StartLimitBurst=4
+
+[Service]
+ExecStart=/usr/bin/hearth-mouse-app --run
+Restart=on-failure
+RestartSec=10
+Nice=10
+CPUWeight=20
+MemoryMax=48M
+TimeoutStopSec=5
+
+[Install]
+WantedBy=default.target

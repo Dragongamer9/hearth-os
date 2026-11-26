@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Remap
+GenericName=Button remapping
+Comment=Any key, mouse or controller button, your way: per game and app, with macros (built on Input Remapper)
+Exec=/usr/bin/hearth-remap-app
+TryExec=/usr/bin/hearth-remap-app
+Icon=hearth-remap
+Categories=Settings;HardwareSettings;
+Keywords=remap;keys;buttons;controller;gamepad;macro;keyboard;mouse;input;remapper;
+StartupWMClass=hearth-remap

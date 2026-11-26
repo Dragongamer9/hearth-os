@@ -353,6 +353,77 @@ fn page_id(pg: Page) -> &'static str {
     }
 }
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// The G15 app's blocks window: its buttons (its pages, key sets and actions), its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "G15",
+    buttons: &[
+        tile("overview", "Overview", G::Home),
+        tile("gkeys", "G-keys", G::Keyboard),
+        tile("screen", "Keyboard screen", G::Display),
+        tile("lighting", "Lighting", G::Moon),
+        tile("set1", "Key set M1", G::Keyboard),
+        tile("set2", "Key set M2", G::Keyboard),
+        tile("set3", "Key set M3", G::Keyboard),
+        tile("record", "Record a macro", G::Play),
+        tile("stop", "Stop recording", G::Stop),
+        tile("test", "Test the key", G::Check),
+        tile("new-screen", "New screen page", G::Plus),
+    ],
+    panes: &[tile("status", "The keyboard", G::Keyboard), tile("sets", "Key sets", G::Columns), tile("now", "What its screen shows", G::Display)],
+    info: &[tile("model", "The keyboard", G::Keyboard), tile("plugged", "Plugged in", G::Check), tile("set", "The key set in use", G::Keyboard)],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of the G15 app's buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "overview" => Msg::Go(Page::Overview),
+        "gkeys" => Msg::Go(Page::GKeys),
+        "screen" => Msg::Go(Page::Screen),
+        "lighting" => Msg::Go(Page::Lighting),
+        "set1" => Msg::UseSet(1),
+        "set2" => Msg::UseSet(2),
+        "set3" => Msg::UseSet(3),
+        "record" => Msg::Record,
+        "stop" => Msg::StopRecord,
+        "test" => Msg::TestIt,
+        "new-screen" => Msg::NewScreen,
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let model = a.status.get("model").and_then(|v| v.as_str()).unwrap_or("G15").to_string();
+    a.describe.values(vec![("model", model), ("plugged", if a.plugged() { "Plugged in".into() } else { "Not plugged in".into() }), ("set", format!("M{}", a.set))]);
+}
+
+/// A pane of the G15 app's own: the keyboard, its key sets, what its screen shows.
+fn studio_pane<'a>(a: &'a App, which: &str) -> E<'a> {
+    let p = a.p;
+    match which {
+        "sets" => {
+            let mut r = Row::new().spacing(8.0);
+            for n in 1..=3u8 {
+                let on = a.set == n;
+                r = r.push(mouse_area(container(tm(format!("M{n}"), 14.0, if on { p.ink } else { p.text })).padding(Padding { top: 6.0, right: 14.0, bottom: 6.0, left: 14.0 }).style(ui::boxed(if on { ORANGE } else { Color::TRANSPARENT }, 6.0, Some((p.line, 1.0))))).on_press(Msg::UseSet(n)).interaction(mouse::Interaction::Pointer));
+            }
+            r.into()
+        }
+        "now" => {
+            let name = a.now.as_ref().map(|_| "Showing its page now").unwrap_or("Its screen is off");
+            column![t(name, 13.0, p.muted), btn(&p, "Keyboard screen", Kind::Normal, false, Some(Msg::Go(Page::Screen)))].spacing(8.0).into()
+        }
+        _ => {
+            let model = a.status.get("model").and_then(|v| v.as_str()).unwrap_or("G15").to_string();
+            column![tb(model, 15.0, p.text), t(if a.plugged() { "Plugged in" } else { "Not plugged in" }, 13.0, p.muted), t(format!("Key set M{} in use", a.set), 13.0, p.muted)].spacing(4.0).into()
+        }
+    }
+}
+
 /// The G15 app with Describe it's box under it while it's open.
 pub fn shown(a: &App) -> E<'_> {
     hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
@@ -380,7 +451,16 @@ pub fn view(a: &App) -> E<'_> {
         &a.describe,
         &p,
         "window",
-        vec![("side", sidebar(a)), ("page", page.into()), ("bottom", bottom_bar(a))],
+        {
+            studio_values(a);
+            let mut items: Vec<(&'static str, E)> = vec![("side", hearth_ui::studio::made(&a.describe, "window", "side", || sidebar(a))), ("page", page.into()), ("bottom", bottom_bar(a))];
+            for (id, which) in [("pane:status", "status"), ("pane:sets", "sets"), ("pane:now", "now")] {
+                if a.describe.wants_pane(which) {
+                    items.push((id, studio_pane(a, which)));
+                }
+            }
+            items
+        },
         |ps| column![row![ps.take("side"), ps.take("page")].height(Length::Fill), hline(p.line), ps.take("bottom")].into(),
         Msg::Describe,
     );
@@ -396,7 +476,11 @@ pub fn view(a: &App) -> E<'_> {
 fn title_bar(a: &App) -> E<'_> {
     let p = a.p;
     let badge = container(text("G").size(12.0).color(Color::WHITE).font(ui::weight(iced::font::Weight::Bold))).center_x(Length::Fixed(20.0)).center_y(Length::Fixed(20.0)).style(ui::boxed(Color::from_rgb8(0xff, 0x6a, 0x1a), 5.0, None));
-    let name = row![gap(14.0, 1.0), badge, gap(10.0, 1.0), tm("Logitech G15", 14.0, p.text), gap(8.0, 1.0), t("· Hearth", 12.0, p.muted)].align_y(iced::Center);
+    let mut name = row![gap(14.0, 1.0), badge, gap(10.0, 1.0), tm("Logitech G15", 14.0, p.text), gap(8.0, 1.0), t("· Hearth", 12.0, p.muted)].align_y(iced::Center);
+    // the window being edited (drag and drop) or Describe it's box open: EDITING by its name
+    if a.describe.open || a.describe.studio_editing() {
+        name = name.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 10.0 }));
+    }
     let drag = mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(36.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
     let wbtn = |g: G, m: Msg| -> E<'static> {
         mouse_area(container(glyph(g, p.muted, 10.0, 2.0)).center_x(Length::Fixed(40.0)).center_y(Length::Fixed(36.0))).on_press(m).interaction(mouse::Interaction::Pointer).into()

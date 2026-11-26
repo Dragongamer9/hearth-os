@@ -1121,6 +1121,16 @@ FocusScope {
             { id: "tiles", title: "The list of devices", x: 5, y: 3, w: 6, h: 21, bg: Theme.bg2 },
             { id: "detail", title: "The device", x: 11, y: 3, w: 13, h: 21, bg: Theme.bg2 }
         ] : [{ id: "body", title: v.tmPageTitles[id], x: 5, y: 3, w: 19, h: 21, bg: Theme.bg2 }]) }))
+        // Task Manager's own blocks (drag and drop board 3): a button for every page, Run new task, Efficiency mode…
+        actions: v.tmBlocksFor.map(id => ({ id: "page-" + id, label: v.tmPageTitles[id], icon: id === "performance" ? "cpu" : id === "startup" ? "rocket" : id === "users" ? "users" : id === "services" ? "gear" : id === "settings" ? "gear" : "list", run: () => { tm.page = id; } }))
+            .concat([{ id: "sample", label: "Update now", icon: "sync", run: () => v.sampleNow() },
+                      { id: "close", label: "Close Task Manager", icon: "close", run: () => { if (tm.close) tm.close(); } }])
+        panes: [{ id: "rail", label: "The pages down the side", icon: "list", part: "rail" }, { id: "head", label: "The page's title and buttons", icon: "menu", part: "head" },
+                { id: "titlebar", label: "The title bar", icon: "window", part: "titlebar" }]
+            .concat(tm.page === "performance" ? [{ id: "tiles", label: "The list of devices", icon: "cpu", part: "tiles" }, { id: "detail", label: "The device", icon: "display", part: "detail" }]
+                                              : [{ id: "body", label: v.tmPageTitles[tm.page] || "The page", icon: "doc", part: "body" }])
+        counts: [{ id: "page", label: "This page", value: () => v.tmPageTitles[tm.page] || "" },
+                 { id: "apps", label: "Apps running", value: () => v.groups ? v.groups.length : "" }]
         parts: {
             const o = { titlebar: titleBar, rail: rail };
             const it = pageLoader.item;

@@ -1573,6 +1573,48 @@ class Studio:
         except OSError:
             pass
 
+    # ---- words from Hearth Listen (whisper.cpp on this PC): a finished transcript with its times, no engine needed
+    def new_words(self, title, segments, language='', duration=0, source=''):
+        """A transcript Hearth Listen made (Send to Voice Studio): it lands as a finished transcript job, with its text,
+        SRT, VTT and JSON, so takes can be cut by what was said and subtitles made for both video sizes."""
+        segs = []
+        for s in (segments or [])[:20000]:
+            if not isinstance(s, dict):
+                continue
+            try:
+                a, b = max(0.0, float(s.get('start') or 0)), max(0.0, float(s.get('end') or 0))
+            except (TypeError, ValueError):
+                continue
+            text = str(s.get('text') or '').strip()[:2000]
+            if not text:
+                continue
+            seg = {'start': a, 'end': max(a, b), 'text': text}
+            who = str(s.get('speaker') or '').strip()[:40]
+            if who:
+                seg['speaker'] = who
+            segs.append(seg)
+        if not segs:
+            raise Fail('There are no words in it')
+        r = {'language': str(language or '')[:12], 'duration': float(duration or segs[-1]['end']), 'segments': segs,
+             'source': ('Hearth Listen' + (' · ' + str(source)[:80] if source else ''))}
+
+        def prep(d, j):
+            j['state'], j['progress'], j['step'] = 'done', 100, 'done'
+        j = self.job_new('transcribe', title or 'Hearth Listen', {'language': r['language'], 'labels': any('speaker' in x for x in segs),
+                                                                  'task': 'transcribe', 'from': 'listen'}, prep)
+        d = self.jpath(j['id'])
+        base = re.sub(r'[^\w\- ]+', '', j['title'])[:60].strip() or 'transcript'
+        for ext, text in (('txt', to_text(segs)), ('srt', to_srt(segs)), ('vtt', to_vtt(segs)),
+                          ('json', json.dumps(r, ensure_ascii=False, indent=1))):
+            name = '%s.%s' % (base, ext)
+            with open(os.path.join(d, name), 'w', encoding='utf-8') as f:
+                f.write(text)
+            self.add_output(self.job(j['id']), name, {'txt': 'Text', 'srt': 'Subtitles (SRT)', 'vtt': 'Subtitles (VTT)', 'json': 'Everything (JSON)'}[ext], ext)
+        speakers = sorted({x['speaker'] for x in segs if x.get('speaker')})
+        self.job_update(j['id'], summary={'language': r['language'], 'secs': round(r['duration']), 'speakers': len(speakers),
+                                          'preview': to_text(segs)[:600], 'from': 'Hearth Listen'})
+        return self.job_view(self.job(j['id']))
+
     # ---- audiobooks
     def new_audiobook(self, title, chapters, voice, language='auto', speed=1.0):
         if not chapters:
@@ -2095,6 +2137,10 @@ def make_handler(studio, mock=False):
                         changed[k] = set_key(k, raw)
                     return self.send(200, {'changed': changed, 'settings': load()})
                 # ---- the queue
+                if path == '/api/jobs/words':
+                    b = self.body_json() or {}
+                    return self.send(201, studio.new_words(clean_name(b.get('title'), 'Hearth Listen'), b.get('segments'), b.get('language') or '',
+                                                           b.get('duration') or 0, b.get('source') or ''))
                 if path == '/api/jobs/transcribe':
                     q = self.query()
                     src = self.body_file(MAX_AUDIO)

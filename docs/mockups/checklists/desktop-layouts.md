@@ -62,6 +62,10 @@ Release: next
 - [ ] "Game Mode always stays in a panel, in every layout."
 
 ## 7. Describe it
+
+The owner, Nov 26: "the describe it window should not be full screen": it opens as a window in the middle with the
+desktop dimmed around it (the mockup shows it over the whole screen).
+
 - [ ] Editing your desktop: click any part to change it (a bar, the dock, the clock's calendar, Quick Access, the app menu), Done
 - [ ] NOW and NEW side by side ("Try it, nothing is saved yet")
 - [ ] What it changed, as a list

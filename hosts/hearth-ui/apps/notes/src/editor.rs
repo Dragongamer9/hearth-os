@@ -555,7 +555,7 @@ pub fn calendar(a: &App) -> E<'_, Msg> {
     container(column![head, grid].spacing(z(10.0))).padding(z(14.0)).style(bx(tn.card, 10.0, Some((tn.line, 1.0)))).into()
 }
 
-fn outline(a: &App) -> E<'_, Msg> {
+pub(crate) fn outline(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let mut c = Column::new().push(rh(&p, "Outline", None)).spacing(z(6.0));
@@ -578,7 +578,7 @@ fn outline(a: &App) -> E<'_, Msg> {
     c.into()
 }
 
-fn backlinks(a: &App) -> E<'_, Msg> {
+pub(crate) fn backlinks(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let Some(i) = a.open_index() else { return column![rh(&p, "Backlinks", Some("0".into()))].into() };

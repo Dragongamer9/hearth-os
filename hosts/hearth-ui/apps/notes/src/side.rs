@@ -65,6 +65,58 @@ pub const BLOCKS: &[PageDef] = &[
     },
 ];
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// Hearth Notes' blocks window: its buttons (its pages and actions), its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "Notes",
+    buttons: &[
+        tile("files", "Files", G::Doc),
+        tile("search", "Search", G::Search),
+        tile("today", "Today", G::Clock),
+        tile("board", "Board", G::Columns),
+        tile("graph", "Graph", G::Asterisk),
+        tile("sync", "Sync", G::Sync),
+        tile("settings", "Settings", G::Gear),
+        tile("new", "New note", G::Plus),
+        tile("sync-now", "Sync now", G::Sync),
+        tile("switcher", "Quick switcher", G::Search),
+    ],
+    panes: &[tile("outline", "Outline", G::List), tile("backlinks", "Backlinks", G::Link), tile("today", "Today's side", G::Clock)],
+    info: &[tile("notes", "Notes", G::Doc), tile("files", "Other files", G::Folder), tile("note", "The open note", G::Doc), tile("tabs", "Tabs open", G::Columns), tile("vault", "The vault", G::Folder)],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Hearth Notes' buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "files" => Msg::Rail(Page::Files),
+        "search" => Msg::Rail(Page::Search),
+        "today" => Msg::Rail(Page::Today),
+        "board" => Msg::Rail(Page::Board),
+        "graph" => Msg::Rail(Page::Graph),
+        "sync" => Msg::Rail(Page::Sync),
+        "settings" => Msg::Rail(Page::Settings),
+        "new" => Msg::NewOpen,
+        "sync-now" => Msg::SyncNow,
+        "switcher" => Msg::QsOpen,
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let note = a.open_index().and_then(|i| a.vault.notes.get(i)).map(|n| n.title.clone()).unwrap_or_default();
+    a.describe.values(vec![
+        ("notes", a.vault.notes.len().to_string()),
+        ("files", a.vault.files.len().to_string()),
+        ("note", note),
+        ("tabs", a.tabs.len().to_string()),
+        ("vault", a.vault_name()),
+    ]);
+}
+
 pub fn window(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
@@ -78,7 +130,25 @@ pub fn window(a: &App) -> E<'_, Msg> {
         &a.describe,
         &p,
         "window",
-        vec![("rail", rail(a)), ("side", sidebar(a)), ("page", container(body).width(Length::Fill).height(Length::Fill).into())],
+        {
+            studio_values(a);
+            let mut items: Vec<(&'static str, E<Msg>)> = vec![
+                ("rail", rail(a)),
+                ("side", hearth_ui::studio::made(&a.describe, "window", "side", || sidebar(a))),
+                ("page", container(body).width(Length::Fill).height(Length::Fill).into()),
+            ];
+            // drag and drop: Notes' panes where they were dragged in
+            if a.describe.wants_pane("outline") {
+                items.push(("pane:outline", crate::editor::outline(a)));
+            }
+            if a.describe.wants_pane("backlinks") {
+                items.push(("pane:backlinks", crate::editor::backlinks(a)));
+            }
+            if a.describe.wants_pane("today") {
+                items.push(("pane:today", crate::today::right(a)));
+            }
+            items
+        },
         |ps| row![ps.take("rail"), ps.take("side"), ps.take("page")].height(Length::Fill).into(),
         Msg::Describe,
     );
@@ -132,7 +202,11 @@ fn title(a: &App) -> E<'_, Msg> {
             })
             .into()
     };
-    let name = row![gap(z(22.0), 1.0), look::mark(&p, z(34.0)), gap(z(16.0), 1.0), tb("Hearth Notes", f(19.0), tn.text), gap(z(10.0), 1.0), t1(format!("· {}", a.vault_name()), f(15.0), tn.muted)].align_y(iced::Center);
+    let mut name = row![gap(z(22.0), 1.0), look::mark(&p, z(34.0)), gap(z(16.0), 1.0), tb("Hearth Notes", f(19.0), tn.text), gap(z(10.0), 1.0), t1(format!("· {}", a.vault_name()), f(15.0), tn.muted)].align_y(iced::Center);
+    // the window being edited (drag and drop) or Describe it's box open: EDITING by its name
+    if a.describe.open || a.describe.studio_editing() {
+        name = name.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 12.0 }));
+    }
     let drag = mouse_area(container(row![name, Space::new().width(Length::Fill)].align_y(iced::Center)).width(Length::Fill).center_y(Length::Fixed(z(60.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
     let mut r = row![drag, wbtn(G::Minimize, Msg::Minimize, false), wbtn(G::Maximize, Msg::Maximize, false), wbtn(G::Close, Msg::Close, true)].align_y(iced::Center);
     if let Some(fm) = ui::frame_meter() {
@@ -269,7 +343,7 @@ enum Row {
 fn files(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let head = row![look::caps(&p, "Files"), Space::new().width(Length::Fill), click(t("＋", f(16.0), tn.muted), Some(Msg::NewOpen)), gap(z(16.0), 1.0), t("⇅", f(16.0), tn.muted), gap(z(16.0), 1.0), t("⋯", f(16.0), tn.muted)].align_y(iced::Center);
+    let head = row![look::caps(&p, "Files"), Space::new().width(Length::Fill), click(t("+", f(16.0), tn.muted), Some(Msg::NewOpen)), gap(z(16.0), 1.0), t("⇅", f(16.0), tn.muted), gap(z(16.0), 1.0), t("⋯", f(16.0), tn.muted)].align_y(iced::Center);
     let mut rows: Vec<Row> = vec![Row::Atlas];
     if a.tree_open.contains("atlas") {
         rows.push(Row::Moc("home".into(), "Home".into(), 1));

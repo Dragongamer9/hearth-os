@@ -372,7 +372,7 @@ impl App {
             }
         }
         let a = App {
-            describe: hearth_ui::describe::Describe::new("task-manager", "Task Manager").with_pages(pages::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("task-manager", "Task Manager").with_pages(pages::BLOCKS).with_kit(&pages::KIT),
             p: hearth_ui::theme::load(),
             page,
             sample: None,
@@ -791,7 +791,13 @@ pub fn pick_any(a: &mut App, key: &str, v: &str) -> Task<Msg> {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Task Manager's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(pages::block_action) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Sample(s) => {
             a.take_sample(s);
