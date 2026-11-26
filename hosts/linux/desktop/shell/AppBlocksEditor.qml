@@ -19,6 +19,8 @@ Item {
     readonly property bool on: !!ab && ab.editing
     readonly property real ew: width
     readonly property real eh: height
+    // a window narrower than the board's: the toolbar's buttons a little smaller, so all of them fit
+    readonly property bool tight: ew < 1400
     property bool snapOn: true
     property int grid: L.PX_GRID
     property bool guidesOn: true
@@ -419,7 +421,8 @@ Item {
 
         // ---- the window marked EDITING
         Rectangle {
-            x: 12; y: 8; z: 6
+            // (top right: clear of the app's own title and the tabs)
+            x: ed.ew - width - 12; y: 6; z: 6
             width: edRow.implicitWidth + 20; height: 30; radius: 8
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.96); border.color: Theme.line
             Row {
@@ -427,7 +430,7 @@ Item {
                 anchors.centerIn: parent
                 spacing: 10
                 Rectangle { width: 14; height: 14; radius: 4; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                Text { text: ed.ab ? ed.ab.appName + ((ed.ab.pages || []).length > 1 && ed.ab.def ? " — " + ed.ab.def.title : "") : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: ed.ab ? ed.ab.appName + ((ed.ab.pages || []).length > 1 && ed.ab.def && ed.ab.def.title !== ed.ab.appName ? " — " + ed.ab.def.title : "") : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
                 Rectangle {
                     width: edT.implicitWidth + 14; height: 20; radius: 5; color: Theme.accent
                     anchors.verticalCenter: parent.verticalCenter
@@ -441,20 +444,20 @@ Item {
             model: ed.guides
             delegate: Rectangle {
                 required property var modelData
-                z: 7
+                z: 14
                 color: "#5ec8ff"; opacity: 0.85
                 x: modelData.x !== undefined ? modelData.x - 1 : 0; y: modelData.y !== undefined ? modelData.y - 1 : 0
                 width: modelData.x !== undefined ? 2 : ed.ew; height: modelData.y !== undefined ? 2 : ed.eh
             }
         }
         Rectangle {
-            z: 7
+            z: 14
             visible: ed.lineX >= 0 && (ed.dragLib !== "" || ed.dragBlock !== "")
             x: ed.lineX; y: ed.lineY; width: 3; height: Math.max(12, ed.lineLen)
             radius: 2; color: Theme.accent
         }
         Rectangle {
-            z: 8
+            z: 15
             visible: ed.note !== ""
             readonly property bool dragging: ed.dragLib !== "" || ed.dragBlock !== "" || !!ed.moving
             x: Math.max(8, Math.min(ed.ew - width - 12, dragging ? (ed.moving && ed.moving.edges ? ed.dragAt.x - width - 6 : ed.dragAt.x + 26) : ed.ew / 2 - width / 2))
@@ -615,7 +618,8 @@ Item {
             z: 11
             anchors { horizontalCenter: parent.horizontalCenter; bottom: tool.top; bottomMargin: 14 }
             text: "THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE … · RIGHT-CLICK ANY PART › CUSTOMIZE"
-            color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.2
+            width: Math.min(implicitWidth, ed.ew - 40); elide: Text.ElideMiddle
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: ed.tight ? 10 : 11; font.weight: Font.Bold; font.letterSpacing: ed.tight ? 0.6 : 1.2
             Rectangle { z: -1; anchors { fill: parent; margins: -6 } radius: 6; color: Theme.panel2; border.color: Theme.line }
         }
         Rectangle {
@@ -628,7 +632,7 @@ Item {
             Row {
                 id: toolRow
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: ed.tight ? 5 : 8
                 Btn { label: "↶ Undo"; enabled: !!ed.ab && ed.ab.undoDraft.length > 0; onClicked: ed.ab.undo() }
                 Btn { label: "↷ Redo"; enabled: !!ed.ab && ed.ab.redoDraft.length > 0; onClicked: ed.ab.redo() }
                 Sep {}
@@ -649,7 +653,7 @@ Item {
         Rectangle {
             z: 20
             visible: (ed.dragLib !== "" && !ed.isPaneDrag()) || ed.dragBlock !== ""
-            x: ed.dragAt.x - 22; y: ed.dragAt.y - 26
+            x: ed.dragAt.x - 30; y: ed.dragAt.y - height - 8
             rotation: -2.5
             width: ghostRow.implicitWidth + 28; height: 38; radius: 9
             color: Theme.panel2; border.color: Theme.accent; border.width: 1
@@ -663,7 +667,7 @@ Item {
         Rectangle {
             z: 19
             visible: ed.isPaneDrag() && !!ed.target && ed.target.kind === "window"
-            x: ed.target ? ed.target.x : 0; y: ed.target ? ed.target.y : 0
+            x: ed.target && ed.target.x !== undefined ? ed.target.x : 0; y: ed.target && ed.target.y !== undefined ? ed.target.y : 0
             width: ed.target && ed.target.w ? ed.target.w : 0; height: ed.target && ed.target.h ? ed.target.h : 0
             radius: 10; color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14); border.color: Theme.accent; border.width: 2
             Text { anchors.centerIn: parent; text: ed.dragName; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
@@ -823,13 +827,13 @@ Item {
         property bool primary: false
         property bool on: false
         signal clicked()
-        width: br.implicitWidth + 28; height: 38; radius: 10
+        width: br.implicitWidth + (ed.tight ? 18 : 28); height: ed.tight ? 34 : 38; radius: 10
         opacity: enabled ? 1 : 0.45
         color: primary ? Theme.accent : on ? Theme.panel3 : ba.containsMouse ? Theme.panel3 : Theme.panel2
         border.color: primary ? Theme.accent : on ? Theme.accent : Theme.line
         Row { id: br; anchors.centerIn: parent; spacing: 8
             Icon { visible: b.icon !== ""; name: b.icon || "dot"; size: 16; color: b.primary ? Theme.accentInk : Theme.text; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: b.label; color: b.primary ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: b.primary ? Font.DemiBold : Font.Medium; anchors.verticalCenter: parent.verticalCenter } }
+            Text { text: b.label; color: b.primary ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: ed.tight ? 13 : 14; font.weight: b.primary ? Font.DemiBold : Font.Medium; anchors.verticalCenter: parent.verticalCenter } }
         MouseArea { id: ba; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (b.enabled) b.clicked() }
     }
     component Mini: Rectangle {

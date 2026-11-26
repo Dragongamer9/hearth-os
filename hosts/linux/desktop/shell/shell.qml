@@ -278,6 +278,7 @@ ShellRoot {
             if (!row || !p) return "[]";
             return JSON.stringify(e.visibleKids(row).map(v => ({ name: e.itemName(v.item), x: Math.round(v.cx), y: Math.round(p.y + p.h / 2) })));
         }
+        function marks(app: string): string { const b = AppBlocksHub.get(app); return b && b.editorItem ? JSON.stringify(b.editorItem.marksNow()) : "[]"; }
         function letGo(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) b.editorItem.endDrag(); }
         function size(app: string, id: string, edge: string, dx: real, dy: real): string {
             const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "";

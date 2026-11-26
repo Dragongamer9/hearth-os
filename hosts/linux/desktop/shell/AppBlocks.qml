@@ -199,7 +199,7 @@ Item {
         const b = effAdded.find(x => x.id === id) || (editing ? (draft.mine || []).find(x => x.id === id) : null);
         return b ? blockName(b) : id;
     }
-    function labelOf(id) { const d = defs.find(x => x.id === id); return d && d.label ? d.label : L.shortName(titleOf(id)); }
+    function labelOf(id) { const d = defs.find(x => x.id === id); const t = d && d.label ? d.label : L.shortName(titleOf(id)); return t.charAt(0).toUpperCase() + t.slice(1); }
     function actionOf(ref) { return (actions || []).find(a => a.id === ref) || null; }
     function paneOf(ref) { return (panes || []).find(p => p.id === ref) || null; }
     function countOf(ref) { return (counts || []).find(c => c.id === ref) || null; }
@@ -559,10 +559,13 @@ Item {
                 }
                 // Icon and words: the part's own heading
                 readonly property bool head: (hd.look.show === "icon" && !!hd.look.icon) || (hd.look.show === "words" && !!hd.look.words) || (hd.look.show === "both" && (!!hd.look.icon || !!hd.look.words))
+                // (a bar's heading sits at its start, a pane's at its top)
+                readonly property bool headLeft: width > height * 3
                 Row {
                     id: headRow
                     visible: box.head
-                    x: (hd.look.pad || 10); y: (hd.look.pad || 8)
+                    x: (hd.look.pad || 10)
+                    y: box.headLeft ? (box.height - height) / 2 : (hd.look.pad || 8)
                     spacing: 8
                     Icon {
                         visible: hd.look.show !== "words" && !!hd.look.icon
@@ -583,7 +586,7 @@ Item {
                 Item {
                     id: slotItem
                     readonly property real pad: hd.look.pad !== undefined ? hd.look.pad : hd.plain ? 0 : Math.max(2, box.rad * 0.35)
-                    anchors { fill: parent; margins: pad; topMargin: pad + (box.head ? headRow.height + 8 : 0) }
+                    anchors { fill: parent; margins: pad; topMargin: pad + (box.head && !box.headLeft ? headRow.height + 8 : 0); leftMargin: pad + (box.head && box.headLeft ? headRow.width + 16 : 0) }
                     clip: true
                     // an added pane (Files' Details): the app's own piece for it
                     Loader {

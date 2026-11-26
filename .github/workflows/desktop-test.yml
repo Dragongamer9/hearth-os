@@ -2824,9 +2824,11 @@ jobs:
           ipc appblocks letGo files; sleep 2
           grim $o/board3-files-3-in-the-command-bar.png || true
           want files "let go: Sort my Downloads is in the command bar" ':action:toolbar'
-          n=$(ipc appblocks size files preview l -60 0); sleep 1
+          # Preview's edge dragged to line up with Search (where Search's left edge is, from the editor)
+          pdx=$(python3 -c 'import json,sys; m=json.loads(sys.argv[1]); d=json.loads(sys.argv[2]); s=[x for x in m if x["name"]=="Search"]; p=[q for q in d["parts"] if q["id"]=="preview"][0]; print(int(s[0]["x"]-p["x"]+3) if s else -60)' "$(ipc appblocks marks files)" "$(ipc appblocks draft files)" 2>/dev/null)
+          n=$(ipc appblocks size files preview l "${pdx:--60}" 0); sleep 1
           grim $o/board3-files-4-preview-sized-with-the-guide.png || true
-          case "$n" in *'Preview: '*' px'*) say "Preview sized by its edge: $(echo "$n" | cut -c1-200)" ;; *) bad "Preview sized by its edge: $n" ;; esac
+          case "$n" in *'Preview: '*' px · lined up with Search'*'"guides":[{'*) say "Preview sized by its edge, the guide: $(echo "$n" | cut -c1-200)" ;; *) bad "Preview sized by its edge (lined up with Search, a guide): $n" ;; esac
           ipc appblocks sizeLetGo files; sleep 1
           n=$(ipc appblocks size files sidebar r 40 0); sleep 1
           grim $o/board3-files-5-sidebar-sized.png || true
@@ -2840,6 +2842,8 @@ jobs:
           ipc appblocks customize files toolbar look; sleep 2
           grim $o/board3-files-7-customize-look.png || true
           ipc appblocks look files toolbar '{"fill":"#3b2a1d","see":15,"corners":14,"edge":"line","edgeColor":"#ff7a2f","edgeW":2,"shadow":"soft","icon":"menu","words":"Commands · {items}","show":"both","font":"Noto Serif","fontSize":14,"weight":"bold","hover":"lighter","pressed":"darker","m":[4,8,4,8],"pad":6}'; sleep 2
+          grim $o/board3-files-8a-customize-look-set.png || true
+          ipc appblocks customize files "" look; sleep 1
           grim $o/board3-files-8-customize-applied.png || true
           want files "the look is on the command bar" '"looks":["toolbar"'
           for t in shows does place when motion; do ipc appblocks customize files toolbar $t; sleep 1; grim $o/board3-files-9-customize-$t.png || true; done
@@ -2874,7 +2878,7 @@ jobs:
           grim $o/board3-files-16-opened-again-as-kept.png || true
           want files "opened again: as kept (on the window, Sort my Downloads in the command bar)" '"mode":"grid"'
           want files "its block is there" ':action:toolbar'
-          ipc filemanager details off; ipc files close; sleep 2
+          ipc filemanager details off; ipc filemanager home; sleep 1; ipc files close; sleep 2
           rm -rf "$A" "$L" "$DL/Installers" "$DL/Pictures" "$DL/Videos" "$DL/console.png" "$DL/mod.zip"; rm -f /tmp/fakebin/hearth-layout
           shoot task-manager task-manager ipc tasks tab processes
           ipc tasks tab performance:cpu; sleep 4; ipc appblocks edit task-manager; sleep 2; grim $o/task-manager-4-performance-edit-layout.png || true
