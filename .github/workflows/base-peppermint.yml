@@ -257,7 +257,7 @@ jobs:
           fi
           (cd hosts/hearth-layout && cargo build --release) >> /tmp/rust-apps.log 2>&1 || { echo "::error title=hearth-layout::$(grep -A8 '^error' /tmp/rust-apps.log | head -30 | tr '\n' '|' | cut -c1-3000)"; exit 1; }
           mkdir -p /tmp/app/hearth-ui
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-layout; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-layout hearth-forge-app; do
             cp "$CARGO_TARGET_DIR/release/$b" /tmp/app/hearth-ui/ || { echo "::error title=Hearth's pure-Rust apps::$b didn't build"; exit 1; }
           done
           # G15 and Family and friends come from this same build when their own steps above couldn't (where build.sh

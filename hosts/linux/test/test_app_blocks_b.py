@@ -37,6 +37,7 @@ PAGES = {
     'passwords': ['window', 'side', 'list', 'item'],
     'cloud': ['window', 'side', 'home'],
     'home': ['window', 'board'],
+    'forge': ['window', 'make', 'view', 'send', 'models', 'mside', 'mlist'],
 }
 
 BLOCK = re.compile(r'\bbls?\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)')

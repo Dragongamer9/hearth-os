@@ -95,6 +95,16 @@ Hearth writes or publishes it):
 ]}
 ```
 
+Hearth Forge (the owner, Nov 26: "would not be public on the store"; docs/mockups/checklists/hearth-forge.md) is one
+of them too, and is in Hearth OS already (hidden in everyone's menu), so its entry opens the built-in app:
+
+```json
+  {"id": "forge", "name": "Hearth Forge", "card": "Real 3D models from a photo or a few words", "icon": "HF", "from": "#ffb36b", "to": "#ff6a1f", "kind": "builtin", "open": "hearth-forge-app", "group": "apps"}
+```
+
+Its Store updates (quick-update.yml, app hearth-forge-app, main or test) never go into the public catalog.json: their
+`part` goes into the store branch's `private.json` (which nothing publishes), to be copied into this entry.
+
 When one of them has public releases, its entry gets `"kind": "install"`, `"github": "owner/repo"` and `"file"`, the same
 as the public ones. Private apps are marked "Only on your devices" on their page and never replace a public app.
 

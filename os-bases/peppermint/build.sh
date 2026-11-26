@@ -1350,7 +1350,7 @@ fi
 # and /usr/bin/<name> the Store's two-line start: the Hearth Store's newer copy only when one is installed (hearth-part
 # checks it's for this Hearth OS and hasn't failed), else the built-in one. Mantel's own apps keep their names; these
 # are the -app ones Mantel in Rust and the Store open. One that wasn't built or can't start is left out.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-lights-app hearth-remap-app hearth-mouse-app hearth-shield-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-layout; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-lights-app hearth-remap-app hearth-mouse-app hearth-shield-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-forge-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # (Mantel's own command of the same name, if there is one, stays: the Rust one is used only where nothing else is.)
   [ -e "/usr/bin/$b" ] && { echo "note: /usr/bin/$b is already Mantel's; the Rust one goes to /usr/libexec/hearth/apps only"; install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"; continue; }
@@ -1389,6 +1389,10 @@ done
 for oss in listen imagine passwords cloud home; do
   [ -x "/usr/bin/hearth-$oss-app" ] || rm -f "/usr/share/applications/hearth-$oss.desktop"
 done
+# Hearth Forge (docs/mockups/checklists/hearth-forge.md): private, so its menu entry is hidden for everyone
+# (NoDisplay); the owner opens it from the Store's private list. No service in the image: the app writes its own user
+# service only when he sets it up on his Nvidia PC. Not built: its entry goes too.
+[ -x /usr/bin/hearth-forge-app ] || rm -f /usr/share/applications/hearth-forge.desktop
 
 # ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, and its app (hearth-g15-app,
 # menu entry hearth-g15-app.desktop from os/system_files), built by CI next to the
