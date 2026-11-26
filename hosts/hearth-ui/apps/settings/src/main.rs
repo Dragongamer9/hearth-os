@@ -145,7 +145,7 @@ macro_rules! define {
             let mut sh = Shared::new();
             sh.part = part;
             App {
-                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings").with_pages(STATIC_BLOCKS),
+                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings").with_pages(STATIC_BLOCKS).with_kit(&frame::KIT),
                 sh,
                 cat: registry::cat_of(first),
                 page: first,
@@ -342,6 +342,10 @@ pub const STATIC_BLOCKS: &[hearth_ui::blocks::PageDef] = &[frame::WINDOW, home::
 /// Describe it and Arrange, for the window, Home and each page's sections.
 fn describe(a: &mut App, dm: hearth_ui::describe::DMsg) -> Task<Msg> {
     use hearth_ui::describe::DMsg as D;
+    // one of Settings' buttons dragged in (drag and drop), pressed: its category
+    if let Some(m) = hearth_ui::studio::act(&dm).and_then(frame::block_action) {
+        return update(a, m);
+    }
     match dm {
         // a right-click on a part: Edit layout right there, that part picked (the page's, else the window's); while
         // arranging, a part of the page being arranged is picked

@@ -206,7 +206,7 @@ impl App {
         let set = app::arg("--set").and_then(|x| x.parse().ok()).filter(|&n: &u8| (1..=3).contains(&n)).unwrap_or_else(|| config::set_in_use(&cfg));
         let g = app::arg("--key").and_then(|x| x.parse().ok()).filter(|&n: &u8| (1..=18).contains(&n)).unwrap_or(5);
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("g15", "Logitech G15").with_pages(view::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("g15", "Logitech G15").with_pages(view::BLOCKS).with_kit(&view::KIT),
             p: hearth_ui::theme::load(),
             status: service::status(&root),
             prev: Previewer::new(root.clone()),
@@ -743,7 +743,13 @@ fn page_index(p: Page) -> usize {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of the G15 app's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(view::block_action) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
             // Light at rest: the pictures are drawn again only when something changed (the live page has its own

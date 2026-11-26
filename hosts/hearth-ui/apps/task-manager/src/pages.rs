@@ -85,6 +85,100 @@ fn dm(m: hearth_ui::describe::DMsg) -> Msg {
     Msg::Describe(m)
 }
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit, MenuDef};
+/// Task Manager's blocks window: its buttons (its own actions and pages), its panes, its info, its menus.
+pub const KIT: Kit = Kit {
+    name: "Task Manager",
+    buttons: &[
+        tile("run-new-task", "Run new task", G::Play),
+        tile("end-task", "End task", G::Close),
+        tile("efficiency-mode", "Efficiency mode", G::Leaf),
+        tile("open-file-location", "Open file location", G::Folder),
+        tile("processes", "Processes", G::List),
+        tile("performance", "Performance", G::Pulse),
+        tile("app-history", "App history", G::Clock),
+        tile("startup-apps", "Startup apps", G::Rocket),
+        tile("users", "Users", G::Users),
+        tile("details", "Details", G::Grid),
+        tile("services", "Services", G::Cog),
+        tile("scheduled-tasks", "Scheduled tasks", G::Clock),
+        tile("settings", "Settings", G::Gear),
+        tile("new-task", "New scheduled task", G::Plus),
+        tile("columns", "Columns…", G::Columns),
+        tile("clear-history", "Delete usage history", G::Close),
+    ],
+    panes: &[tile("cpu", "CPU graph", G::Pulse), tile("memory", "Memory graph", G::Pulse), tile("busiest", "The busiest apps", G::List)],
+    info: &[
+        tile("cpu", "CPU", G::Pulse),
+        tile("memory", "Memory", G::Pulse),
+        tile("processes", "Processes", G::List),
+        tile("threads", "Threads", G::List),
+        tile("uptime", "Up time", G::Clock),
+    ],
+    pane_page: "window",
+    bars: &[],
+    menus: &[
+        MenuDef { id: "row", title: "The right-click menu on a process (Processes)", items: &[("end-task", "End task"), ("efficiency-mode", "Efficiency mode"), ("expand", "Expand"), ("collapse", "Collapse"), ("end-process-tree", "End process tree"), ("set-priority", "Set priority"), ("run-on-these-cores", "Run on these cores…"), ("limit-cpu-memory", "Limit CPU / memory…"), ("resume", "Resume"), ("suspend", "Suspend"), ("keep-this-running-checkpoint", "Keep this running (checkpoint)"), ("never-close-when-memory-runs-out", "Never close when memory runs out"), ("open-file-location", "Open file location"), ("go-to-details", "Go to details"), ("search-online", "Search online"), ("properties", "Properties")] },
+        MenuDef { id: "details", title: "The right-click menu on a process (Details)", items: &[("end-task", "End task"), ("end-process-tree", "End process tree"), ("set-priority", "Set priority"), ("set-affinity", "Set affinity"), ("create-dump-file", "Create dump file"), ("open-file-location", "Open file location"), ("search-online", "Search online"), ("properties", "Properties")] },
+        MenuDef { id: "list", title: "The right-click menu on the other pages' rows", items: &[("enable", "Enable"), ("disable", "Disable"), ("start", "Start"), ("stop", "Stop"), ("restart", "Restart"), ("turn-on", "Turn on"), ("turn-off", "Turn off"), ("open-file-location", "Open file location"), ("search-online", "Search online"), ("properties", "Properties")] },
+    ],
+};
+
+/// One of Task Manager's buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "run-new-task" => Msg::RunNew,
+        "end-task" => Msg::TopEnd,
+        "efficiency-mode" => Msg::TopEco,
+        "open-file-location" => Msg::TopWhere,
+        "processes" => Msg::Page(Page::Processes),
+        "performance" => Msg::Page(Page::Performance),
+        "app-history" => Msg::Page(Page::History),
+        "startup-apps" => Msg::Page(Page::Startup),
+        "users" => Msg::Page(Page::Users),
+        "details" => Msg::Page(Page::Details),
+        "services" => Msg::Page(Page::Services),
+        "scheduled-tasks" => Msg::Page(Page::Tasks),
+        "settings" => Msg::Page(Page::Settings),
+        "new-task" => Msg::NewTask,
+        "columns" => Msg::DetailCols,
+        "clear-history" => Msg::ClearHistory,
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let Some(s) = a.sample.as_ref() else { return a.describe.values(Vec::new()) };
+    a.describe.values(vec![
+        ("cpu", format!("{:.0}%", s.cpu.total)),
+        ("memory", format!("{} of {}", gb(s.mem.used), gb(s.mem.total))),
+        ("processes", s.cpu.processes.to_string()),
+        ("threads", s.cpu.threads.to_string()),
+        ("uptime", uptime(s.uptime)),
+    ]);
+}
+
+/// A graph as a pane of its own (CPU graph, Memory graph).
+fn graph_pane<'a>(p: &Pal, hist: &VecDeque<f32>, label: &str, right: String) -> Element<'a, Msg> {
+    let g = ui::graph(Graph { values: hist.iter().copied().collect(), dashed: vec![], max: 100.0, min: 0.0, color: p.accent, grid: Pal::mix(p.panel, p.line, 0.6), fill: true, width: 1.5, centred: false, gridlines: vec![25.0, 50.0, 75.0] }, Length::Fill, Length::Fill);
+    column![row![t1(label.to_string(), 12.0, p.muted), Space::new().width(Length::Fill), t1(right, 12.0, p.text)], container(g).width(Length::Fill).height(Length::Fill).style(ui::boxed(Pal::mix(p.bg, p.panel, 0.5), 0.0, Some((p.line, 1.0))))].spacing(6.0).into()
+}
+
+/// The busiest apps (a pane of its own): the six using the most of the processor now.
+fn busiest_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.p;
+    let mut c = Column::new().spacing(6.0);
+    if let Some(s) = a.sample.as_ref() {
+        let mut g: Vec<&Group> = s.groups.iter().collect();
+        g.sort_by(|x, y| y.cpu.total_cmp(&x.cpu));
+        for x in g.into_iter().take(6) {
+            c = c.push(mouse_area(row![t1(ui::fit(&x.name, 28), 13.0, p.text), Space::new().width(Length::Fill), t1(pct1(x.cpu), 13.0, p.muted), t1(mb(x.mem), 12.0, p.muted)].spacing(10.0)).on_press(Msg::Select(x.id.clone())).interaction(mouse::Interaction::Pointer));
+        }
+    }
+    c.into()
+}
+
 // ------------------------------------------------------------------ the frame
 pub fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
@@ -112,11 +206,25 @@ pub fn view(a: &App) -> Element<'_, Msg> {
     let body: Element<Msg> = if a.describe.knob("rail") == "hidden" {
         container(page(a)).width(Length::Fill).height(Length::Fill).into()
     } else {
+        studio_values(a);
+        let mut items: Vec<(&'static str, Element<Msg>)> = vec![
+            ("rail", hearth_ui::studio::made(&a.describe, "window", "rail", || rail(a))),
+            ("page", hearth_ui::studio::made(&a.describe, "window", "page", || container(page(a)).width(Length::Fill).height(Length::Fill).into())),
+        ];
+        if a.describe.wants_pane("cpu") {
+            items.push(("pane:cpu", graph_pane(&p, &a.cpu_hist, "CPU · 60 seconds", a.sample.as_ref().map(|s| format!("{:.0}%", s.cpu.total)).unwrap_or_default())));
+        }
+        if a.describe.wants_pane("memory") {
+            items.push(("pane:memory", graph_pane(&p, &a.mem_hist, "Memory · 60 seconds", a.sample.as_ref().map(|s| format!("{} of {}", gb(s.mem.used), gb(s.mem.total))).unwrap_or_default())));
+        }
+        if a.describe.wants_pane("busiest") {
+            items.push(("pane:busiest", busiest_pane(a)));
+        }
         hearth_ui::arrange::parts(
             &a.describe,
             &p,
             "window",
-            vec![("rail", rail(a)), ("page", container(page(a)).width(Length::Fill).height(Length::Fill).into())],
+            items,
             |ps| row![ps.take("rail"), ui::vline(p.line), ps.take("page")].height(Length::Fill).into(),
             dm,
         )

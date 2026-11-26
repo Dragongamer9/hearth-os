@@ -2330,25 +2330,40 @@ impl Describe {
 
     /// CI's pictures (HEARTH_STUDIO_STAGE): the moment shown as it is while it's done with the pointer.
     fn stage(&mut self, what: &'static str) -> Task<DMsg> {
-        let (bars, panes): (Vec<Rec>, Option<Rec>) = {
+        // the bar with the most pieces (the command bar), the pieces in it, a pane dragged in, the parts down the side
+        let (bar, pieces, pane, sides, items) = {
             let geo = self.geo.borrow();
             let mut bars: Vec<Rec> = geo.now().filter(|r| r.kind == 1 && rr(r.rect).is_bar() && rr(r.rect).across() && !geo.holder(r)).cloned().collect();
-            bars.sort_by(|a, b| a.rect.y.total_cmp(&b.rect.y));
-            let tall = geo
-                .now()
-                .filter(|r| r.kind == 1 && !geo.holder(r) && !rr(r.rect).across())
-                .max_by(|a, b| a.rect.x.total_cmp(&b.rect.x))
-                .or_else(|| geo.now().filter(|r| r.kind == 1 && !geo.holder(r) && !rr(r.rect).is_bar()).max_by(|a, b| a.rect.x.total_cmp(&b.rect.x)))
-                .cloned();
-            (bars, tall)
+            bars.sort_by_key(|b| std::cmp::Reverse(geo.now().filter(|x| x.kind == 3 && x.page == b.page && x.part == b.id).count() * 1000 + (b.rect.y as usize).min(999)));
+            let bar = bars.first().cloned();
+            let mut pieces: Vec<Rec> = bar.as_ref().map(|b| geo.now().filter(|x| x.kind == 3 && x.page == b.page && x.part == b.id).cloned().collect()).unwrap_or_default();
+            pieces.sort_by(|a, b| a.rect.x.total_cmp(&b.rect.x));
+            let pane = geo.now().filter(|r| r.kind == 2 && r.part.is_empty()).max_by(|a, b| rr(a.rect).area().total_cmp(&rr(b.rect).area())).cloned();
+            let mut sides: Vec<Rec> = geo.now().filter(|r| r.kind == 1 && !geo.holder(r) && !rr(r.rect).is_bar()).cloned().collect();
+            sides.sort_by(|a, b| b.rect.x.total_cmp(&a.rect.x));
+            let items: Vec<Rec> = geo.now().filter(|r| r.kind == 3).cloned().collect();
+            (bar, pieces, pane, sides, items)
+        };
+        let part_sel = |d: &Describe, r: &Rec| -> Option<Sel> {
+            let pg = d.pages.iter().find(|x| x.id == r.page)?;
+            pg.blocks.iter().find(|b| b.id == r.id).map(|b| Sel::Part(pg.id, b.id))
         };
         let first_button = self.kit.and_then(|k| k.buttons.first().copied());
         match what {
             "drag" => {
-                // a button being dragged into the app's first bar, the lit line where it lands
-                let Some(bar) = bars.first().or(bars.get(1)) else { return Task::none() };
+                // one of the app's buttons dragged into its command bar, between two of its pieces (after Sort when
+                // it has one), the lit line where it lands
+                let Some(bar) = bar else { return Task::none() };
                 let Some(b) = first_button else { return Task::none() };
-                let (x, y) = (bar.rect.x + bar.rect.width * 0.36, bar.rect.y + bar.rect.height * 0.5);
+                let y = bar.rect.y + bar.rect.height * 0.5;
+                let x = match pieces.iter().position(|p| p.title == "Sort") {
+                    Some(i) => pieces[i].rect.x + pieces[i].rect.width + 2.0,
+                    None if pieces.len() >= 2 => {
+                        let n = pieces.len() / 2;
+                        (pieces[n - 1].rect.x + pieces[n - 1].rect.width + pieces[n].rect.x) / 2.0
+                    }
+                    None => bar.rect.x + bar.rect.width * 0.36,
+                };
                 if let Some(st) = self.st.as_mut() {
                     st.pointer = (x - 40.0, y - 60.0);
                     st.drag = Some(Drag { kind: DragKind::Tile(format!("act:{}", b.id), b.title.to_string()), from: (x - 40.0, y - 60.0), before: st.s.draft.clone(), moved: false, start: R::default(), page: R::default(), target: None, guide: None });
@@ -2356,25 +2371,33 @@ impl Describe {
                 self.st_move(x, y);
             }
             "size" => {
-                // a pane's (or the tallest part's) left edge being dragged, the guide and the note
-                let Some(p) = panes else { return Task::none() };
-                let Some(page) = self.pages.iter().find(|d| d.id == p.page).map(|d| d.id) else { return Task::none() };
-                let Some(id) = self.pages.iter().find(|d| d.id == page).and_then(|d| d.blocks.iter().find(|b| b.id == p.id)).map(|b| b.id) else { return Task::none() };
-                let sel = Sel::Part(page, id);
-                let x = p.rect.x - (p.rect.width * 0.2).min(120.0);
-                let y = p.rect.y + p.rect.height * 0.5;
+                // a pane's left edge dragged (else the rightmost part's), lined up with a piece of a bar left of it
+                let (sel, r) = match &pane {
+                    Some(pr) => match self.pages.iter().find(|x| x.id == pr.page) {
+                        Some(pg) => (Sel::Add(pg.id, pr.id.clone()), pr.rect),
+                        None => return Task::none(),
+                    },
+                    None => match sides.iter().find(|r| r.rect.x > 8.0).or(sides.first()).and_then(|r| part_sel(self, r).map(|s| (s, r.rect))) {
+                        Some(x) => x,
+                        None => return Task::none(),
+                    },
+                };
+                let left = r.x > 8.0;
+                let side = if left { Side::Left } else { Side::Right };
+                let edge = if left { r.x } else { r.x + r.width };
+                let to = items.iter().map(|i| i.rect.x).filter(|x| (*x < edge - 20.0 && *x > edge - 420.0) || (!left && *x > edge + 20.0 && *x < edge + 300.0)).max_by(|a, b| a.total_cmp(b)).map(|x| x + 2.0).unwrap_or(if left { edge - 64.0 } else { edge + 48.0 });
+                let y = r.y + r.height * 0.5;
                 if let Some(st) = self.st.as_mut() {
                     st.pick = Some(sel.clone());
-                    st.pointer = (p.rect.x, y);
-                    st.drag = Some(Drag { kind: DragKind::Side(sel, Side::Left), from: (p.rect.x, y), before: st.s.draft.clone(), moved: true, start: rr(p.rect), page: R::default(), target: None, guide: None });
+                    st.pointer = (edge, y);
+                    st.drag = Some(Drag { kind: DragKind::Side(sel, side), from: (edge, y), before: st.s.draft.clone(), moved: true, start: rr(r), page: R::default(), target: None, guide: None });
                 }
-                self.st_move(x, y);
+                self.st_move(to, y);
             }
             "customize" | "menu" => {
-                let pick = bars.first().and_then(|b| self.pages.iter().find(|d| d.id == b.page).and_then(|d| d.blocks.iter().find(|x| x.id == b.id)).map(|x| Sel::Part(d_id(self.pages, b.page), x.id)));
-                let Some(sel) = pick else { return Task::none() };
+                let Some(sel) = bar.as_ref().and_then(|b| part_sel(self, b)) else { return Task::none() };
                 if what == "menu" {
-                    let r = bars.first().map(|b| b.rect).unwrap_or_default();
+                    let r = bar.map(|b| b.rect).unwrap_or_default();
                     return self.studio(SMsg::RMenu(sel, r.x + r.width * 0.45, r.y + r.height * 0.6));
                 }
                 if let Some(st) = self.st.as_mut() {
@@ -2393,12 +2416,11 @@ impl Describe {
             }
             "move" => {
                 // a part moved off its side, anywhere in the window
-                let Some(p) = panes else { return Task::none() };
-                let Some(page) = self.pages.iter().find(|d| d.id == p.page).map(|d| d.id) else { return Task::none() };
-                let Some(id) = self.pages.iter().find(|d| d.id == page).and_then(|d| d.blocks.iter().find(|b| b.id == p.id)).map(|b| b.id) else { return Task::none() };
-                let (x, y) = (p.rect.x + 40.0, p.rect.y + 40.0);
-                let _ = self.studio(SMsg::Press(Sel::Part(page, id), x, y));
-                self.st_move(x - p.rect.width * 0.4, y + 60.0);
+                let Some(r) = sides.iter().find(|r| r.rect.x < 40.0).or(sides.last()).cloned() else { return Task::none() };
+                let Some(sel) = part_sel(self, &r) else { return Task::none() };
+                let (x, y) = (r.rect.x + 40.0, r.rect.y + 40.0);
+                let _ = self.studio(SMsg::Press(sel, x, y));
+                self.st_move(x + r.rect.width * 0.9 + 120.0, y + 48.0);
             }
             _ => {}
         }

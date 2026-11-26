@@ -206,7 +206,7 @@ impl App {
             }
         }
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("resmon", "Resource Monitor").with_pages(view::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("resmon", "Resource Monitor").with_pages(view::BLOCKS).with_kit(&view::KIT),
             p: hearth_ui::theme::load(),
             tab,
             sample: None,
@@ -553,7 +553,13 @@ fn open_location(path: &str) {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Resource Monitor's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(view::block_action) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Feed(ev) => match ev {
             feed::Ev::Sample(d) => {

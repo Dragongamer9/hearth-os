@@ -187,7 +187,7 @@ impl App {
             _ => Page::Idea,
         };
         let a = App {
-            describe: hearth_ui::describe::Describe::new("ideas", "Hearth Ideas").with_pages(BLOCKS),
+            describe: hearth_ui::describe::Describe::new("ideas", "Hearth Ideas").with_pages(BLOCKS).with_kit(&KIT),
             p: hearth_ui::theme::load(),
             ideas: Vec::new(),
             loading: true,
@@ -382,7 +382,13 @@ fn roadmap_add(text: &str, line: &str) -> String {
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     a.now = now();
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Hearth Ideas' buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(|id| block_action(a, id)) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
             // being built: read it again (once a minute, only while one is open)
@@ -1302,7 +1308,19 @@ fn view(a: &App) -> Element<'_, Msg> {
         &a.describe,
         &p,
         "window",
-        vec![("side", sidebar(a)), ("page", container(main).padding(Padding { top: 28.0, right: 34.0, bottom: 24.0, left: 34.0 }).width(Length::Fill).height(Length::Fill).into())],
+        {
+            studio_values(a);
+            let mut items: Vec<(&'static str, Element<'_, Msg>)> = vec![
+                ("side", hearth_ui::studio::made(&a.describe, "window", "side", || sidebar(a))),
+                ("page", container(main).padding(Padding { top: 28.0, right: 34.0, bottom: 24.0, left: 34.0 }).width(Length::Fill).height(Length::Fill).into()),
+            ];
+            for (id, which) in [("pane:newest", "newest"), ("pane:most", "most"), ("pane:counts", "counts")] {
+                if a.describe.wants_pane(which) {
+                    items.push((id, studio_pane(a, which)));
+                }
+            }
+            items
+        },
         |ps| row![ps.take("side"), ps.take("page")].into(),
         Msg::Describe,
     );
@@ -1312,6 +1330,76 @@ fn view(a: &App) -> Element<'_, Msg> {
     let bar = hearth_ui::describe::title_bar(&p, &a.describe, G::Bell, "Hearth Ideas", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
     let all = container(column![bar, base]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, p.window_corner, Some((p.line, 1.0))));
     ui::edges(all.into(), Msg::Resize)
+}
+
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// Hearth Ideas' blocks window: its buttons (its lists and actions), its panes, its info.
+const KIT: Kit = Kit {
+    name: "Ideas",
+    buttons: &[
+        tile("new", "New ideas", G::Bell),
+        tile("later", "Later", G::Clock),
+        tile("building", "Being built", G::Cog),
+        tile("ready", "Ready", G::Check),
+        tile("shipped", "Shipped", G::Rocket),
+        tile("no", "Not doing", G::Close),
+        tile("sort", "Sort (most asked)", G::List),
+        tile("back", "Back to the list", G::Arrow),
+        tile("build", "Build the open idea", G::Play),
+        tile("later-it", "Put the open idea off", G::Clock),
+    ],
+    panes: &[tile("newest", "The newest ideas", G::Bell), tile("most", "The most asked", G::List), tile("counts", "Ideas by where they are", G::Columns)],
+    info: &[tile("ideas", "Ideas", G::Bell), tile("new", "New ones", G::Bell), tile("building", "Being built", G::Cog), tile("shipped", "Shipped", G::Rocket)],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Hearth Ideas' buttons dragged in, pressed (some on the idea that's open).
+fn block_action(a: &App, id: &str) -> Option<Msg> {
+    Some(match id {
+        "new" => Msg::Pick(State::New),
+        "later" => Msg::Pick(State::Later),
+        "building" => Msg::Pick(State::Building),
+        "ready" => Msg::Pick(State::Ready),
+        "shipped" => Msg::Pick(State::Shipped),
+        "no" => Msg::Pick(State::No),
+        "sort" => Msg::Sort,
+        "back" => Msg::Back,
+        "build" if a.open > 0 => Msg::BuildIt(a.open),
+        "later-it" if a.open > 0 => Msg::Set(a.open, State::Later),
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let n = |st: State| a.ideas.iter().filter(|i| i.state == st).count().to_string();
+    a.describe.values(vec![("ideas", a.ideas.len().to_string()), ("new", n(State::New)), ("building", n(State::Building)), ("shipped", n(State::Shipped))]);
+}
+
+/// A pane of Hearth Ideas' own: the newest ideas, the most asked, or how many are where.
+fn studio_pane<'a>(a: &'a App, which: &str) -> Element<'a, Msg> {
+    let p = a.p;
+    let mut c = Column::new().spacing(6.0);
+    if which == "counts" {
+        for st in State::ALL {
+            let k = a.ideas.iter().filter(|i| i.state == st).count();
+            c = c.push(mouse_area(row![t(st.label(), 13.0, p.text), Space::new().width(Length::Fill), tm(k.to_string(), 13.0, p.muted)].spacing(10.0)).on_press(Msg::Pick(st)).interaction(mouse::Interaction::Pointer));
+        }
+        return c.into();
+    }
+    let mut list: Vec<&Idea> = a.ideas.iter().collect();
+    if which == "most" {
+        list.sort_by(|x, y| y.count.cmp(&x.count));
+    } else {
+        list.sort_by(|x, y| y.number.cmp(&x.number));
+    }
+    for i in list.into_iter().take(10) {
+        let name = if i.key.is_empty() { format!("#{}", i.number) } else { i.key.clone() };
+        c = c.push(mouse_area(row![t(ui::fit(&name, 40), 13.0, p.text), Space::new().width(Length::Fill), t(i.count.to_string(), 12.0, p.muted)].spacing(10.0)).on_press(Msg::Open(i.number)).interaction(mouse::Interaction::Pointer));
+    }
+    scrollable(c).height(Length::Fill).into()
 }
 
 fn subscription(a: &App) -> Subscription<Msg> {

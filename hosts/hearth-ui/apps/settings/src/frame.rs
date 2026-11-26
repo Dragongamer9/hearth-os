@@ -94,6 +94,84 @@ pub const WINDOW: hearth_ui::blocks::PageDef = hearth_ui::blocks::PageDef {
     ],
 };
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// Settings' blocks window: a button for each category (it opens it), its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "Settings",
+    buttons: &[
+        tile("home", "Home", G::Home),
+        tile("system", "System", G::Display),
+        tile("net", "Network & internet", G::Wifi),
+        tile("bt", "Bluetooth & devices", G::Bt),
+        tile("link", "Hearth Link", G::Link),
+        tile("pers", "Personalization", G::Palette),
+        tile("apps", "Apps", G::Grid),
+        tile("gaming", "Gaming", G::Pad),
+        tile("ai", "AI", G::Asterisk),
+        tile("accounts", "Accounts", G::User),
+        tile("hs", "Home server", G::Server),
+        tile("privacy", "Privacy & security", G::Shield),
+        tile("a11y", "Accessibility", G::Access),
+        tile("updates", "Updates & recovery", G::Update),
+    ],
+    panes: &[tile("about", "This PC", G::Display), tile("changes", "Recent changes", G::Clock), tile("links", "Every category", G::List)],
+    info: &[tile("host", "This PC's name", G::Display), tile("os", "Hearth OS", G::Info), tile("user", "You", G::User), tile("memory", "Memory", G::Pulse), tile("changes", "Settings changed", G::Clock)],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Settings' buttons dragged in, pressed: its category.
+pub fn block_action(id: &str) -> Option<Msg> {
+    CATEGORIES.iter().position(|c| c.0 == id).map(Msg::Cat)
+}
+
+fn studio_values(a: &App) {
+    let i = &a.sh.info;
+    a.describe.values(vec![
+        ("host", i.host.clone()),
+        ("os", if i.version.is_empty() { i.os.clone() } else { format!("{} {}", i.os, i.version) }),
+        ("user", if i.real.is_empty() { i.user.clone() } else { i.real.clone() }),
+        ("memory", hearth_ui::ui::bytes(i.mem_kb as f64 * 1024.0)),
+        ("changes", a.sh.history.len().to_string()),
+    ]);
+}
+
+/// This PC (a pane of its own): its name, Hearth OS, the processor, the graphics card, the memory.
+fn about_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.sh.p;
+    let i = &a.sh.info;
+    let mut c = Column::new().spacing(6.0);
+    for (k, v) in [("Name", i.host.clone()), ("Hearth OS", format!("{} {}", i.os, i.version)), ("Processor", i.cpu.clone()), ("Graphics", i.gpu.clone()), ("Memory", hearth_ui::ui::bytes(i.mem_kb as f64 * 1024.0))] {
+        c = c.push(row![t1(k, 13.0, p.muted), Space::new().width(Length::Fill), t1(ui::fit(&v, 40), 13.0, p.text)].spacing(10.0));
+    }
+    c.into()
+}
+
+/// Recent changes (a pane of its own): the last settings changed, by whom and when.
+fn changes_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.sh.p;
+    let mut c = Column::new().spacing(6.0);
+    if a.sh.history.is_empty() {
+        c = c.push(t("Nothing changed yet.", 13.0, p.muted));
+    }
+    for ch in a.sh.history.iter().rev().take(8) {
+        c = c.push(column![t1(ui::fit(&format!("{} → {}", ch.key, ch.to), 44), 13.0, p.text), t1(format!("{} · {}", ch.who, hearth_ui::time::when(ch.at)), 11.5, p.muted)].spacing(1.0));
+    }
+    scrollable(c).height(Length::Fill).into()
+}
+
+/// Every category (a pane of its own): each one a press away.
+fn links_pane(a: &App) -> Element<'_, Msg> {
+    let p = a.sh.p;
+    let mut c = Column::new().spacing(4.0);
+    for (i, (id, name, _)) in CATEGORIES.iter().enumerate() {
+        c = c.push(mouse_area(row![glyph(cat_glyph(id), p.muted, 15.0, 1.8), t1(*name, 13.0, p.text)].spacing(10.0).align_y(iced::Center)).on_press(Msg::Cat(i)).interaction(mouse::Interaction::Pointer));
+    }
+    scrollable(c).height(Length::Fill).into()
+}
+
 pub fn frame(a: &App) -> Element<'_, Msg> {
     let p = a.sh.p;
     set_big(a.sh.big);
@@ -192,18 +270,25 @@ fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
     let brand: Element<'_, Msg> = row![flame, tb("Settings", 24.0, p.text)].spacing(14.0).align_y(iced::Center).into();
     // its blocks (WINDOW), each a right-click away from Edit layout (that part picked); as it was when nothing is
     // while the window is being arranged, each part's own content sits under its block's bar (drawn over its top)
-    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some("window");
-    let edit = |id: &'static str, el: Element<'a, Msg>| -> (&'static str, Element<'a, Msg>) {
-        let el: Element<'a, Msg> = if arranging { container(el).padding(Padding { top: 26.0, right: 0.0, bottom: 0.0, left: 0.0 }).into() } else { el };
-        (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id))))
-    };
-    let items = vec![
+    let edit = |id: &'static str, el: Element<'a, Msg>| -> (&'static str, Element<'a, Msg>) { (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id)))) };
+    studio_values(a);
+    let mut items = vec![
         edit("brand", brand),
         edit("search", search.into()),
         edit("cats", scrollable(cats).height(Length::Fill).into()),
-        edit("title", crumbs(a)),
+        edit("title", hearth_ui::studio::made(&a.describe, "window", "title", || crumbs(a))),
         ("page", page_column(a, true).into()),
     ];
+    // drag and drop: Settings' panes where they were dragged in
+    if a.describe.wants_pane("about") {
+        items.push(("pane:about", about_pane(a)));
+    }
+    if a.describe.wants_pane("changes") {
+        items.push(("pane:changes", changes_pane(a)));
+    }
+    if a.describe.wants_pane("links") {
+        items.push(("pane:links", links_pane(a)));
+    }
     let body = hearth_ui::arrange::parts(
         &a.describe,
         &p,
