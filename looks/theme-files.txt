@@ -1,0 +1,9 @@
+total 32
+drwxr-xr-x 2 root root 4096 Nov 26 07:18 .
+drwxr-xr-x 3 root root 4096 Nov 26 07:20 ..
+-rw-r--r-- 1 root root 3519 Nov 26 07:18 Hearth.colors
+-rw-r--r-- 1 root root 1439 Nov 26 07:18 gtk3.css
+-rw-r--r-- 1 root root 3272 Nov 26 07:18 gtk4.css
+-rw-r--r-- 1 root root  873 Nov 26 07:18 hearth-qt.conf
+-rw-r--r-- 1 root root   37 Nov 26 07:13 labwc.json
+-rw-r--r-- 1 root root 2802 Nov 26 07:18 themerc-override

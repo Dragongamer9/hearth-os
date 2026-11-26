@@ -1,0 +1,15 @@
+2026-11-26 08:02:55.958  INFO: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/server-mode.qml"
+2026-11-26 08:02:55.958  INFO: Shell ID: "8cf77242709dae84b05f417b909d0e4c" Path ID "8cf77242709dae84b05f417b909d0e4c"
+2026-11-26 08:02:55.959  WARN: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+2026-11-26 08:02:56.029  WARN: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+2026-11-26 08:02:56.035  INFO: Saving logs to "/tmp/xdg/quickshell/by-id/jxqvon3pt/log.qslog"
+2026-11-26 08:02:56.046  WARN quickshell.qmlscanner: Ignoring unresolvable import "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/fhcouch" from "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/FhpDeskBar.qml"
+2026-11-26 08:02:56.046  WARN quickshell.qmlscanner: Ignoring unresolvable import "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/fhcouch/deskmenus.js" from "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/FhpDeskBar.qml"
+2026-11-26 08:02:56.046  WARN quickshell.qmlscanner: Ignoring unresolvable import "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/fhcouch/fhp.js" from "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/FhpDeskBar.qml"
+2026-11-26 08:02:56.373  INFO: Configuration Loaded
+2026-11-26 08:02:56.380  WARN scene: QML FileView at @Theme.qml[130:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+2026-11-26 08:02:56.380  WARN scene: QML FileView at @Theme.qml[188:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+2026-11-26 08:02:56.401  WARN scene: QML FileView at @ServerDash.qml[108:5]: Read of /tmp/xdg/hearth-server/countdown.json failed: File does not exist.

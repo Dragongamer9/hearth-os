@@ -1,0 +1,39 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/shell.qml"
+[32m  INFO[0m: Shell ID: "46d0510b7d07c529e429b39faef616e5" Path ID "46d0510b7d07c529e429b39faef616e5"
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/57q5kn3pt/log.qslog"
+[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/fhcouch" from "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/FhpDeskBar.qml"
+[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/fhcouch/deskmenus.js" from "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/FhpDeskBar.qml"
+[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/fhcouch/fhp.js" from "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/FhpDeskBar.qml"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[33m  WARN[0m: qs:@/qs/FireholdCards.qml: File not found
+
+[32m  INFO[97m qml[0m: Mantel: loaded in 407 ms (labwc)
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @shell.qml[541:9]: Read of /tmp/home/.config/nimbus/screens.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[130:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[188:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[45:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[204:5]: Read of /tmp/home/.config/nimbus/notify.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[183:5]: Read of /tmp/xdg/hearth-vnc/clients.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @NotifyHub.qml[176:5]: Read of /tmp/xdg/hearth-record/state.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @BarLayout.qml[64:5]: Read of /tmp/home/.config/nimbus/bar.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @ScreenEditor.qml[123:5]: Read of /tmp/home/.local/share/nimbus/lock-screen.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[201:5]: Read of /tmp/home/.config/nimbus/activities.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Dwell.qml[28:5]: Read of /tmp/home/.config/nimbus/accessibility.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Firehold.qml[38:5]: Read of /tmp/home/.config/nimbus/firehold.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @WidgetStore.qml[92:5]: Read of /tmp/home/.config/nimbus/widgets.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @InkWatch.qml[19:5]: Read of /tmp/home/.local/state/nimbus/ink-told.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @BtReceive.qml[22:5]: Read of /tmp/home/.local/state/nimbus/bt-received.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @DeviceWatch.qml[27:5]: Read of /tmp/home/.local/state/nimbus/usb-seen.json failed: File does not exist.
+[32m  INFO[97m qml[0m: Mantel: the memory watch reads /proc directly
+[33m  WARN[97m scene[0m: QML FileView at @FirmwareWatch.qml[18:5]: Read of /tmp/home/.local/state/nimbus/firmware-told.json failed: File does not exist.
+[33m  WARN[0m: Process failed to start, likely because the binary could not be found. Command: QList("hearth-layout", "features")
+[32m  INFO[97m qml[0m: Mantel's password prompt: no logind session for this desktop, so it doesn't register; the classic agent asks
+[32m  INFO[97m qml[0m: Mantel: up 3823 ms after it started loading
+[32m  INFO[97m qml[0m: Mantel's password prompt isn't registered (another agent has this session, or polkit isn't reachable); the classic agent asks
