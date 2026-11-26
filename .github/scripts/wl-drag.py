@@ -73,7 +73,7 @@ def main():
 
     at(*pts[0]); flush(); time.sleep(0.15)
     at(pts[0][0] + 1, pts[0][1]); at(*pts[0]); flush(); time.sleep(0.1)
-    w.send(vp, 2, struct.pack('<IIII', ms(), button, 1)); w.send(vp, 4); flush()
+    w.send(vp, 2, struct.pack('<III', ms(), button, 1)); w.send(vp, 4); flush()
     time.sleep(hold / 1000)
     sent = 0
     for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
@@ -84,7 +84,7 @@ def main():
             time.sleep(1 / 60)
     flush()
     time.sleep(hold / 1000)
-    w.send(vp, 2, struct.pack('<IIII', ms(), button, 0)); w.send(vp, 4)
+    w.send(vp, 2, struct.pack('<III', ms(), button, 0)); w.send(vp, 4)
     w.send(vp, 8)
     flush()
     print('moves=%d' % sent)
