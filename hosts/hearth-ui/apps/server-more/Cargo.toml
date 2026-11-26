@@ -1,0 +1,25 @@
+# The Home server helper's Game servers, Game cache, Remote play, Media and PCs pages (pure Rust, hearth-ui; boards
+# docs/mockups/server-expansion/05, 07, 08, 09, 10; checklists docs/mockups/checklists/server-*.md). A library of pages,
+# each its own module, that the Home server helper's window hooks into its sidebar with one line each
+# (hearth_server_more::SIDE); the small window here (hearth-server-more-app) shows them on their own until then.
+# Their work is done by Mantel's hearth-server-hub (it comes with Mantel's Store part). No version line: the owner
+# picks every version number.
+[package]
+name = "hearth-server-more"
+edition = "2021"
+description = "The Home server helper's game servers, game cache, remote play, media and PCs"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-server-more-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true, features = ["canvas"] }
+serde_json = { workspace = true }
+futures = { workspace = true }

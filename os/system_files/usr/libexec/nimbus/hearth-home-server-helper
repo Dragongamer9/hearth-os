@@ -68,6 +68,12 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
                         Sunshine's ports only from this PC itself (lo: Hearth Link's tunnel ends there); mark local-only
   remote-fw off         the table, its file, the mark and the boot unit go (Sunshine as Sunshine itself sets it up)
   remote-fw load        the boot unit: the saved rule loaded again (nothing when there's none)
+  ---- The Home server helper's more pages (docs/SERVER-HUB.md; each asks for the admin password once)
+  games-setup           Game servers: Podman and its user-namespace tools (kept across updates by hearth-unlock), the game
+                        servers' ports only from this PC, the home network and Tailscale (/etc/hearth/games.nft, loaded
+                        again at start by /etc/systemd/system/hearth-games-firewall.service); games-off takes them away
+  play-setup            Remote play: Sunshine when it's missing, and its screen-capture permission
+  media-setup           Media: ffmpeg, cdparanoia, abcde and flac to copy your own discs and CDs
 
 The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Nothing here goes through a shell: every
 command is an argument list. Paths and names are checked here again (the Mantel helper checks them first): a share
@@ -3573,6 +3579,121 @@ def remote_fw(mode, raw_port=None):
     raise Fail('remote-fw tailscale [PORT] | local [PORT] | off | load')
 
 
+# ------------------------------------------------------------------ the Home server helper's more pages (docs/SERVER-HUB.md)
+# Game servers, Remote play and Media each install their system parts here once, with the admin password; what they
+# add is the machine's own (/etc, and packages through hearth-unlock, so they're kept across Hearth OS updates). Nothing
+# here is part of starting the PC: the games' firewall unit only loads a rule, can't fail the boot ("-") and isn't
+# ordered before anything.
+
+GAMES_NFT_TABLE = 'hearth_games'
+GAMES_NFT_FILE = '/etc/hearth/games.nft'
+GAMES_UNIT = 'hearth-games-firewall.service'
+GAMES_UNIT_FILE = '/etc/systemd/system/' + GAMES_UNIT
+UNLOCK_TOOL = '/usr/bin/hearth-unlock'
+# The game servers' ports (hearth-server-hub's catalog and hearth-server-apps'): TCP and UDP.
+GAME_TCP = [25565, 7777, 26900]
+GAME_UDP = [2456, 2457, 7777, 7778, 8211, 27015, 27016, 26900, 26901, 26902, 7350, 7360, 33450]
+LAN_NETS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
+
+
+def games_nft_text():
+    """The game servers reach only this PC, your home network and Tailscale: never the internet, even through a
+    router that opens ports by itself. A table of its own: deleting it takes every rule away again."""
+    return '\n'.join(['#!/usr/sbin/nft -f',
+                      '# Hearth: game servers only through Tailscale and your home network (the Home server helper).',
+                      '# Written by hearth-home-server-helper games-setup; games-off deletes this table.',
+                      'table inet %s' % GAMES_NFT_TABLE,
+                      'delete table inet %s' % GAMES_NFT_TABLE,
+                      'table inet %s {' % GAMES_NFT_TABLE,
+                      '\tchain input {',
+                      '\t\ttype filter hook input priority -10; policy accept;',
+                      '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE,
+                      '\t\tip saddr { %s } accept' % ', '.join(LAN_NETS),
+                      '\t\tip6 saddr { fc00::/7, fe80::/10 } accept',
+                      '\t\ttcp dport { %s } counter drop' % ', '.join(str(x) for x in GAME_TCP),
+                      '\t\tudp dport { %s } counter drop' % ', '.join(str(x) for x in GAME_UDP),
+                      '\t}', '}', ''])
+
+
+def games_unit_text():
+    return ('# Hearth: the game servers only through Tailscale and your home network (the Home server helper). Written by\n'
+            '# hearth-home-server-helper games-setup; never holds up the boot: it only loads a rule and can\'t fail.\n'
+            '[Unit]\nDescription=Hearth: game servers only through Tailscale and the home network\n'
+            'ConditionPathExists=%s\nAfter=local-fs.target\n\n'
+            '[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=30\nExecStart=-/usr/sbin/nft -f %s\n\n'
+            '[Install]\nWantedBy=multi-user.target\n' % (GAMES_NFT_FILE, GAMES_NFT_FILE))
+
+
+def packages_add(names):
+    """System packages the part needs, kept across Hearth OS updates (hearth-unlock records them); only the ones
+    missing. Fixed names from this file, never from the caller."""
+    missing = [n for n in names if run(['dpkg-query', '-W', '-f=${Status}', n])[1].find('install ok installed') < 0]
+    if not missing:
+        return []
+    if os.access(UNLOCK_TOOL, os.X_OK):
+        for n in missing:
+            code, out = run([UNLOCK_TOOL, '--install-package', n], timeout=1800)
+            if code != 0:
+                raise Fail("%s didn't install: %s" % (n, (out.strip().splitlines() or [''])[-1][:200]))
+    else:
+        run(['apt-get', 'update'], timeout=600)
+        code, out = run(['apt-get', 'install', '-y', '--no-install-recommends'] + missing, timeout=1800)
+        if code != 0:
+            raise Fail("the packages didn't install: %s" % ((out.strip().splitlines() or [''])[-1][:200]))
+    return missing
+
+
+def games_setup():
+    """Game servers' first server: Podman (rootless, with its user-namespace tools) and the firewall rule."""
+    caller()
+    added = packages_add(['podman', 'uidmap', 'passt'])
+    if not which('nft'):
+        added += packages_add(['nftables'])
+    write(GAMES_NFT_FILE, games_nft_text())
+    code, out = run(['nft', '-f', GAMES_NFT_FILE])
+    if code != 0:
+        remove(GAMES_NFT_FILE)
+        run(['nft', 'delete', 'table', 'inet', GAMES_NFT_TABLE])
+        raise Fail("the game servers' firewall rule didn't load: nothing was turned on")
+    write(GAMES_UNIT_FILE, games_unit_text())
+    run(['systemctl', 'daemon-reload'])
+    run(['systemctl', 'enable', GAMES_UNIT])
+    return {'ok': True, 'added': added, 'firewall': 'tailscale-and-home'}
+
+
+def games_off():
+    caller()
+    remove(GAMES_NFT_FILE)
+    if which('nft'):
+        run(['nft', 'delete', 'table', 'inet', GAMES_NFT_TABLE])
+    if os.path.exists(GAMES_UNIT_FILE):
+        run(['systemctl', 'disable', GAMES_UNIT])
+        remove(GAMES_UNIT_FILE)
+        run(['systemctl', 'daemon-reload'])
+    return {'ok': True}
+
+
+def play_setup():
+    """Remote play: Sunshine (Debian's package; it usually comes with Hearth OS) and its screen-capture permission."""
+    caller()
+    added = [] if which('sunshine') else packages_add(['sunshine'])
+    sun = which('sunshine')
+    if not sun:
+        raise Fail("Sunshine isn't available for this Hearth OS")
+    real = os.path.realpath(sun)
+    code, out = run(['getcap', real])
+    if 'cap_sys_admin' not in out:
+        run(['setcap', 'cap_sys_admin,cap_sys_nice+p', real])
+    return {'ok': True, 'added': added}
+
+
+def media_setup():
+    """Media: copying your own discs and CDs (ffmpeg with libbluray, cdparanoia and abcde with flac). Nothing that
+    unlocks copy-protected discs."""
+    caller()
+    return {'ok': True, 'added': packages_add(['ffmpeg', 'cdparanoia', 'abcde', 'flac'])}
+
+
 # ------------------------------------------------------------------ the ransomware guard
 
 def guard_tripped():
@@ -3728,6 +3849,8 @@ def main(argv):
             res = gpu_limit(a[1])
         elif a == ['guard-reset']:
             res = guard_reset()
+        elif a in (['games-setup'], ['games-off'], ['play-setup'], ['media-setup']):
+            res = {'games-setup': games_setup, 'games-off': games_off, 'play-setup': play_setup, 'media-setup': media_setup}[a[0]]()
         elif len(a) in (2, 3) and a[0] == 'remote-fw' and a[1] in ('tailscale', 'local', 'off', 'load'):
             if a[1] == 'load' and os.environ.get('PKEXEC_UID'):
                 raise Fail('remote-fw load is for the boot unit only')
@@ -3739,7 +3862,7 @@ def main(argv):
                        'backup-now ID | backup-snapshots ID | backup-restore | receive-add NAME | receive-remove USER | '
                        'alerts run|test | power run | ups-status | app-install NAME | app-remove NAME | services run | guard-reset | '
                        'svc stop|start|restart ollama|jellyfin | gpu-limit WATTS|reset | '
-                       'remote-fw tailscale|local [PORT]|off|load')
+                       'remote-fw tailscale|local [PORT]|off|load | games-setup | games-off | play-setup | media-setup')
         print(json.dumps(res))
         return 0
     except FAILS as e:

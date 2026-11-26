@@ -435,11 +435,33 @@ def cache_tick(stats, conf, names, now=None):
         lv['at'] = now
         if m.group('store') == 'steam' and not lv.get('game'):
             lv['game'] = steam_game(m.group('path'), games)
+        # The Home server helper's Game cache page (docs/SERVER-HUB.md): totals since the cache started, each game's
+        # (what was fetched once is what it keeps; what came from the cache is saved) and each device's this month.
+        tot = stats.setdefault('total', {'hit': 0, 'miss': 0, 'since': int(now)})
+        tot['hit' if hit else 'miss'] += b
+        store = m.group('store')
+        gname = lv.get('game') or '%s downloads' % STORE_OF.get(store, store.title())
+        per = stats.setdefault('perGame', {})
+        g = per.setdefault(gname, {'store': STORE_OF.get(store, store.title()), 'hit': 0, 'miss': 0, 'devices': [], 'last': 0})
+        g['hit' if hit else 'miss'] += b
+        g['last'] = int(now)
+        who = name_of(m.group('ip'), names)
+        if who not in g['devices']:
+            g['devices'] = (g['devices'] + [who])[-6:]
+        month = datetime.date.fromtimestamp(now).strftime('%Y-%m')
+        dm = stats.setdefault('devMonth', {})
+        dm.setdefault(month, {})
+        dm[month][who] = dm[month].get(who, 0) + b
+    for mo in sorted(stats.get('devMonth') or {})[:-2]:
+        del stats['devMonth'][mo]
+    if len(stats.get('perGame') or {}) > 300:
+        for k in sorted(stats['perGame'], key=lambda k: stats['perGame'][k].get('last', 0))[:-300]:
+            del stats['perGame'][k]
     for k in list(live):
         live[k]['bytes'] = [x for x in live[k]['bytes'] if now - x[0] < 10]
         if now - live[k].get('at', 0) > 30:
             del live[k]
-    for d in sorted(days)[:-14]:
+    for d in sorted(days)[:-62]:
         del days[d]
     return stats
 
@@ -459,9 +481,20 @@ def cache_view(stats, conf, names, now=None):
         rows.append({'device': name_of(ip, names), 'what': lv.get('game') or '%s download' % STORE_OF.get(store, store.title()),
                      'from': 'from the cache' if lv['hit'] >= lv['miss'] else 'from the internet once', 'rate': rate})
     rows.sort(key=lambda r: -r['rate'])
+    month = today.strftime('%Y-%m')
+    month_days = [days.get(k) or {'hit': 0, 'miss': 0} for k in sorted(days) if k.startswith(month)]
+    games = [dict(v, game=k) for k, v in (stats.get('perGame') or {}).items()]
+    live_by = {}
+    for r in rows:
+        live_by.setdefault(r['device'], r['rate'])
     return {'savedWeek': hit, 'internetWeek': miss, 'devicesWeek': hit + miss, 'bars': bars, 'now': rows[:6],
             'used': stats.get('used', 0), 'sizeGB': conf['cache']['sizeGB'], 'dir': conf['cache']['dir'],
-            'drive': drive_name(conf['cache']['dir'])}
+            'drive': drive_name(conf['cache']['dir']),
+            # the Home server helper's Game cache page
+            'total': stats.get('total') or {'hit': 0, 'miss': 0, 'since': 0}, 'games': games,
+            'devicesMonth': (stats.get('devMonth') or {}).get(month) or {},
+            'monthDays': month_days, 'monthHit': sum(x.get('hit', 0) for x in month_days), 'monthMiss': sum(x.get('miss', 0) for x in month_days),
+            'devices': [{'name': n, 'rate': live_by.get(n, 0)} for n in list(live_by) + [x for x in ((stats.get('devMonth') or {}).get(month) or {}) if x not in live_by]][:4]}
 
 
 def drive_name(path):

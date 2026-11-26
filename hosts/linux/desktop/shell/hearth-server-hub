@@ -1,0 +1,1725 @@
+#!/usr/bin/python3
+"""hearth-server-hub: the Home server helper's Game servers, Game cache, Remote play, Media and PCs pages
+(docs/SERVER-HUB.md; boards docs/mockups/server-expansion/05, 07, 08, 09 and 10). It ships in Mantel's folder, so it
+comes and updates with Mantel's Store part, never with a Hearth OS update. Everything it does as you is here;
+everything that needs root (a system package, the games' firewall rule, the cache) goes through the Home server helper
+(hearth-home-server-helper, a Store system part) or hearth-server-dns, each asking for the admin password once.
+
+It builds on what Hearth already has and never copies it:
+  games  hearth-server-apps (the game servers in your rootless Podman, their world backups) and a few more games:
+         7 Days to Die, Ark and your own games' headless builds (Gravesleep, Noclip Protocol, the quad mech game)
+  cache  hearth-server-dns (LANCache and Hearth Shield's redirects; its numbers in /run/hearth/server-dns)
+  play   hearth-remote-desktop (Sunshine, pairing, who's streaming), Wake-on-LAN
+  media  Jellyfin (hearth-home-server installs it), your own discs, the antenna through Jellyfin's Live TV, your own
+         videos and public-domain films from the Internet Archive. Never anything else: no torrents, no searching for
+         copies of things you don't own.
+  pcs    your other Hearth PCs over Hearth Link (hearth-device-status): what each runs, its share and its limits
+
+Your choices: ~/.config/nimbus/server-hub.json through hearth_settings_io (atomic, .bak, merge under a lock; only what
+you change is written; defaults fill in when read and are never saved). What it saw (players each hour, streams,
+moves): ~/.local/state/nimbus/server-hub.json. Nothing here starts by itself: its timer (hearth-server-hub.timer,
+every 5 minutes) is enabled only while a schedule, Stop when nobody's on, Pause while you play or a streaming rule
+is on, it never waits for anything at start-up, and while a game is being played on this PC it only does what the
+rule asks (pausing), nothing heavy.
+
+  hearth-server-hub view games|cache|play|media|pcs   JSON for that page
+  hearth-server-hub set PART KEY JSON                 one choice (checked against what that page offers)
+  hearth-server-hub game start|stop|restart|install ID
+  hearth-server-hub game-console ID                   its last lines
+  hearth-server-hub game-kick ID NAME                 where the game has a console for it (Minecraft)
+  hearth-server-hub game-build ID                     your game's newest headless build in place, then restarted
+  hearth-server-hub game-make ID                      where your game's server build is made (its repository's Actions)
+  hearth-server-hub game-opt ID KEY VALUE             one of its choices (hearth-server-apps checks it)
+  hearth-server-hub invite ID                         its Tailscale address and where to share it
+  hearth-server-hub world-backup ID | world-restore ID FILE
+  hearth-server-hub mod-add ID NAMESPACE-NAME | mod-set ID NAMESPACE-NAME on|off   Thunderstore mods (Valheim)
+  hearth-server-hub schedule ID DAY FROM TO | schedule ID DAY off
+  hearth-server-hub cache-size GB | cache-drive DIR | cache-install
+  hearth-server-hub play-stop | play-message TEXT | play-wake | play-launch ID | play-pin PIN
+  hearth-server-hub play-device DEVICE size|fps|bitrate VALUE
+  hearth-server-hub media-want JSON | media-yes ID | media-pick ID TITLE | media-rip
+  hearth-server-hub pcs-add NAME
+  hearth-server-hub tick                               what the timer runs
+Output: one JSON line; failures print "error: ..." and exit 1. No shell anywhere: every command is an argument list.
+
+$HEARTH_SERVER_HUB_FIXTURE: a JSON file of what each source answers (CI's pictures and the tests); nothing changes then.
+"""
+import datetime
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_settings_io as sio  # noqa: E402
+
+HOME = os.path.expanduser('~')
+CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+STATE_HOME = os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state')
+SETTINGS = os.path.join(CONFIG_HOME, 'nimbus', 'server-hub.json')
+STATE = os.path.join(STATE_HOME, 'nimbus', 'server-hub.json')
+UNIT_DIR = os.path.join(CONFIG_HOME, 'systemd', 'user')
+LIBEXEC = os.environ.get('HEARTH_LIBEXEC_DIR', '/usr/libexec/nimbus')
+DNS_STATUS = os.environ.get('HEARTH_DNS_STATUS', '/run/hearth/server-dns/status.json')
+JELLYFIN = os.environ.get('HEARTH_JELLYFIN', 'http://127.0.0.1:8096')
+DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+ID_RE = re.compile(r'^[a-z0-9-]{1,32}$')
+MOD_RE = re.compile(r'^[A-Za-z0-9_]{1,64}-[A-Za-z0-9_]{1,64}$')
+HHMM = re.compile(r'^([01]\d|2[0-3]):([0-5]\d)$')
+NAME_RE = re.compile(r'^[A-Za-z0-9 _.\'()-]{1,60}$')
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ sources (live, or the fixture)
+
+_FX = None
+
+
+def fixture():
+    global _FX
+    if _FX is None:
+        p = os.environ.get('HEARTH_SERVER_HUB_FIXTURE')
+        _FX = {}
+        if p:
+            try:
+                with open(p, encoding='utf-8') as f:
+                    _FX = json.load(f)
+            except (OSError, ValueError):
+                _FX = {}
+            _FX['_on'] = True
+    return _FX
+
+
+def faking():
+    return bool(fixture().get('_on'))
+
+
+def src(name, live, default=None):
+    """What a source answers: the fixture's answer when there is one, else live() (None when it fails)."""
+    fx = fixture()
+    if fx.get('_on'):
+        return fx.get(name, default)
+    try:
+        v = live()
+    except Exception:   # a source that's missing or broken shows as unknown, never breaks the page
+        v = None
+    return default if v is None else v
+
+
+def now():
+    v = fixture().get('now')
+    return float(v) if v else time.time()
+
+
+def cmd(args, timeout=30, stdin=None):
+    try:
+        r = subprocess.run(args, input=stdin, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+
+
+def have(name):
+    return shutil.which(name) is not None
+
+
+def load_helper(fname, modname):
+    p = os.path.join(HERE, fname)
+    if not os.path.exists(p):
+        return None
+    loader = importlib.machinery.SourceFileLoader(modname, p)
+    spec = importlib.util.spec_from_loader(modname, loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+_SA = None
+
+
+def sa():
+    """hearth-server-apps, next to this file (the game servers themselves)."""
+    global _SA
+    if _SA is None:
+        _SA = load_helper('hearth-server-apps', 'hearth_server_apps_hub')
+        if _SA is None:
+            raise Fail("Mantel's hearth-server-apps is missing")
+    return _SA
+
+
+def root(args, stdin=None):
+    """The Home server helper as root (pkexec; it asks for the admin password where its polkit rule says so)."""
+    if faking():
+        return {'ok': True}
+    code, out, err = cmd(['pkexec', os.path.join(LIBEXEC, 'hearth-home-server-helper')] + args, 900, stdin)
+    try:
+        res = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise Fail((err.strip().splitlines() or ["the Home server helper didn't answer"])[-1])
+    if not res.get('ok'):
+        raise Fail(res.get('error') or "the Home server helper said no")
+    return res
+
+
+# ------------------------------------------------------------------ settings and what was seen
+
+DEFAULTS = {
+    'games': {'schedule': {}, 'idleStop': 30, 'pauseWhilePlaying': True, 'maxMemGB': 12, 'otherPc': False,
+              'mods': {}, 'shared': {}, 'sel': 'valheim',
+              'own': {'gravesleep': {'repo': ''}, 'noclip': {'repo': 'Dragongamer9/noclip-protocol'}, 'quadmech': {'repo': ''}}},
+    'cache': {'keep': [], 'preload': False, 'from': '02:00', 'to': '06:00', 'dropOld': True},
+    'play': {'devices': {}, 'freeGpu': True, 'keepGames': True, 'pauseVault': True,
+             'wakeAny': True, 'wakeAway': True, 'sleepAfter': True, 'wakeMac': ''},
+    'media': {'discs': True, 'antenna': True, 'own': True, 'free': True, 'folder': True,
+              'autoName': True, 'ask': True, 'smaller': False, 'wanted': [], 'tab': 'tv'},
+    'pcs': {'dadMax': 40, 'onlyIdle': True, 'laptopOn': True, 'autoMove': True, 'tell': True, 'moveBack': 'ask', 'sel': ''},
+}
+# The choices each page offers: key -> a check of the value.
+CHOICES = {
+    'games': {'idleStop': lambda v: v in (0, 15, 30, 60), 'pauseWhilePlaying': lambda v: isinstance(v, bool),
+              'maxMemGB': lambda v: v in (4, 6, 8, 10, 12, 16, 20, 24), 'otherPc': lambda v: isinstance(v, bool),
+              'sel': lambda v: isinstance(v, str) and bool(ID_RE.fullmatch(v))},
+    'cache': {'preload': lambda v: isinstance(v, bool), 'dropOld': lambda v: isinstance(v, bool),
+              'from': lambda v: isinstance(v, str) and bool(HHMM.fullmatch(v)), 'to': lambda v: isinstance(v, str) and bool(HHMM.fullmatch(v))},
+    'play': {k: (lambda v: isinstance(v, bool)) for k in ('freeGpu', 'keepGames', 'pauseVault', 'wakeAny', 'wakeAway', 'sleepAfter')},
+    'media': dict({k: (lambda v: isinstance(v, bool)) for k in ('discs', 'antenna', 'own', 'free', 'folder', 'autoName', 'ask', 'smaller')},
+                  tab=lambda v: v in ('tv', 'music', 'photos')),
+    'pcs': {'dadMax': lambda v: v in (20, 40, 60), 'onlyIdle': lambda v: isinstance(v, bool), 'laptopOn': lambda v: isinstance(v, bool),
+            'autoMove': lambda v: isinstance(v, bool), 'tell': lambda v: isinstance(v, bool), 'moveBack': lambda v: v in ('ask', 'always'),
+            'sel': lambda v: isinstance(v, str) and len(v) <= 60},
+}
+PLAY_DEVICE = {'size': ('4K', '1440p', '1080p', '900p', '720p'), 'fps': ('30', '60', '90', '120'),
+               'bitrate': ('5', '8', '10', '15', '20', '30', '40', '60', '80')}
+
+
+def settings():
+    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+
+
+def set_choice(part, key, value):
+    if part not in CHOICES or key not in CHOICES[part]:
+        raise Fail('%s has no choice called %s' % (part, key))
+    if not CHOICES[part][key](value):
+        raise Fail("that isn't one of the choices")
+
+    def change(d):
+        sec = d.get(part) if isinstance(d.get(part), dict) else {}
+        sec[key] = value
+        d[part] = sec
+    sio.update_json(SETTINGS, change)
+    timer_sync()
+    return {'ok': True}
+
+
+def set_nested(part, path, value):
+    """One value deep in a page's settings (a game's schedule, a device's quality), merged under the lock."""
+    def change(d):
+        sec = d.get(part) if isinstance(d.get(part), dict) else {}
+        d[part] = sec
+        cur = sec
+        for k in path[:-1]:
+            if not isinstance(cur.get(k), dict):
+                cur[k] = {}
+            cur = cur[k]
+        if value is None:
+            cur.pop(path[-1], None)
+        else:
+            cur[path[-1]] = value
+    sio.update_json(SETTINGS, change)
+
+
+def seen():
+    v = sio.load_json(STATE, {})
+    return v if isinstance(v, dict) else {}
+
+
+def seen_update(change):
+    if faking():
+        return
+    sio.update_json(STATE, change)
+
+
+# ------------------------------------------------------------------ words and numbers
+
+def gb(n, digits=1):
+    n = float(n or 0)
+    if n >= 1e12:
+        return ((('%.2f' % (n / 1e12)).rstrip('0').rstrip('.')) if digits else '%.0f' % (n / 1e12)) + ' TB'
+    if n >= 1e10:
+        return '%d GB' % round(n / 1e9)
+    if n >= 1e9:
+        return '%.1f GB' % (n / 1e9)
+    return '%d MB' % round(n / 1e6)
+
+
+def clock(ts):
+    t = datetime.datetime.fromtimestamp(ts)
+    h = t.hour % 12 or 12
+    return '%d:%02d %s' % (h, t.minute, 'AM' if t.hour < 12 else 'PM')
+
+
+def day_clock(ts):
+    t = datetime.datetime.fromtimestamp(ts)
+    return '%s %d %s' % (t.strftime('%b'), t.day, clock(ts))
+
+
+def short_day(ts):
+    t = datetime.datetime.fromtimestamp(ts)
+    return '%s %d' % (t.strftime('%b'), t.day)
+
+
+def dur(secs):
+    secs = int(max(0, secs))
+    h, m = secs // 3600, secs % 3600 // 60
+    if h and m:
+        return '%d h %d min' % (h, m)
+    if h:
+        return '%d h' % h
+    return '%d min' % max(1, m)
+
+
+def hour_words(hhmm, pm_mark=True):
+    """06:00 → "6 AM", 22:00 → "10", 12:00 → "noon" (as the schedule grid writes them)."""
+    h, m = int(hhmm[:2]), int(hhmm[3:])
+    if h == 12 and m == 0:
+        return 'noon'
+    hh = h % 12 or 12
+    s = str(hh) if m == 0 else '%d:%02d' % (hh, m)
+    return s + (' ' + ('AM' if h < 12 else 'PM') if pm_mark else '')
+
+
+def span_words(a, b):
+    if a == '00:00' and b in ('24:00', '23:59'):
+        return 'all day'
+    ha, hb = int(a[:2]), int(b[:2]) if b != '24:00' else 24
+    same = (ha < 12) == (hb < 12) or b == '12:00'
+    if a == '12:00':
+        return 'noon–%s' % hour_words(b, False)
+    if same:
+        return '%s–%s' % (hour_words(a, False), hour_words(b, True))
+    return '%s–%s' % (hour_words(a, True), hour_words(b, False))
+
+
+# ------------------------------------------------------------------ the games themselves
+
+# The board's more games live in hearth-server-apps' own catalog (7 Days to Die, Ark, your own games), so its
+# units run them like the others.
+OWN = {
+    'gravesleep': ('Gravesleep', 'Godot', 'test server · 4 players', 7350),
+    'noclip': ('Noclip Protocol', 'O3DE', 'co-op test · 4 players', 33450),
+    'quadmech': ('Quad mech game', 'Godot', '4-seat test', 7360),
+}
+QUERY = {'valheim': 2457, 'palworld': 27015, 'sevendays': 26900, 'ark': 27016}
+ARTS = {'valheim': ['#3a5a7a', '#1a2a2a', '#4a3a20'], 'minecraft': ['#4a7a3a', '#2a3a1a', '#5a4a2a'],
+        'palworld': ['#7a5a9a', '#2a2040', '#3a5a4a'], 'gravesleep': ['#5a3a2a', '#1a1410', '#3a2a3a'],
+        'noclip': ['#8a7a3a', '#2a2614', '#5a5a2a'], 'quadmech': ['#3a6a5a', '#142420', '#2a4a3a'],
+        'terraria': ['#3a6a2a', '#142a10', '#5a4a1a'], 'sevendays': ['#6a2a1a', '#200c08', '#4a3a2a'],
+        'ark': ['#2a5a4a', '#0c2018', '#4a5a2a'], 'horizon': ['#4a6a7a', '#1a2a30', '#3a4a2a']}
+MARK = {'valheim': 'VH', 'minecraft': 'MC', 'palworld': 'PW', 'gravesleep': 'GS', 'noclip': 'NP', 'quadmech': 'QM',
+        'terraria': 'TR', 'sevendays': '7D', 'ark': 'AR', 'horizon': 'HZ'}
+
+
+def catalog():
+    """hearth-server-apps' catalog (the board's more games are in it)."""
+    return sa().CATALOG
+
+
+# --- players: Steam's server query (A2S) and Minecraft's server list ping, both read only
+
+def a2s(port, host='127.0.0.1', timeout=1.5):
+    """(players, max, [(name, seconds)]) from a Steam-query server (Valheim, Palworld, 7 Days to Die, Ark)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(timeout)
+    try:
+        req = b'\xff\xff\xff\xffTSource Engine Query\x00'
+        s.sendto(req, (host, port))
+        data = s.recv(1400)
+        if data[4:5] == b'A':                       # a challenge first (newer servers)
+            s.sendto(req + data[5:9], (host, port))
+            data = s.recv(1400)
+        info = a2s_info(data)
+        s.sendto(b'\xff\xff\xff\xffU\xff\xff\xff\xff', (host, port))
+        ch = s.recv(1400)
+        names = []
+        if ch[4:5] == b'A':
+            s.sendto(b'\xff\xff\xff\xffU' + ch[5:9], (host, port))
+            names = a2s_players(s.recv(4096))
+        return info[0], info[1], names
+    finally:
+        s.close()
+
+
+def _cstr(b, i):
+    j = b.index(b'\x00', i)
+    return b[i:j].decode('utf-8', 'replace'), j + 1
+
+
+def a2s_info(data):
+    if data[4:5] != b'I':
+        raise ValueError('not an A2S_INFO answer')
+    i = 6
+    for _ in range(4):                 # name, map, folder, game
+        _, i = _cstr(data, i)
+    i += 2                             # the app id
+    return data[i], data[i + 1]
+
+
+def a2s_players(data):
+    if data[4:5] != b'D':
+        return []
+    n, i, out = data[5], 6, []
+    for _ in range(n):
+        i += 1
+        name, i = _cstr(data, i)
+        _score, secs = struct.unpack_from('<lf', data, i)
+        i += 8
+        if name:
+            out.append((name, int(secs)))
+    return out
+
+
+def _varint(n):
+    out = b''
+    while True:
+        b = n & 0x7f
+        n >>= 7
+        out += bytes([b | (0x80 if n else 0)])
+        if not n:
+            return out
+
+
+def slp(port=25565, host='127.0.0.1', timeout=1.5):
+    """(players, max, [names]) from a Minecraft server's list ping."""
+    with socket.create_connection((host, port), timeout) as s:
+        hs = b'\x00' + _varint(767) + _varint(len(host)) + host.encode() + struct.pack('>H', port) + b'\x01'
+        s.sendall(_varint(len(hs)) + hs + b'\x01\x00')
+        buf = b''
+        while True:
+            c = s.recv(65536)
+            if not c:
+                break
+            buf += c
+            try:
+                j = json.loads(buf[buf.index(b'{'):].decode('utf-8'))
+                break
+            except ValueError:
+                continue
+    p = j.get('players') or {}
+    return p.get('online', 0), p.get('max', 0), [x.get('name', '') for x in p.get('sample') or []]
+
+
+def players(gid):
+    def live():
+        if gid in ('minecraft', 'horizon'):
+            n, mx, names = slp()
+            return {'n': n, 'max': mx, 'names': [{'name': x, 'secs': 0} for x in names]}
+        if gid in QUERY:
+            n, mx, names = a2s(QUERY[gid])
+            return {'n': n, 'max': mx, 'names': [{'name': x, 'secs': s} for x, s in names]}
+        return None
+    return src('players.' + gid, live, {}) or {}
+
+
+def podman_stats():
+    """{container name: {cpu %, mem bytes, started}} for Hearth's server apps."""
+    def live():
+        code, o, _ = cmd(['podman', 'stats', '--no-stream', '--format', 'json'], 20)
+        out = {}
+        for r in json.loads(o or '[]'):
+            n = r.get('name') or r.get('Name') or ''
+            cpu = str(r.get('cpu_percent') or r.get('CPU') or '0').rstrip('%')
+            mem = str(r.get('mem_usage') or r.get('MemUsage') or '0').split('/')[0].strip()
+            out[n] = {'cpu': float(cpu or 0), 'mem': human_bytes(mem)}
+        code, o, _ = cmd(['podman', 'ps', '--format', 'json'], 20)
+        for r in json.loads(o or '[]'):
+            for n in r.get('Names') or []:
+                out.setdefault(n, {})['started'] = r.get('StartedAt') or 0
+        return out
+    return src('stats', live, {}) or {}
+
+
+def human_bytes(s):
+    m = re.match(r'([\d.]+)\s*([kKMGT]?i?B)?', s or '')
+    if not m:
+        return 0
+    mult = {'B': 1, 'kB': 1e3, 'KB': 1e3, 'KiB': 1024, 'MB': 1e6, 'MiB': 1 << 20, 'GB': 1e9, 'GiB': 1 << 30, 'TB': 1e12, 'TiB': 1 << 40}
+    return int(float(m.group(1)) * mult.get(m.group(2) or 'B', 1))
+
+
+def ts_status():
+    """Tailscale: this PC's name on your tailnet and the devices on it (shared-in ones marked)."""
+    def live():
+        code, o, _ = cmd(['tailscale', 'status', '--json'], 10)
+        j = json.loads(o)
+        me = (j.get('Self') or {}).get('DNSName', '').rstrip('.')
+        peers = [{'name': (p.get('HostName') or ''), 'ip': (p.get('TailscaleIPs') or [''])[0], 'online': bool(p.get('Online')),
+                  'shared': bool(p.get('ShareeNode')), 'os': p.get('OS') or ''} for p in (j.get('Peer') or {}).values()]
+        return {'dns': me, 'peers': peers}
+    return src('ts', live, {'dns': '', 'peers': []}) or {'dns': '', 'peers': []}
+
+
+def apps_list():
+    def live():
+        catalog()
+        return sa().list_apps()
+    return src('apps', live, {'apps': [], 'podman': False}) or {'apps': [], 'podman': False}
+
+
+def worlds(gid):
+    def live():
+        catalog()
+        return sa().world_list(gid)
+    return src('worlds.' + gid, live, []) or []
+
+
+def world_info(gid, opts):
+    """Valheim's world: its seed (from the .fwl file) and day, where known."""
+    def live():
+        catalog()
+        d = sa().data_dir(gid, 'config')
+        w = opts.get('worldName') or 'Hearth'
+        p = os.path.join(d, 'worlds_local', w + '.fwl')
+        with open(p, 'rb') as f:
+            b = f.read(4096)
+        i = 8
+
+        def s7(i):
+            n, shift = 0, 0
+            while True:
+                c = b[i]
+                i += 1
+                n |= (c & 0x7f) << shift
+                shift += 7
+                if not c & 0x80:
+                    return b[i:i + n].decode('utf-8', 'replace'), i + n
+        _, i = s7(i)
+        seed, i = s7(i)
+        return {'seed': seed}
+    return src('world.' + gid, live, {}) or {}
+
+
+def game_view():
+    s = settings()['games']
+    t = now()
+    apps = {a['id']: a for a in apps_list().get('apps') or [] if a.get('kind') == 'game'}
+    stats = podman_stats()
+    ts = ts_status()
+    shown = []
+    order = ['valheim', 'minecraft', 'palworld', 'gravesleep', 'noclip']
+    for gid in order + [g for g in apps if g not in order]:
+        a = apps.get(gid)
+        if gid not in OWN and not (a and a.get('installed')):
+            continue
+        if gid in OWN and gid not in ('gravesleep', 'noclip') and not (a and a.get('installed')):
+            continue
+        shown.append(gid)
+    running = 0
+    total_players = 0
+    cards = []
+    cpu_all, mem_all = 0.0, 0
+    for gid in shown[:5]:
+        a = apps.get(gid) or {}
+        opts = {o['key']: o['value'] for o in a.get('opts') or []}
+        st = stats.get('hearth-app-' + gid) or {}
+        run = bool(a.get('running'))
+        pl = players(gid) if run else {}
+        n = int(pl.get('n') or 0)
+        if run:
+            running += 1
+            total_players += n
+            cpu_all += float(st.get('cpu') or 0)
+            mem_all += int(st.get('mem') or 0)
+        card = {'id': gid, 'name': (OWN[gid][0] if gid in OWN else a.get('name') or gid), 'art': ARTS.get(gid, ARTS['valheim']), 'own': gid in OWN}
+        if run:
+            mx = pl.get('max') or {'valheim': 10, 'minecraft': 8, 'palworld': 16}.get(gid, 0)
+            right = {'valheim': 'world "%s"' % opts.get('worldName', 'Hearth'), 'minecraft': 'Java · %s' % (src('mcversion', lambda: None, '') or opts.get('type', '').title()),
+                     'palworld': '"%s"' % opts.get('serverName', 'Hearth')}.get(gid, '')
+            started = st.get('started') or 0
+            card.update(tag='● RUNNING', state='running', line=['%d of %d online' % (n, mx) if mx else '%d online' % n, right],
+                        sub='since %s · CPU %d%% · RAM %.1f GB' % (clock(started) if started else '—', round(st.get('cpu') or 0), (st.get('mem') or 0) / 1e9),
+                        buttons=[['Stop', 'stop'], ['Restart', 'restart'], ['Console', 'console']])
+        elif gid in OWN:
+            name, engine, what, _ = OWN[gid]
+            b = own_build(gid)
+            sched = (s.get('schedule') or {}).get(gid) or {}
+            nxt = next_start(sched, t)
+            if b:
+                card.update(tag='OFF · YOUR GAME', state='off', line=[what, engine], sub='build from your repo%s' % (' · starts %s' % nxt if nxt else ''),
+                            buttons=[['Start', 'start'], ['Newest build', 'build']])
+            else:
+                card.update(tag='OFF · YOUR GAME', state='off', line=[what, engine], sub='dedicated server build · not made yet',
+                            buttons=[['Make the server build', 'make']])
+        else:
+            card.update(tag='OFF', state='off', line=['off', ''], sub='%s' % (a.get('size') or ''), buttons=[['Start', 'start']])
+        cards.append(card)
+    sel = s.get('sel') if s.get('sel') in shown else (shown[0] if shown else '')
+    a = apps.get(sel) or {}
+    opts = {o['key']: o['value'] for o in a.get('opts') or []}
+    pl = players(sel) if a.get('running') else {}
+    me = src('me', lambda: os.environ.get('USER', ''), '') or ''
+    peers = [p for p in ts.get('peers') or [] if p.get('online')]
+    shared_peers = [p for p in peers if p.get('shared')]
+    plist = []
+    for i, x in enumerate(pl.get('names') or []):
+        nm = x.get('name') or 'A player'
+        mine = nm.lower() == me.lower() or nm in (src('myNames', lambda: [], []) or [])
+        where = (src('myDevice', lambda: '', '') or 'this PC') if mine else ('over Tailscale (shared)' if shared_peers else 'over Tailscale')
+        plist.append({'name': nm, 'where': where, 'time': dur(x.get('secs') or 0), 'admin': mine, 'kick': not mine})
+    info = world_info(sel, opts) if sel == 'valheim' else {}
+    bits = []
+    if info.get('day'):
+        bits.append('day %s' % info['day'])
+    if info.get('seed'):
+        bits.append('seed %s' % info['seed'])
+    if a.get('password'):
+        bits.append('password %s' % ('on' if a['password'].get('set') else 'off'))
+    if 'crossplay' in opts:
+        bits.append('crossplay %s' % opts['crossplay'])
+    mods = (s.get('mods') or {}).get(sel) or []
+    port = {'valheim': 2456, 'minecraft': 25565, 'palworld': 8211}.get(sel) or (OWN[sel][3] if sel in OWN else 0)
+    dns = ts.get('dns') or ''
+    shared = (s.get('shared') or {})
+    shared_words = []
+    for who, games in shared.items() if isinstance(shared, dict) else []:
+        if isinstance(games, list) and len(games) == 1 and games[0] != sel:
+            shared_words.append('%s (%s only)' % (who, (apps.get(games[0]) or {}).get('name') or games[0]))
+        elif not isinstance(games, list) or sel in games or not games:
+            shared_words.append(who)
+    w = worlds(sel)
+    wcfg = sa_worlds()
+    backups = [{'label': '%s · %s' % (opts.get('worldName') or (a.get('name') or sel), backup_words(x, t)), 'size': gb(x.get('size') or 0), 'file': x.get('file', '')} for x in w[:3]]
+    sched_rows = []
+    for gid, days in (s.get('schedule') or {}).items():
+        if not isinstance(days, dict) or not days:
+            continue
+        nm = OWN[gid][0] if gid in OWN else (apps.get(gid) or {}).get('name') or gid
+        sched_rows.append({'name': nm, 'id': gid, 'days': [span_words(*days[d]) if isinstance(days.get(d), list) and len(days[d]) == 2 else '' for d in DAYS]})
+    hist = seen().get('players') or {}
+    hist = src('playersWeek', lambda: None, None) or hist
+    bars, most = week_bars(hist, t)
+    own_rows = []
+    for gid in ('gravesleep', 'quadmech', 'noclip'):
+        name, engine, what, _ = OWN[gid]
+        b = own_build(gid)
+        if b:
+            own_rows.append({'label': '%s · %s' % (name, {'gravesleep': 'from your Gravesleep repo', 'quadmech': '4-seat test'}.get(gid, 'server build')),
+                             'right': 'build %s%s' % (short_day(b['at']), ' · headless %s' % engine if gid == 'gravesleep' else ''), 'link': False, 'id': gid})
+        else:
+            own_rows.append({'label': '%s · %s server build' % (name, engine), 'right': 'Set it up', 'link': True, 'id': gid})
+    sizes = sum(int(x.get('size') or 0) for g in apps for x in worlds(g)[:1]) if not faking() else src('worldsBytes', lambda: 0, 0)
+    mx = int(s.get('maxMemGB') or 12)
+    return {
+        'tag': '%d running · %d players' % (running, total_players), 'count': '%d on' % running,
+        'cards': cards, 'sel': sel,
+        'detail': {'id': sel, 'mark': MARK.get(sel, sel[:2].upper()), 'art': ARTS.get(sel, ARTS['valheim'])[:2],
+                   'title': '%s · "%s"' % (a.get('name') or sel, opts.get('worldName')) if opts.get('worldName') else (a.get('name') or sel),
+                   'sub': ' · '.join(bits), 'players': plist, 'running': bool(a.get('running')), 'kick': sel == 'minecraft',
+                   'opts': [{'key': o['key'], 'label': o.get('label', o['key']), 'value': o.get('value', ''), 'choices': o.get('choices') or []}
+                            for o in a.get('opts') or [] if o.get('choices')],
+                   'mods': {'caption': 'Mods · %d on · from Thunderstore, checked' % len(mods), 'list': mods,
+                            'note': "Players' games get the same mods by themselves when they join from Hearth"} if sel == 'valheim' else None},
+        'invite': {'address': ('%s:%d' % (dns, port) if dns else 'Tailscale is off') + (' · password ••••••' if (a.get('password') or {}).get('set') else ''),
+                   'shared': ' · '.join(shared_words) or 'nobody yet'},
+        'backups': {'when': 'every night at %s and when it stops · kept %d' % (hour_clock(wcfg.get('at', '04:30')), int(wcfg.get('keep', 7))), 'rows': backups},
+        'schedule': {'note': "stops when nobody's on for %d min" % int(s.get('idleStop') or 30) if s.get('idleStop') else 'runs until you stop it', 'rows': sched_rows},
+        'week': {'most': most, 'bars': bars},
+        'own': own_rows,
+        'helper': {'installed': bool(src('gamesHelper', lambda: os.path.exists('/etc/hearth/games.nft'), False))},
+        'fair': {'pause': bool(s.get('pauseWhilePlaying')), 'mem': '%d GB' % mx, 'other': bool(s.get('otherPc'))},
+        'use': {'cpu': '%d%%' % round(cpu_all), 'mem': '%.1f of %d GB' % (mem_all / 1e9, mx), 'worlds': '%s · in Backups' % gb(sizes)},
+        'catalog': [['minecraft', 'Minecraft · Java or Bedrock'], ['valheim', 'Valheim'], ['palworld', 'Palworld'],
+                    ['more', 'Terraria · 7 Days to Die · Ark'], ['gravesleep', 'Gravesleep (your game)'],
+                    ['noclip', 'Noclip Protocol (your game)'], ['quadmech', 'Quad mech game (your game)']],
+    }
+
+
+def hour_clock(hhmm):
+    h, m = int(hhmm[:2]), int(hhmm[3:])
+    return '%d:%02d %s' % (h % 12 or 12, m, 'AM' if h < 12 else 'PM')
+
+
+def backup_words(x, t):
+    """"tonight 4:00 AM", "Nov 25, stopped", "Nov 25 4:00 AM" from a world backup's name (YYYY-MM-DD HHMM why.tar.gz)."""
+    m = re.match(r'(\d{4})-(\d{2})-(\d{2}) (\d{2})(\d{2})( (.+))?\.tar\.gz$', x.get('file', ''))
+    if not m:
+        return x.get('file', '')
+    ts = datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5))).timestamp()
+    why = m.group(7) or ''
+    if why and why != 'nightly':
+        return '%s, %s' % (short_day(ts), why)
+    if datetime.date.fromtimestamp(ts) == datetime.date.fromtimestamp(t) or 0 < t - ts < 6 * 3600:
+        return 'tonight %s' % clock(ts)
+    return '%s %s' % (short_day(ts), clock(ts))
+
+
+def sa_worlds():
+    def live():
+        catalog()
+        return sa().worlds_cfg(sa().settings_raw_worlds())
+    return src('worldsCfg', live, {'at': '04:30', 'keep': 7}) or {'at': '04:30', 'keep': 7}
+
+
+def own_build(gid):
+    """The newest build in your game's build folder: {'at': its time} or None."""
+    def live():
+        catalog()
+        d = sa().data_dir(gid, 'build')
+        best = None
+        for n in os.listdir(d):
+            p = os.path.join(d, n)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                m = os.path.getmtime(p)
+                best = max(best or 0, m)
+        return {'at': best} if best else None
+    return src('build.' + gid, live, None)
+
+
+def next_start(days, t):
+    d = datetime.datetime.fromtimestamp(t)
+    for i in range(8):
+        dd = d + datetime.timedelta(days=i)
+        v = days.get(DAYS[dd.weekday()]) if isinstance(days, dict) else None
+        if isinstance(v, list) and len(v) == 2:
+            start = dd.replace(hour=int(v[0][:2]), minute=int(v[0][3:]), second=0, microsecond=0)
+            if start.timestamp() > t:
+                return '%s %s' % (DAYS[dd.weekday()], hour_words(v[0]).replace(':00', ''))
+    return ''
+
+
+def week_bars(hist, t):
+    """The last 7 days, 6 hours a bar (28 bars), Fri first as the board; and the busiest hour."""
+    bars = []
+    start = datetime.datetime.fromtimestamp(t).replace(minute=0, second=0, microsecond=0) - datetime.timedelta(days=7)
+    best = (0, None)
+    for i in range(28):
+        n = 0
+        for h in range(6):
+            ts = start + datetime.timedelta(hours=i * 6 + h)
+            v = int(hist.get(ts.strftime('%Y-%m-%dT%H')) or 0)
+            n = max(n, v)
+            if v > best[0]:
+                best = (v, ts)
+        bars.append(n)
+    most = 'most: %s %s, %d players' % (best[1].strftime('%a'), hour_words(best[1].strftime('%H:00')), best[0]) if best[1] else 'nobody yet this week'
+    return bars, most
+
+
+def game_act(action, gid):
+    catalog()
+    if gid not in sa().CATALOG:
+        raise Fail('no game called %s' % gid)
+    if faking():
+        return {'ok': True}
+    m = sa()
+    if action == 'install':
+        return m.install(gid)
+    if action == 'start':
+        if not m.installed(gid):
+            return m.install(gid)
+        return m.switch(gid, True)
+    if action == 'stop':
+        res = m.switch(gid, False)
+        try:
+            m.world_backup(gid, 'stopped')
+        except Exception:
+            pass
+        return res
+    if action == 'restart':
+        code, o, e = cmd(['systemctl', '--user', 'restart', '--no-block', m.unit(gid)], 30)
+        return {'ok': code == 0}
+    raise Fail('start, stop, restart or install')
+
+
+def game_console(gid):
+    catalog()
+    if faking():
+        return {'ok': True, 'lines': src('console.' + gid, lambda: [], []) or []}
+    code, o, e = cmd(['podman', 'logs', '--tail', '200', 'hearth-app-' + gid], 20)
+    return {'ok': True, 'lines': (o + e).splitlines()[-200:]}
+
+
+def game_kick(gid, who):
+    if not NAME_RE.fullmatch(who or ''):
+        raise Fail("that isn't a player's name")
+    if gid != 'minecraft':
+        raise Fail("%s has no remote console: kick from the game itself (its admin console)" % gid.title())
+    if faking():
+        return {'ok': True}
+    code, o, e = cmd(['podman', 'exec', 'hearth-app-minecraft', 'mc-send-to-console', 'kick', who], 20)
+    if code != 0:
+        raise Fail("Minecraft's console didn't take it")
+    return {'ok': True}
+
+
+def game_build(gid):
+    """Your game's newest build: the build folder's newest executable is what runs; restarted when it's running."""
+    if gid not in OWN:
+        raise Fail('only your own games have builds')
+    catalog()
+    if faking():
+        return {'ok': True}
+    m = sa()
+    if not own_build(gid):
+        raise Fail('Put your headless %s server export in %s first' % (OWN[gid][1], m.data_dir(gid, 'build')))
+    if m.unit_state(gid) == 'active':
+        cmd(['systemctl', '--user', 'restart', '--no-block', m.unit(gid)], 30)
+    return {'ok': True}
+
+
+def game_opt(gid, key, value):
+    catalog()
+    if faking():
+        return {'ok': True}
+    return sa().set_opt(gid, key, value)
+
+
+def game_make(gid):
+    """Your game's server build is made by your game's own build (its repository's Actions): that page."""
+    if gid not in OWN:
+        raise Fail('only your own games have server builds')
+    repo = ((settings()['games'].get('own') or {}).get(gid) or {}).get('repo') or ''
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
+        catalog()
+        return {'ok': True, 'folder': sa().data_dir(gid, 'build') if not faking() else ''}
+    return {'ok': True, 'open': 'https://github.com/%s/actions' % repo}
+
+
+def invite(gid):
+    ts = ts_status()
+    port = {'valheim': 2456, 'minecraft': 25565, 'palworld': 8211}.get(gid) or (OWN[gid][3] if gid in OWN else 0)
+    if not ts.get('dns'):
+        raise Fail('Tailscale is off on this PC: turn it on in Settings › Home server first')
+    # Tailscale shares one machine at a time from its admin page (an invite link that only shows them this PC).
+    return {'ok': True, 'address': '%s:%d' % (ts['dns'], port), 'open': 'https://login.tailscale.com/admin/machines'}
+
+
+def thunderstore(full):
+    ns, name = full.split('-', 1)
+    url = 'https://thunderstore.io/api/experimental/package/%s/%s/' % (urllib.parse.quote(ns), urllib.parse.quote(name))
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'Hearth'}), timeout=20) as r:
+        j = json.loads(r.read(2 << 20).decode('utf-8'))
+    if j.get('is_deprecated'):
+        raise Fail('%s is marked deprecated on Thunderstore' % full)
+    latest = j.get('latest') or {}
+    dl = latest.get('download_url') or ''
+    if not dl.startswith('https://'):
+        raise Fail("Thunderstore didn't give a download for %s" % full)
+    return {'name': latest.get('name') or name, 'version': latest.get('version_number') or '', 'url': dl}
+
+
+def mod_add(gid, full):
+    if gid != 'valheim' or not MOD_RE.fullmatch(full or ''):
+        raise Fail('a Valheim mod from Thunderstore, as Namespace-Name')
+    info = {'name': full.split('-', 1)[1].replace('_', ' '), 'version': ''} if faking() else thunderstore(full)
+    if not faking():
+        catalog()
+        plugins = os.path.join(sa().data_dir('valheim', 'config'), 'bepinex', 'plugins', full)
+        os.makedirs(plugins, exist_ok=True)
+        tmp = plugins + '.zip'
+        code, _, e = cmd(['curl', '-fsSL', '--max-time', '300', '-o', tmp, info['url']], 320)
+        if code != 0:
+            raise Fail("the mod didn't download")
+        code, _, e = cmd(['python3', '-I', '-m', 'zipfile', '-e', tmp, plugins], 120)
+        os.unlink(tmp)
+        if code != 0:
+            raise Fail("the mod's zip couldn't be opened")
+    mods = [x for x in (settings()['games'].get('mods') or {}).get(gid) or [] if x.get('id') != full]
+    mods.append({'id': full, 'name': info['name'], 'version': info.get('version', ''), 'on': True})
+    set_nested('games', ['mods', gid], mods)
+    return {'ok': True}
+
+
+def mod_set(gid, full, on):
+    mods = (settings()['games'].get('mods') or {}).get(gid) or []
+    if not any(x.get('id') == full for x in mods):
+        raise Fail('that mod isn\'t added')
+    if not faking():
+        catalog()
+        base = os.path.join(sa().data_dir('valheim', 'config'), 'bepinex')
+        a, b = os.path.join(base, 'plugins', full), os.path.join(base, 'plugins-off', full)
+        src_, dst = (b, a) if on else (a, b)
+        if os.path.isdir(src_):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.replace(src_, dst)
+    for x in mods:
+        if x.get('id') == full:
+            x['on'] = bool(on)
+    set_nested('games', ['mods', gid], mods)
+    return {'ok': True}
+
+
+def schedule(gid, day, a, b=None):
+    if not ID_RE.fullmatch(gid) or day not in DAYS:
+        raise Fail('a game and a day (Mon … Sun)')
+    if a == 'off':
+        set_nested('games', ['schedule', gid, day], None)
+    else:
+        if not (HHMM.fullmatch(a or '') and (HHMM.fullmatch(b or '') or b == '24:00')) or a >= b:
+            raise Fail('from and to as HH:MM, from before to')
+        set_nested('games', ['schedule', gid, day], [a, b])
+    timer_sync()
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ the 5-minute timer
+
+def timer_texts():
+    me = os.path.realpath(__file__)
+    return {
+        'hearth-server-hub.service': (
+            '# The Home server helper (docs/SERVER-HUB.md): game server schedules, Stop when nobody\'s on, Pause while you\n'
+            '# play, the streaming rules. Made by hearth-server-hub; never part of starting the PC or Game Mode.\n'
+            '[Unit]\nDescription=Hearth home server: schedules and fair use\n\n'
+            '[Service]\nType=oneshot\nExecStart=-/usr/bin/python3 ' + me + ' tick\nNice=10\nTimeoutStartSec=120\n'),
+        'hearth-server-hub.timer': (
+            '# Every 5 minutes, enabled only while one of its rules is on.\n'
+            '[Unit]\nDescription=Hearth home server: schedules, every 5 minutes\n\n'
+            '[Timer]\nOnStartupSec=3min\nOnUnitActiveSec=5min\n\n[Install]\nWantedBy=timers.target\n'),
+    }
+
+
+def timer_wanted(s=None):
+    s = s or settings()
+    g, p = s['games'], s['play']
+    return bool(any(v for v in (g.get('schedule') or {}).values()) or g.get('idleStop') or g.get('pauseWhilePlaying')
+                or p.get('freeGpu') or not p.get('keepGames') or p.get('sleepAfter'))
+
+
+def timer_sync():
+    if faking() or not have('systemctl'):
+        return
+    os.makedirs(UNIT_DIR, exist_ok=True)
+    changed = False
+    for n, text in timer_texts().items():
+        p = os.path.join(UNIT_DIR, n)
+        try:
+            with open(p) as f:
+                same = f.read() == text
+        except OSError:
+            same = False
+        if not same:
+            sio.write_text(p, text)
+            changed = True
+    if changed:
+        cmd(['systemctl', '--user', 'daemon-reload'], 30)
+    want = timer_wanted()
+    cmd(['systemctl', '--user', 'enable' if want else 'disable', '--now', 'hearth-server-hub.timer'], 30)
+
+
+def game_playing():
+    rt = os.environ.get('XDG_RUNTIME_DIR') or ''
+    return bool(rt) and os.path.exists(os.path.join(rt, 'hearth-playing'))
+
+
+def in_span(days, t):
+    d = datetime.datetime.fromtimestamp(t)
+    v = days.get(DAYS[d.weekday()]) if isinstance(days, dict) else None
+    if not (isinstance(v, list) and len(v) == 2):
+        return False
+    hm = d.strftime('%H:%M')
+    return v[0] <= hm < v[1]
+
+
+def tick(t=None):
+    """Once every 5 minutes: each game server's schedule, stopping one nobody's been on for a while, a fair share of
+    the CPU while you play here, the players this hour, and the streaming rules. Small reads only."""
+    t = t or now()
+    s = settings()
+    g = s['games']
+    catalog()
+    m = sa()
+    did = []
+    apps = {a['id']: a for a in m.list_apps().get('apps') or [] if a.get('kind') == 'game'}
+    st = seen()
+    hour = datetime.datetime.fromtimestamp(t).strftime('%Y-%m-%dT%H')
+    total = 0
+    idle = st.get('idle') or {}
+    for gid, a in apps.items():
+        sched = (g.get('schedule') or {}).get(gid) or {}
+        if sched and a.get('installed'):
+            want = in_span(sched, t)
+            if want and not a.get('running'):
+                m.switch(gid, True)
+                did.append('started %s (its schedule)' % gid)
+            elif not want and a.get('running') and not players(gid).get('n'):
+                m.switch(gid, False)
+                did.append('stopped %s (its schedule)' % gid)
+        if a.get('running'):
+            n = int(players(gid).get('n') or 0)
+            total += n
+            idle[gid] = 0 if n else int(idle.get(gid) or 0) + 5
+            if g.get('idleStop') and idle[gid] >= int(g['idleStop']) and not sched:
+                m.switch(gid, False)
+                idle[gid] = 0
+                did.append("stopped %s (nobody on for %d min)" % (gid, int(g['idleStop'])))
+            # Pause while you play here: the servers get a small share of the CPU (never stopped: players stay on).
+            weight = '10' if (g.get('pauseWhilePlaying') and game_playing()) else '100'
+            cmd(['systemctl', '--user', 'set-property', '--runtime', m.unit(gid), 'CPUWeight=' + weight], 15)
+    streaming = play_rules(s, t, did)
+
+    def change(d):
+        p = d.get('players') if isinstance(d.get('players'), dict) else {}
+        p[hour] = max(int(p.get(hour) or 0), total)
+        for k in sorted(p)[:-24 * 8]:
+            del p[k]
+        d['players'] = p
+        d['idle'] = idle
+        if streaming:
+            w = d.get('streamed') if isinstance(d.get('streamed'), dict) else {}
+            key = '%s|%s' % (datetime.date.fromtimestamp(t).isoformat(), streaming)
+            w[key] = int(w.get(key) or 0) + 5
+            for k in sorted(w)[:-60]:
+                del w[k]
+            d['streamed'] = w
+    seen_update(change)
+    return {'ok': True, 'did': did}
+
+
+# ------------------------------------------------------------------ game cache
+
+def dns_status():
+    def live():
+        with open(DNS_STATUS, encoding='utf-8') as f:
+            return json.load(f)
+    return src('dns', live, {}) or {}
+
+
+def mbps(rate_bytes):
+    return '%d Mb/s' % round(rate_bytes * 8 / 1e6)
+
+
+def cache_view():
+    d = dns_status()
+    c = d.get('cache') or {}
+    v = c.get('view') or {}
+    s = settings()['cache']
+    size_gb = int(c.get('sizeGB') or 500)
+    used = int(v.get('used') or 0)
+    total = v.get('total') or {}
+    month_hit, month_miss = int(v.get('monthHit') or 0), int(v.get('monthMiss') or 0)
+    pct = round(100 * month_hit / (month_hit + month_miss)) if month_hit + month_miss else 0
+    internet = float(v.get('internetMbps') or 300)
+    wait = float(v.get('waitMbps') or internet)     # what downloads from the internet really averaged
+    saved = int(total.get('hit') or 0)
+    since = total.get('since') or 0
+    now_rows = v.get('now') or []
+    top = now_rows[0] if now_rows else None
+    stores = c.get('stores') or {}
+    dev_month = v.get('devicesMonth') or {}
+    mx = max([int(x) for x in dev_month.values()] or [1]) or 1
+    games = list(v.get('games') or [])      # in the order each was first cached
+    rows = []
+    for x in games[:7]:
+        last = int(x.get('last') or 0)
+        rows.append({'game': x.get('game') or '', 'store': x.get('store') or '', 'cached': gb(x.get('miss') or 0), 'by': ', '.join(x.get('devices') or []),
+                     'saved': gb(x.get('hit') or 0), 'used': 'now' if top and (top.get('what') or '').startswith(x.get('game') or '-') else
+                     ('today' if now() - last < 3600 else short_day(last)) if last else ''})
+    rest = games[7:]
+    if rest:
+        rows.append({'game': '+ %d more games' % len(rest), 'store': '', 'cached': gb(sum(int(x.get('miss') or 0) for x in rest)), 'by': '',
+                     'saved': gb(sum(int(x.get('hit') or 0) for x in rest)), 'used': '', 'more': True})
+    flow_devs = []
+    for dv in (v.get('devices') or [])[:4]:
+        flow_devs.append({'name': dv.get('name', ''), 'live': bool(dv.get('rate')), 'what': ('%s · from the cache' % mbps(dv['rate'])) if dv.get('rate') else
+                          (v.get('notes') or {}).get('flow:' + dv.get('name', '')) or 'idle'})
+    on = bool(c.get('on'))
+    return {
+        'on': on, 'running': bool(c.get('running')),
+        'tag': 'on · saved %s of downloads' % gb(saved) if on else 'off', 'count': gb(used, 0) if on else 'off',
+        'kpi': [['Saved from the internet', gb(saved), 'since %s · about %d hours of waiting' % (short_day(since) if since else 'today', round(saved * 8 / (wait * 1e6) / 3600))],
+                ['Cache size', gb(used, 0), 'of %s' % gb(size_gb * 1e9, 0), used / (size_gb * 1e9) if size_gb else 0],
+                ['From the cache this month', '%d%%' % pct, 'of every game download at home'],
+                ['Right now', mbps(top['rate']) if top else 'quiet', ('to the %s · %s' % (top.get('device'), top.get('what'))) if top else 'nothing downloading']],
+        'flow': {'internet': 'Steam, Epic, GOG, Battle.net, Xbox app', 'first': 'first time only · %d Mb/s' % round(internet),
+                 'cache': 'on the %s · %s' % (src('server', lambda: socket.gethostname(), 'this PC'), gb(used, 0)),
+                 'home': 'home network · up to %s' % (v.get('lanSpeed') or '1 Gb/s'), 'devices': flow_devs},
+        'games': rows,
+        'devices': [{'name': k, 'bytes': gb(b), 'share': int(b) / mx, 'note': (v.get('notes') or {}).get(k, '')} for k, b in sorted(dev_month.items(), key=lambda x: -int(x[1]))][:5]
+        + [{'name': n, 'bytes': 0, 'share': 0, 'note': note} for n, note in (v.get('away') or [])],
+        'stores': [['Steam', bool(stores.get('steam'))], ['Epic Games · GOG · Battle.net', bool(stores.get('epic') and stores.get('blizzard'))],
+                   ['Xbox app and the Xbox console', bool(stores.get('xbox'))], ['Hearth OS updates and Hearth Store apps', bool(v.get('hearth', True))]],
+        'month': {'name': datetime.date.fromtimestamp(now()).strftime('%B'), 'hit': gb(month_hit, 0), 'miss': gb(month_miss, 0),
+                  'bars': [[int(x.get('hit') or 0), int(x.get('miss') or 0)] for x in v.get('monthDays') or []]},
+        'settings': {'size': size_gb, 'drive': v.get('driveLabel') or v.get('drive') or 'This PC', 'dropOld': bool(s.get('dropOld')),
+                     'keep': ', '.join(s.get('keep') or []) or 'none', 'preload': bool(s.get('preload')), 'window': '%s – %s' % (hour_clock(s['from']), hour_clock(s['to']))},
+        'installed': bool(src('cacheInstalled', lambda: bool(d.get('cache')), False)),
+        'drives': drives(),
+    }
+
+
+def dns(args):
+    if faking():
+        return {'ok': True}
+    code, o, e = cmd(['pkexec', os.path.join(LIBEXEC, 'hearth-server-dns')] + args, 120)
+    if code != 0:
+        raise Fail((e.strip().splitlines() or ["Hearth's cache didn't answer"])[-1].replace('error: ', ''))
+    return {'ok': True}
+
+
+def cache_size(gbs):
+    if gbs not in ('500', '1000', '2000'):
+        raise Fail('500, 1000 or 2000')
+    c = (dns_status().get('cache') or {})
+    return dns(['cache-place', c.get('dir') or '/var/lib/hearth/server-dns/cache', gbs])
+
+
+def cache_drive(path):
+    if not path.startswith('/') or '..' in path:
+        raise Fail('a folder on a drive')
+    c = (dns_status().get('cache') or {})
+    return dns(['cache-place', os.path.join(path, 'Hearth game cache'), str(c.get('sizeGB') or 1000)])
+
+
+def drives():
+    def live():
+        code, o, _ = cmd(['findmnt', '-J', '-b', '-o', 'TARGET,LABEL,SIZE,FSTYPE', '-t', 'ext4,btrfs,xfs'], 10)
+        out = []
+        for f in json.loads(o).get('filesystems') or []:
+            t = f.get('target') or ''
+            if t.startswith(('/boot', '/sysroot', '/ostree', '/usr', '/etc')) or t == '/':
+                continue
+            out.append({'path': t, 'label': f.get('label') or os.path.basename(t) or 'This PC', 'size': gb(f.get('size') or 0, 0)})
+        return out
+    return src('drives', live, []) or []
+
+
+# ------------------------------------------------------------------ remote play
+
+_RD = None
+
+
+def rd():
+    global _RD
+    if _RD is None:
+        _RD = load_helper('hearth-remote-desktop', 'hearth_remote_desktop_hub')
+    return _RD
+
+
+def rd_status():
+    def live():
+        code, o, _ = cmd(['python3', os.path.join(HERE, 'hearth-remote-desktop'), 'status'], 30)
+        return json.loads(o.strip().splitlines()[-1])
+    return src('rd', live, {}) or {}
+
+
+def gpu_now():
+    def live():
+        code, o, _ = cmd(['nvidia-smi', '--query-gpu=utilization.encoder,utilization.gpu', '--format=csv,noheader,nounits'], 10)
+        a, b = [int(x.strip()) for x in o.strip().splitlines()[0].split(',')]
+        return {'enc': a, 'gpu': b}
+    return src('gpu', live, {}) or {}
+
+
+DEVICE_DEFAULTS = {
+    'tv': {'name': 'TCL 55" TV', 'via': 'Moonlight on Google TV · wired', 'size': '4K', 'fps': '60', 'bitrate': '40', 'extra': ['HDR · surround', 'on · 5.1']},
+    'ally': {'name': 'ROG Ally', 'via': 'Moonlight · Wi-Fi 6E', 'size': '1080p', 'fps': '120', 'bitrate': '30', 'extra': ['Away from home', '720p · 15 Mb/s']},
+    'phone': {'name': 'Phone', 'via': 'Moonlight · touch or a clip-on pad', 'size': '1080p', 'fps': '60', 'bitrate': '20', 'extra': ['On 5G', '720p · 8 Mb/s']},
+    'truck': {'name': 'Truck laptop', 'via': 'Moonlight · over Tailscale', 'size': '900p', 'fps': '60', 'bitrate': '10', 'extra': ['Last played', '']},
+}
+
+
+def play_view():
+    s = settings()['play']
+    t = now()
+    r = rd_status()
+    stream = r.get('stream') or r.get('streaming') or {}
+    on = bool(stream.get('on'))
+    g = gpu_now()
+    delays = src('delays', lambda: None, None) or seen().get('delays') or []
+    devs = []
+    paired = r.get('paired') or []
+    for did, base in DEVICE_DEFAULTS.items():
+        mine = (s.get('devices') or {}).get(did) or {}
+        d = dict(base, **{k: v for k, v in mine.items() if k in ('size', 'fps', 'bitrate', 'name', 'via')})
+        playing = on and (stream.get('device') or '').lower() in (d['name'].lower(), did)
+        away = did == 'truck' and not src('truckHome', lambda: False, False)
+        state = 'playing' if playing else ('away · 5G' if away else 'ready')
+        extra = list(d['extra'])
+        if did == 'truck':
+            extra[1] = src('truckLast', lambda: '', '') or 'not yet'
+        devs.append({'id': did, 'name': d['name'], 'via': d['via'], 'state': state,
+                     'rows': [['Size', d['size']], ['Frames', d['fps']], ['Bit rate', '%s Mb/s%s' % (d['bitrate'], ' · lowers itself' if did == 'truck' else '')], extra]})
+    week = {}
+    for k, mins in (src('streamed', lambda: None, None) or seen().get('streamed') or {}).items():
+        day, dev = k.split('|', 1)
+        if t - datetime.datetime.fromisoformat(day).timestamp() <= 7 * 86400:
+            week[dev] = week.get(dev, 0) + int(mins)
+    mxw = max(week.values() or [1]) or 1
+    games = src('library', steam_library, []) or []
+    since = stream.get('since') or 0
+    return {
+        'tag': ('1 playing · the %s' % short_name(stream.get('device'))) if on else 'nobody playing', 'count': '1 playing' if on else 'idle',
+        'now': {'on': on, 'title': '%s · on the %s' % (stream.get('app') or 'The desktop', stream.get('device') or 'a device') if on else 'Nothing playing',
+                'line': '%s · %s fps%s · %s Mb/s · delay %s ms · %s' % (res_words(stream.get('height')), stream.get('fps') or '—', ' · HDR' if stream.get('hdr') else '',
+                                                                       stream.get('mbps') or '—', stream.get('delay') or (delays[-1] if delays else '—'), stream.get('pad') or 'controller') if on else
+                'Pick a game below, or open Moonlight on a device'},
+        'pc': {'enc': g.get('enc'), 'gpu': g.get('gpu'), 'ontime': stream.get('ontime'), 'delays': delays[-60:],
+               'delayWords': 'Delay over the last 10 minutes · %d–%d ms' % (min(delays[-60:]), max(delays[-60:])) if delays else 'No stream in the last 10 minutes'},
+        'rules': {'freeGpu': bool(s.get('freeGpu')), 'keepGames': bool(s.get('keepGames')), 'pauseVault': bool(s.get('pauseVault'))},
+        'devices': devs,
+        'games': games, 'gamesCount': src('libraryCount', lambda: len(games), len(games)),
+        'who': {'on': on, 'title': 'You · on the %s' % short_name(stream.get('device')) if on else 'Nobody', 'time': dur(t - since) if on and since else '',
+                'line': '%s · started %s' % (stream.get('app') or 'The desktop', clock(since)) if on and since else 'Waiting for a device'},
+        'wake': {'any': bool(s.get('wakeAny')), 'away': bool(s.get('wakeAway')), 'sleep': bool(s.get('sleepAfter'))},
+        'week': [{'name': short_name(n), 'mins': m_, 'words': dur(m_ * 60).replace(' min', ' min') if m_ < 60 else hm_words(m_), 'share': m_ / mxw}
+                 for n, m_ in sorted(week.items(), key=lambda x: -x[1])],
+        'installed': bool(src('sunshineInstalled', lambda: have('sunshine'), False)),
+    }
+
+
+def hm_words(mins):
+    h, m = mins // 60, mins % 60
+    return '%d h' % h if not m else '%d h %d' % (h, m)
+
+
+def short_name(n):
+    n = n or ''
+    return 'TV' if 'TV' in n else n
+
+
+def res_words(h):
+    h = int(h or 0)
+    return {2160: '4K', 1440: '1440p', 1080: '1080p', 900: '900p', 720: '720p'}.get(h, '%dp' % h if h else '—')
+
+
+STEAM_APPS = os.path.join(HOME, '.local', 'share', 'Steam', 'steamapps')
+OWN_ART = {'gravesleep': ['#5a3a2a', '#1a1410'], 'noclip': ['#8a7a3a', '#2a2614'], 'quadmech': ['#3a6a5a', '#142420']}
+
+
+def steam_library():
+    """The games installed in Steam on this PC (its appmanifest files: only their names and ids are read), the newest
+    played first, then your own games."""
+    out = []
+    try:
+        names = os.listdir(STEAM_APPS)
+    except OSError:
+        names = []
+    for n in names:
+        m = re.fullmatch(r'appmanifest_(\d+)\.acf', n)
+        if not m:
+            continue
+        try:
+            with open(os.path.join(STEAM_APPS, n), encoding='utf-8', errors='replace') as f:
+                txt = f.read(65536)
+        except OSError:
+            continue
+        nm = re.search(r'"name"\s+"([^"]+)"', txt)
+        lp = re.search(r'"LastPlayed"\s+"(\d+)"', txt)
+        if nm and not re.search(r'Proton|Steam Linux Runtime|Steamworks', nm.group(1)):
+            out.append({'id': 'steam-' + m.group(1), 'name': nm.group(1), 'kind': 'steam', 'last': int(lp.group(1)) if lp else 0})
+    out.sort(key=lambda g: -g['last'])
+    for gid, (name, *_r) in OWN.items():
+        out.append({'id': gid, 'name': name, 'kind': 'own', 'art': OWN_ART.get(gid)})
+    out.append({'id': 'desktop', 'name': 'The whole desktop', 'kind': 'desktop'})
+    return out
+
+
+def play_launch(gid):
+    """A game in Sunshine's list, so every device's Moonlight shows it: Steam's own start for a Steam game."""
+    m = re.fullmatch(r'steam-(\d{1,10})', gid or '')
+    lib = {g['id']: g for g in (src('library', steam_library, []) or [])}
+    g = lib.get(gid)
+    if not g:
+        raise Fail('no game by that id on this PC')
+    if faking():
+        return {'ok': True}
+    r = rd()
+    if not r:
+        raise Fail("Remote play's helper is missing")
+    entry = {'name': g['name'], 'output': '', 'cmd': '', 'exclude-global-prep-cmd': 'false', 'elevated': 'false', 'auto-detach': 'true',
+             'wait-all': 'true', 'exit-timeout': '5', 'image-path': '', 'detached': ['steam steam://rungameid/%s' % m.group(1)] if m else []}
+    r.api('POST', '/api/apps', entry)
+    return {'ok': True}
+
+
+def play_pin(pin):
+    if not re.fullmatch(r'\d{4}', pin or ''):
+        raise Fail("Moonlight's 4 numbers")
+    if faking():
+        return {'ok': True}
+    code, o, e = cmd(['python3', os.path.join(HERE, 'hearth-remote-desktop'), 'pin', pin, 'Moonlight'], 60)
+    if code != 0:
+        raise Fail((o + e).strip().splitlines()[-1].replace('error: ', '') if (o + e).strip() else "Sunshine didn't take it")
+    return {'ok': True}
+
+
+def play_device(did, key, value):
+    if did not in DEVICE_DEFAULTS or key not in PLAY_DEVICE or value not in PLAY_DEVICE[key]:
+        raise Fail('a device and one of its choices')
+    set_nested('play', ['devices', did, key], value)
+    return {'ok': True}
+
+
+def play_stop():
+    if faking():
+        return {'ok': True}
+    m = rd()
+    if not m:
+        raise Fail("Remote play's helper is missing")
+    m.api('POST', '/api/apps/close', {})
+    return {'ok': True}
+
+
+def play_message(text):
+    text = (text or '').strip()[:200]
+    if not text:
+        raise Fail('nothing to say')
+    if faking():
+        return {'ok': True}
+    # What's streamed is this PC's screen, so a notice here is seen there (Game Mode shows it as a toast too).
+    cmd(['notify-send', '-a', 'Hearth', 'From the Home server', text], 10)
+    return {'ok': True}
+
+
+def magic_packet(mac):
+    m = re.fullmatch(r'([0-9a-fA-F]{2})[:-]?' * 5 + r'([0-9a-fA-F]{2})', mac or '')
+    if not m:
+        raise Fail("the PC's network card isn't known yet: open this page on the PC once")
+    hw = bytes(int(x, 16) for x in m.groups())
+    return b'\xff' * 6 + hw * 16
+
+
+def play_wake():
+    mac = settings()['play'].get('wakeMac') or ''
+    pkt = magic_packet(mac)
+    if faking():
+        return {'ok': True}
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        for port in (9, 7):
+            s.sendto(pkt, ('255.255.255.255', port))
+    finally:
+        s.close()
+    return {'ok': True}
+
+
+def play_rules(s, t, did):
+    """While someone streams: Colibri and Imagine stopped to free the graphics card (started again after), the game
+    servers stopped unless you keep them; the Model vault's upload waits for $XDG_RUNTIME_DIR/hearth-streaming."""
+    p = s['play']
+    st = rd_status()
+    stream = st.get('stream') or st.get('streaming') or {}
+    on = bool(stream.get('on'))
+    rt = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    mark = os.path.join(rt, 'hearth-streaming')
+    gpu_units = ['hearth-colibri.service', 'hearth-imagine.service']
+    if on:
+        if p.get('pauseVault'):
+            sio.write_text(mark, '%d\n' % int(t))
+        if p.get('freeGpu'):
+            for u in gpu_units:
+                code, o, _ = cmd(['systemctl', '--user', 'is-active', u], 10)
+                if o.strip() == 'active':
+                    cmd(['systemctl', '--user', 'stop', '--no-block', u], 15)
+                    sio.write_text(os.path.join(rt, 'hearth-hub-stopped-' + u), 'stream\n')
+                    did.append('stopped %s for the stream' % u)
+        return short_name(stream.get('device')) or 'a device'
+    for u in gpu_units:
+        f = os.path.join(rt, 'hearth-hub-stopped-' + u)
+        if os.path.exists(f):
+            os.unlink(f)
+            cmd(['systemctl', '--user', 'start', '--no-block', u], 15)
+            did.append('started %s again' % u)
+    if os.path.exists(mark):
+        os.unlink(mark)
+    return ''
+
+
+# ------------------------------------------------------------------ media
+
+def jf(path):
+    """Jellyfin's API with the key you gave it (kept in this PC's keyring, never in a file)."""
+    code, key, _ = cmd(['secret-tool', 'lookup', 'hearth-app', 'server-hub', 'key', 'jellyfin'], 10)
+    key = key.strip()
+    if not key:
+        raise Fail('no Jellyfin key yet')
+    req = urllib.request.Request(JELLYFIN + path, headers={'X-Emby-Token': key, 'Accept': 'application/json'})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read(4 << 20).decode('utf-8'))
+
+
+def media_view():
+    s = settings()['media']
+    counts = src('jf.counts', lambda: jf('/Items/Counts'), {}) or {}
+    sessions = src('jf.sessions', lambda: jf('/Sessions?activeWithinSeconds=600'), []) or []
+    timers = src('jf.timers', lambda: (jf('/LiveTv/Timers') or {}).get('Items'), []) or []
+    latest = src('jf.latest', lambda: jf('/Items/Latest?Limit=4'), []) or []
+    jobs = src('jobs', lambda: seen().get('jobs'), []) or []
+    wanted = [w for w in (s.get('wanted') or []) if w.get('state', 'wanted') == 'wanted']
+    getting = [j for j in jobs if j.get('state') == 'getting']
+    ready = [j for j in jobs if j.get('state') == 'ready']
+    watching = []
+    for x in sessions:
+        it = x.get('NowPlayingItem')
+        if it:
+            pos = int(((x.get('PlayState') or {}).get('PositionTicks') or 0) / 1e7)
+            watching.append({'title': it.get('Name', ''), 'who': '%s, on %s' % (x.get('UserName', ''), x.get('DeviceName', '')), 'at': dur(pos) + ' in'})
+    coming = []
+    for x in timers[:2]:
+        try:
+            ts = datetime.datetime.fromisoformat((x.get('StartDate') or '').replace('Z', '+00:00')).timestamp()
+        except ValueError:
+            continue
+        coming.append({'when': '%s %s' % (datetime.datetime.fromtimestamp(ts).strftime('%a'), clock(ts)), 'what': x.get('Name', ''),
+                       'line': '%srecords from %s' % ('for %s · ' % x['For'] if x.get('For') else '', x.get('ChannelName') or 'the antenna')})
+    photos = src('photos', lambda: None, None) or {}
+    music = src('music', lambda: None, None) or []
+    space = src('space', lambda: None, None) or {}
+    n = int(counts.get('MovieCount') or 0) + int(counts.get('EpisodeCount') or 0) + int(counts.get('SongCount') or 0) + int(counts.get('BoxSetCount') or 0) * 0 \
+        + int(counts.get('MusicVideoCount') or 0) + int(src('homeVideos', lambda: 0, 0) or 0)
+    n = src('jf.total', lambda: n, n)
+    return {
+        'tag': 'Jellyfin · %d watching' % len(watching), 'count': '{:,}'.format(n), 'tab': s.get('tab', 'tv'),
+        'wanted': {'n': len(wanted), 'items': wanted[:3], 'more': max(0, len(wanted) - 3)},
+        'getting': {'n': len(getting), 'items': getting[:3]},
+        'ready': {'n': len(ready), 'items': ready[:3]},
+        'library': {'n': '{:,}'.format(n), 'rows': [['Movies', '%s · %s' % (counts.get('MovieCount', 0), src('moviesSize', lambda: '', ''))],
+                                                    ['TV shows', '%s · {:,} episodes'.format(int(counts.get('EpisodeCount') or 0)) % counts.get('SeriesCount', 0)],
+                                                    ['Music', '{:,} songs'.format(int(counts.get('SongCount') or 0))], ['Home videos', str(src('homeVideos', lambda: 0, 0))]],
+                    'latest': [x.get('Name', '') for x in latest][:4]},
+        'music': {'line': src('musicLine', lambda: '', ''), 'rows': music},
+        'photos': photos,
+        'watching': watching[:1], 'coming': coming,
+        'nightly': {'title': 'new photos from the phone', 'line': 'kept in Photos, backed up'} if photos.get('syncing') else None,
+        'sources': {k: bool(s.get(k)) for k in ('discs', 'antenna', 'own', 'free', 'folder')},
+        'sorting': {k: bool(s.get(k)) for k in ('autoName', 'ask', 'smaller')},
+        'space': space,
+        'installed': bool(src('mediaInstalled', lambda: have('ffmpeg') and have('abcde'), False)),
+    }
+
+
+WANT_KINDS = ('tv', 'movie', 'music')
+WANT_FROM = ('antenna', 'disc', 'free', 'own', 'folder')
+
+
+def media_want(raw):
+    """Something you want: a show from the antenna, one of your discs, a public-domain film, your own video. Never a
+    search for copies of things you don't own: these five are the only places it comes from."""
+    try:
+        w = json.loads(raw)
+    except ValueError:
+        raise Fail('the wish must be JSON')
+    title = (w.get('title') or '').strip()
+    if not NAME_RE.fullmatch(title) or w.get('kind') not in WANT_KINDS or w.get('from') not in WANT_FROM:
+        raise Fail('a title, a kind (tv, movie, music) and where it comes from (antenna, disc, free, own, folder)')
+    item = {'id': '%x' % int(now() * 1000), 'title': title, 'kind': w['kind'], 'from': w['from'], 'state': 'wanted',
+            'line': {'antenna': 'records from the antenna', 'disc': 'on your disc shelf · rip it', 'free': 'public domain · Internet Archive',
+                     'own': 'your own video', 'folder': 'from your drop folder'}[w['from']]}
+    lst = settings()['media'].get('wanted') or []
+    lst.append(item)
+    set_nested('media', ['wanted'], lst[-200:])
+    return {'ok': True, 'id': item['id']}
+
+
+def archive_search(title):
+    """Public-domain films on the Internet Archive (its own search API, the feature_films collection)."""
+    q = 'title:(%s) AND collection:(feature_films) AND mediatype:(movies)' % title
+    url = 'https://archive.org/advancedsearch.php?' + urllib.parse.urlencode({'q': q, 'fl[]': ['identifier', 'title', 'year', 'licenseurl'], 'rows': 5, 'output': 'json'}, doseq=True)
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'Hearth'}), timeout=20) as r:
+        return (json.loads(r.read(1 << 20).decode('utf-8')).get('response') or {}).get('docs') or []
+
+
+def media_yes(jid, title=None):
+    jobs = seen().get('jobs') or []
+    j = next((x for x in jobs if x.get('id') == jid), None)
+    if not j and not faking():
+        raise Fail('nothing waiting by that id')
+    if title is not None and not NAME_RE.fullmatch(title):
+        raise Fail("that isn't a title")
+
+    def change(d):
+        for x in d.get('jobs') or []:
+            if x.get('id') == jid:
+                x['state'] = 'into-jellyfin'
+                if title:
+                    x['title'] = title
+    seen_update(change)
+    if not faking():
+        try:
+            req = urllib.request.Request(JELLYFIN + '/Library/Refresh', method='POST')
+            urllib.request.urlopen(req, timeout=10)
+        except OSError:
+            pass
+    return {'ok': True}
+
+
+def media_rip():
+    """Your disc in the drive, copied as it is (ffmpeg, through libbluray or the DVD's files). A copy-protected disc
+    isn't unlocked: Hearth says so and copies nothing."""
+    if faking():
+        return {'ok': True}
+    if not have('ffmpeg'):
+        raise Fail('Install Media first (it adds ffmpeg and the disc parts)')
+    dev = '/dev/sr0'
+    if not os.path.exists(dev):
+        raise Fail('no disc drive found')
+    out = os.path.join(HOME, 'Media', 'Getting it', 'disc-%d.mkv' % int(now()))
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    code, o, e = cmd(['systemd-run', '--user', '--collect', '--nice=10', '--unit=hearth-media-rip', 'ffmpeg', '-nostdin', '-y', '-i', 'bluray:' + dev,
+                      '-map', '0', '-c', 'copy', out], 30)
+    if code != 0:
+        raise Fail("the copy didn't start")
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ more PCs
+
+def peers():
+    def live():
+        code, o, _ = cmd(['python3', os.path.join(HERE, 'hearth-device-status'), 'devices'], 30)
+        j = json.loads(o.strip().splitlines()[-1])
+        return j.get('devices') if isinstance(j, dict) else j
+    return src('peers', live, []) or []
+
+
+JOB_KINDS = ('AI', 'services', 'games', 'storage', 'network', 'always on', 'always')
+SHARE_ROWS = [('AI models', 'AI'), ('Storage', 'storage'), ('Game servers', 'games'), ('Backups', 'backups'), ('Always-on services', 'services')]
+
+
+def self_status():
+    """This PC as Hearth Link shows it to your other devices (hearth-device-status), plus what Hearth Server runs here."""
+    def live():
+        code, o, _ = cmd(['python3', os.path.join(HERE, 'hearth-device-status'), 'status'], 30)
+        return json.loads(o.strip().splitlines()[-1])
+    return src('self', live, {}) or {}
+
+
+def tb_words(n_gb):
+    return '%d TB' % round(n_gb / 1000) if n_gb >= 1000 else '%d GB' % round(n_gb)
+
+
+def pc_card(p, main=False, limits=None):
+    """One PC's card from its status (hearth-device-status protocol 1 and Hearth Server's jobs)."""
+    gpu = p.get('gpu') or {}
+    ram = p.get('ram') or {}
+    cpu = p.get('cpu') or {}
+    bat = p.get('battery') or None
+    disk = sum(float(d.get('total') or 0) for d in p.get('drives') or [])
+    spec = [x for x in [gpu.get('name') or p.get('cpuName') or '', ('%d GB' % round(ram.get('total') or 0)) if ram.get('total') else '', tb_words(disk) if disk else '', p.get('where') or ''] if x]
+    online = p.get('online', True)
+    bits = ['Healthy' if online and not p.get('problem') else (p.get('problem') or 'Off')]
+    if online and cpu.get('temp'):
+        bits.append('%d°' % round(cpu['temp']))
+    if online and p.get('note'):
+        bits.append(p['note'])
+    elif online and p.get('uptime'):
+        bits.append('up %d days' % (int(p['uptime']) // 86400) if p['uptime'] >= 86400 else 'up %s' % dur(p['uptime']))
+    if main:
+        tag = 'main'
+    elif p.get('via') == 'tailscale':
+        tag = 'over Tailscale'
+    elif bat and bat.get('charging'):
+        tag = 'plugged in'
+    else:
+        tag = 'at home'
+    right = ('%d W' % round(p['watts'])) if p.get('watts') else ''
+    if p.get('limited') and limits:
+        right = 'gives %d%%' % int(limits.get('dadMax') or 40)
+    bars = [['CPU', float(cpu.get('use') or 0)]]
+    if gpu:
+        bars.append(['GPU', float(gpu.get('use') or 0)])
+    elif bat:
+        bars.append(['Battery', float(bat.get('percent') or 0), 'UPS' if p.get('ups') else '%d%%' % round(bat.get('percent') or 0)])
+    jobs = [{'name': j.get('name', ''), 'kind': j.get('kind', 'services'), 'on': j.get('on', True), 'share': j.get('share')} for j in (p.get('jobs') or [])]
+    return {'id': p.get('id') or p.get('name', ''), 'name': p.get('name', ''), 'mark': (p.get('name') or '?')[:1].upper(), 'spec': ' · '.join(spec),
+            'tag': tag, 'health': ' · '.join(bits), 'right': right, 'bars': bars, 'jobs': jobs, 'online': online, 'main': main,
+            'disk': disk, 'mood': p.get('mood') or ('main' if main else 'blue' if p.get('via') == 'tailscale' else 'grey')}
+
+
+def share_of(cards):
+    """Each PC's share of each kind of work: [label, [[pc index, what, weight]]]. A job says what it counts as
+    (its "share": {"AI": [...], "games": [...], "backups": [...], "services": [...]}, from Hearth Server on that PC);
+    storage is each PC's drives."""
+    rows = []
+    for label, kind in SHARE_ROWS:
+        cells = []
+        for i, c in enumerate(cards):
+            if kind == 'storage':
+                if c['disk']:
+                    d = c['disk']
+                    cells.append([i, tb_words(d) if d >= 1500 else (str(round(d / 1000)) if d >= 1000 else tb_words(d)), d])
+                continue
+            names = []
+            for j in c['jobs']:
+                sh = j.get('share') if isinstance(j.get('share'), dict) else {j.get('kind'): [j.get('name', '').split(' (')[0]]}
+                names += [x for x in sh.get(kind) or [] if x]
+            if names:
+                cells.append([i, ', '.join(dict.fromkeys(names)), len(names)])
+        total = ''
+        if kind == 'storage':
+            total = ' · %s' % tb_words(sum(c['disk'] for c in cards))
+        elif kind == 'games':
+            total = ' · %d' % sum(len(x[1].split(', ')) for x in cells)
+        elif kind == 'backups' and len(cells) > 1:
+            total = ' · %d copies' % len(cells)
+        rows.append([label + total, cells])
+    return rows
+
+
+def moves_if_off(cards, name, limits):
+    """What moves if that PC goes off: each job it runs, where it goes and what waits. Whole jobs only: one AI model is
+    never split over the internet."""
+    src_ = next((c for c in cards if c['name'] == name), None)
+    main = next((c for c in cards if c['main']), None)
+    if not src_ or not main or src_ is main and len(cards) == 1:
+        return []
+    to = main if src_ is not main else next((c for c in cards if c is not main), main)
+    out = []
+    ai = [j['name'].split(' (')[0].replace(' small model and ', ' and ').replace(' for the family', '') for j in src_['jobs'] if j['kind'] == 'AI']
+    if ai:
+        out.append(['wait', '%s move%s to the %s' % (' and '.join(ai) if len(ai) < 3 else ai[0], '' if len(ai) == 1 and ' and ' not in ai[0] else '', to['name']),
+                    'Colibri waits its turn' if to['main'] else 'the big model stays'])
+    for j in src_['jobs']:
+        if j['kind'] == 'games':
+            out.append(['arrow', '%s moves to the %s' % (j['name'].split(' (')[0], to['name']), 'world saved first · 40 s'])
+    if any(j['kind'] == 'storage' for j in src_['jobs']):
+        out.append(['off', 'The second backup copy waits for it' if not src_['main'] else 'Backups wait for it', 'first copy safe at home' if not src_['main'] else 'nothing is lost'])
+    out.append(['ok', "Nothing is lost · moves back when it's on again", 'asks first' if limits.get('moveBack') == 'ask' else 'by itself'])
+    return out
+
+
+def pcs_view():
+    s = settings()['pcs']
+    me = self_status()
+    me.setdefault('jobs', src('selfJobs', lambda: [], []) or [])
+    ps = [p for p in peers() if p.get('hearthServer') or (p.get('server') or {}).get('status')]
+    cards = [pc_card(me, True, s)] + [pc_card(p, False, s) for p in ps]
+    names = [c['name'] for c in cards]
+    sel = s.get('sel') if s.get('sel') in names else (names[1] if len(names) > 1 else names[0] if names else '')
+    week = src('weekSeen', lambda: None, None) or seen().get('pcsWeek') or {}
+    moved = src('moved', lambda: None, None) or seen().get('moved') or []
+    w_rows = []
+    for c in cards:
+        hours = week.get(c['name']) or []
+        offs = [h for h in hours if not h.get('on')]
+        w_rows.append({'name': c['name'], 'mood': c['mood'], 'segments': hours,
+                       'note': 'on all week' + (' · %s' % c['right'] if c['right'].endswith(' W') and not c['main'] else '') if not offs else 'off %s' % (
+                           'twice' if len(offs) == 2 else 'once' if len(offs) == 1 else '%d times' % len(offs)) + (' (%s)' % ', '.join(h.get('why', '') for h in offs if h.get('why')) if any(h.get('why') for h in offs) else '')})
+    found = src('found', lambda: None, None) or []
+    return {'tag': '%d PCs · one server' % len(cards), 'count': '%d PCs' % len(cards), 'cards': cards, 'share': share_of(cards), 'sel': sel, 'names': names,
+            'legend': [[c['name'], c['mood']] for c in cards],
+            'moves': moves_if_off(cards, sel, s), 'tried': src('tried', lambda: None, None) or seen().get('tried') or '',
+            'triedWhen': src('triedWhen', lambda: None, None) or seen().get('triedWhen') or '',
+            'week': w_rows, 'weekNote': '%d moves this week, all told to you, none lost anything' % len(moved) if moved else 'nothing moved this week',
+            'found': found,
+            'limits': {k: s.get(k) for k in ('dadMax', 'onlyIdle', 'laptopOn', 'autoMove', 'tell', 'moveBack')}}
+
+
+def pcs_add(name):
+    if not NAME_RE.fullmatch(name or ''):
+        raise Fail("that isn't a PC's name")
+    # A PC joins through Hearth Link's pairing (Settings › Hearth Link); Hearth Server on it is its own Store app.
+    return {'ok': True, 'open': 'hearth-settings://link'}
+
+
+# ------------------------------------------------------------------ the commands
+
+VIEWS = {'games': game_view, 'cache': cache_view, 'play': play_view, 'media': media_view, 'pcs': pcs_view}
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        c = a[0] if a else ''
+        if c == 'view' and len(a) == 2 and a[1] in VIEWS:
+            res = dict(VIEWS[a[1]](), ok=True)
+        elif c == 'set' and len(a) == 4:
+            try:
+                v = json.loads(a[3])
+            except ValueError:
+                raise Fail('the value must be JSON')
+            res = set_choice(a[1], a[2], v)
+        elif c == 'game' and len(a) == 3:
+            res = game_act(a[1], a[2])
+        elif c == 'game-console' and len(a) == 2:
+            res = game_console(a[1])
+        elif c == 'game-kick' and len(a) == 3:
+            res = game_kick(a[1], a[2])
+        elif c == 'game-build' and len(a) == 2:
+            res = game_build(a[1])
+        elif c == 'game-opt' and len(a) == 4:
+            res = game_opt(a[1], a[2], a[3])
+        elif c == 'game-make' and len(a) == 2:
+            res = game_make(a[1])
+        elif c == 'invite' and len(a) == 2:
+            res = invite(a[1])
+        elif c == 'world-backup' and len(a) == 2:
+            catalog()
+            res = {'ok': True} if faking() else sa().world_backup(a[1], 'by hand')
+        elif c == 'world-restore' and len(a) == 3:
+            catalog()
+            res = {'ok': True} if faking() else sa().world_restore(a[1], a[2])
+        elif c == 'mod-add' and len(a) == 3:
+            res = mod_add(a[1], a[2])
+        elif c == 'mod-set' and len(a) == 4 and a[3] in ('on', 'off'):
+            res = mod_set(a[1], a[2], a[3] == 'on')
+        elif c == 'schedule' and len(a) in (4, 5):
+            res = schedule(a[1], a[2], a[3], a[4] if len(a) == 5 else None)
+        elif c == 'games-setup' and len(a) == 1:
+            res = root(['games-setup'])
+        elif c == 'cache-size' and len(a) == 2:
+            res = cache_size(a[1])
+        elif c == 'cache-drive' and len(a) == 2:
+            res = cache_drive(a[1])
+        elif c == 'cache-drives' and len(a) == 1:
+            res = {'ok': True, 'drives': drives()}
+        elif c == 'cache-install' and len(a) == 1:
+            res = dns(['cache', 'on'])
+        elif c == 'cache-keep' and len(a) == 3 and a[2] in ('on', 'off') and NAME_RE.fullmatch(a[1]):
+            keep = [x for x in settings()['cache'].get('keep') or [] if x != a[1]] + ([a[1]] if a[2] == 'on' else [])
+            set_nested('cache', ['keep'], keep)
+            res = {'ok': True}
+        elif c == 'play-device' and len(a) == 4:
+            res = play_device(a[1], a[2], a[3])
+        elif c == 'play-launch' and len(a) == 2:
+            res = play_launch(a[1])
+        elif c == 'play-pin' and len(a) == 2:
+            res = play_pin(a[1])
+        elif c == 'play-stop' and len(a) == 1:
+            res = play_stop()
+        elif c == 'play-message' and len(a) == 2:
+            res = play_message(a[1])
+        elif c == 'play-wake' and len(a) == 1:
+            res = play_wake()
+        elif c == 'play-setup' and len(a) == 1:
+            res = root(['play-setup'])
+        elif c == 'media-want' and len(a) == 2:
+            res = media_want(a[1])
+        elif c == 'media-yes' and len(a) == 2:
+            res = media_yes(a[1])
+        elif c == 'media-pick' and len(a) == 3:
+            res = media_yes(a[1], a[2])
+        elif c == 'media-rip' and len(a) == 1:
+            res = media_rip()
+        elif c == 'media-setup' and len(a) == 1:
+            res = root(['media-setup'])
+        elif c == 'pcs-add' and len(a) == 2:
+            res = pcs_add(a[1])
+        elif c == 'tick' and len(a) == 1:
+            res = {'ok': True} if faking() else tick()
+        else:
+            raise Fail('usage: see the top of hearth-server-hub')
+        print(json.dumps(res))
+        return 0
+    except Fail as e:
+        print('error: %s' % e)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

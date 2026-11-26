@@ -91,13 +91,20 @@ def _text(v):
     return isinstance(v, str) and bool(TEXT_RE.fullmatch(v))
 
 
+# Your own games' servers: the build folder holds your export (a Godot .x86_64 or O3DE's server launcher), run with
+# --headless; nothing in it is fetched or changed by Hearth.
+_OWN_GAME = {'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'your build', 'own': True,
+             'images': ['docker.io/library/debian:bookworm-slim'], 'volumes': [('build', '/build'), ('saves', '/saves')],
+             'env': {'HOME': '/saves'}, 'opts': {}, 'password': None,
+             'args': ['sh', '-c', 'cd /build && b=$(ls -1 | grep -E "(x86_64|ServerLauncher|Server)$" | head -1) && test -n "$b" && exec "./$b" --headless']}
+
 CATALOG = {
     'minecraft': {
         'name': 'Minecraft', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 1 GB, plus your world',
         'desc': 'A Minecraft: Java Edition server for you and your friends (itzg/minecraft-server). Join with this PC\'s address in Multiplayer.',
         'images': ['docker.io/itzg/minecraft-server:stable'],
         'ports': [(25565, 'tcp')], 'volumes': [('world', '/data')],
-        'env': {'EULA': 'TRUE', 'ENABLE_RCON': 'false'},
+        'env': {'EULA': 'TRUE', 'ENABLE_RCON': 'false', 'CREATE_CONSOLE_IN_PIPE': 'true'},
         'opts': {'type': {'default': 'PAPER', 'choices': ['VANILLA', 'PAPER', 'FABRIC'], 'env': 'TYPE', 'label': 'Server type'},
                  'memory': {'default': '4G', 'choices': ['2G', '4G', '6G', '8G'], 'env': 'MEMORY', 'label': 'Memory'},
                  'players': {'default': '10', 'choices': ['5', '10', '20', '40'], 'env': 'MAX_PLAYERS', 'label': 'Players'}},
@@ -125,9 +132,12 @@ CATALOG = {
         'desc': 'A dedicated Valheim server that keeps your world going (lloesche/valheim-server). Join from Valheim\'s Join game › Add server.',
         'images': ['docker.io/lloesche/valheim-server:latest'],
         'ports': [(2456, 'udp'), (2457, 'udp')], 'volumes': [('config', '/config'), ('server', '/opt/valheim')],
-        'env': {'SERVER_PUBLIC': 'false'},
+        # BepInEx on, so the Home server helper's Thunderstore mods (docs/SERVER-HUB.md) load; none until you add one.
+        'env': {'SERVER_PUBLIC': 'false', 'BEPINEX': 'true'},
         'opts': {'serverName': {'default': 'Hearth', 'text': True, 'env': 'SERVER_NAME', 'label': 'Server name'},
-                 'worldName': {'default': 'Hearth', 'text': True, 'env': 'WORLD_NAME', 'label': 'World name'}},
+                 'worldName': {'default': 'Hearth', 'text': True, 'env': 'WORLD_NAME', 'label': 'World name'},
+                 'crossplay': {'default': 'off', 'choices': ['on', 'off'], 'env': 'SERVER_ARGS', 'map': {'on': '-crossplay', 'off': ''},
+                               'label': 'Crossplay (Xbox and PC Game Pass players)'}},
         'password': {'env': 'SERVER_PASS', 'min': 5, 'required': True},
     },
     'terraria': {
@@ -150,6 +160,27 @@ CATALOG = {
                  'players': {'default': '8', 'choices': ['4', '8', '16', '32'], 'env': 'PLAYERS', 'label': 'Players'}},
         'password': {'env': 'SERVER_PASSWORD', 'min': 1, 'required': False},
     },
+    # The Home server helper's Game servers (docs/SERVER-HUB.md, board server-expansion/05): 7 Days to Die and Ark
+    # download their dedicated servers with SteamCMD's anonymous login inside their images (servers only, never a Steam
+    # account); your own games run their headless build from ~/Server apps/<Name>/build in Debian's small image.
+    'sevendays': {
+        'name': '7 Days to Die', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 15 GB (it downloads the server on first start)',
+        'desc': "A 7 Days to Die dedicated server (vinanrra/7dtd-server; SteamCMD's anonymous login, for the server only).",
+        'images': ['docker.io/vinanrra/7dtd-server:latest'], 'ports': [(26900, 'tcp'), (26900, 'udp'), (26901, 'udp'), (26902, 'udp')],
+        'volumes': [('saves', '/home/sdtdserver/.local/share/7DaysToDie'), ('server', '/home/sdtdserver/serverfiles')],
+        'env': {'START_MODE': '1'}, 'opts': {}, 'password': None,
+    },
+    'ark': {
+        'name': 'Ark', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 20 GB (it downloads the server on first start)',
+        'desc': "An ARK: Survival Evolved dedicated server (hermsi/ark-server; SteamCMD's anonymous login, for the server only).",
+        'images': ['docker.io/hermsi/ark-server:latest'], 'ports': [(7778, 'udp'), (7777, 'udp'), (27016, 'udp')],
+        'volumes': [('server', '/app')], 'env': {},
+        'opts': {'serverName': {'default': 'Hearth', 'text': True, 'env': 'SESSION_NAME', 'label': 'Server name'}},
+        'password': {'env': 'SERVER_PASSWORD', 'min': 1, 'required': False},
+    },
+    'gravesleep': dict(_OWN_GAME, name='Gravesleep', ports=[(7350, 'udp')], desc='Gravesleep (your game): its headless Godot server build from the build folder.'),
+    'noclip': dict(_OWN_GAME, name='Noclip Protocol', ports=[(33450, 'udp')], desc='Noclip Protocol (your game): its O3DE dedicated server build from the build folder.'),
+    'quadmech': dict(_OWN_GAME, name='Quad mech game', ports=[(7360, 'udp')], desc='The quad mech game (your game): its headless Godot server build from the build folder.'),
     'vaultwarden': {
         'name': 'Vaultwarden', 'kind': 'app', 'icon': 'lock', 'reach': 'tailscale', 'size': 'about 300 MB',
         'desc': 'Your own password manager server for the Bitwarden apps and browser extensions. Bitwarden\'s apps need https: use Tailscale\'s HTTPS address (tailscale serve) or a Bitwarden app set to this address.',
@@ -829,7 +860,8 @@ def stop(aid):
 # ------------------------------------------------------------------ world backups (1.13)
 # What holds each game server's world (a volume, and a folder in it; the servers' own program files are left out).
 WORLDS = {'minecraft': ('world', ''), 'horizon': ('world', ''), 'valheim': ('config', ''), 'terraria': ('worlds', ''),
-          'palworld': ('server', 'Pal/Saved')}
+          'palworld': ('server', 'Pal/Saved'), 'sevendays': ('saves', ''), 'ark': ('server', 'ShooterGame/Saved'),
+          'gravesleep': ('saves', ''), 'noclip': ('saves', ''), 'quadmech': ('saves', '')}
 TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 BACKUP_RE = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{4})( [a-z -]{1,40})?\.tar\.gz$')
 
