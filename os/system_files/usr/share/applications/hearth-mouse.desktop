@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Mouse
+GenericName=Gaming mouse
+Comment=Your gaming mouse, set up on Hearth: DPI steps, buttons, report rate, lights, its profiles (built on libratbag, like Piper)
+Exec=/usr/bin/hearth-mouse-app
+TryExec=/usr/bin/hearth-mouse-app
+Icon=hearth-mouse
+Categories=Settings;HardwareSettings;
+Keywords=mouse;dpi;gaming;buttons;polling;report rate;rgb;libratbag;piper;logitech;razer;steelseries;
+StartupWMClass=hearth-mouse

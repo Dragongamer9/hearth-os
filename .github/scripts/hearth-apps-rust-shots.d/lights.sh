@@ -3,6 +3,8 @@
 # (lights-fixture.py, protocol 3, answered as OpenRGB answers), so the app's own protocol code draws every device.
 # 1 the board as it is (Ember wave on all 9, profile Gaming); 2 one part picked (the front fans) with Each light;
 # 3 OpenRGB not on the PC (Get OpenRGB); 4 OpenRGB there but not running (Start OpenRGB); 5 Edit layout on the picture.
+# the boards are 1920 × 1080: the screen is that size for these pictures, and back to CI's own after
+swaymsg output HEADLESS-1 resolution 1920x1080 >/dev/null 2>&1; sleep 0.5
 LFX="$ROOT/.github/scripts/hearth-apps-rust-shots.d/lights-fixture.py"
 LLOG=/tmp/lights-sent.log; : > "$LLOG"
 python3 "$LFX" 46742 "$LLOG" & LPID=$!
@@ -20,3 +22,4 @@ run lights-3-not-installed hearth-lights 0 env XDG_CONFIG_HOME="$LCFG" HEARTH_OP
 run lights-4-not-running hearth-lights 0 env XDG_CONFIG_HOME="$LCFG" HEARTH_OPENRGB=127.0.0.1:1 HEARTH_LIGHTS_INSTALLED=1 "$L"
 SHOT_WAIT=3 run lights-5-edit-layout hearth-lights 0 env XDG_CONFIG_HOME="$LCFG" HEARTH_OPENRGB=127.0.0.1:46742 HEARTH_ARRANGE_OPEN=lights:main HEARTH_ARRANGE_PICK=picture "$L"
 kill $LPID 2>/dev/null
+swaymsg output HEADLESS-1 resolution 1280x800 >/dev/null 2>&1; sleep 0.3

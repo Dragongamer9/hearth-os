@@ -688,7 +688,7 @@ fn desk_picture(a: &App) -> E<'_, Msg> {
         let l = lights_of(a, i);
         (gk(i), l.first().copied().unwrap_or([0xff, 0x8a, 0x3d]), l.last().copied().unwrap_or([0xb0, 0x4f, 0xc8]))
     });
-    canvas(stage::Desk { keys, mouse, picked: a.picked.clone() }).width(Length::Fixed(455.0)).height(Length::Fixed(180.0)).into()
+    canvas(stage::Desk { keys, mouse, picked: a.picked.clone() }).width(Length::Fill).height(Length::Fixed(180.0)).into()
 }
 
 fn strip_card(a: &App) -> E<'_, Msg> {
@@ -704,7 +704,7 @@ fn strip_card(a: &App) -> E<'_, Msg> {
     ]
     .spacing(12.0);
     let key = g.map(|g| g.key.clone()).unwrap_or_default();
-    click(card(&p, inner).width(Length::Fixed(455.0)), Some(Msg::Pick(key)))
+    click(card(&p, inner).width(Length::Fill), Some(Msg::Pick(key)))
 }
 
 fn now_block(a: &App) -> E<'_, Msg> {
@@ -743,7 +743,7 @@ fn now_block(a: &App) -> E<'_, Msg> {
         container(t("Click any light in the picture to change just that part. Lights stay as you set them after a restart.", 12.0, p.muted).line_height(1.6)).padding(pad(10.0, 0.0, 0.0, 0.0)),
     ]
     .spacing(6.0)
-    .width(Length::Fixed(460.0));
+    .width(Length::Fill);
     if !a.said.is_empty() {
         c = c.push(t(a.said.clone(), 12.0, kit::YELLOW));
     }
@@ -993,8 +993,14 @@ fn view(a: &App) -> E<'_, Msg> {
         items,
         move |ps| {
             let side = container(column![container(ps.take("devices")).height(Length::Fill), ps.take("notseen")].spacing(14.0)).width(Length::Fixed(280.0)).height(Length::Fill).padding(pad(16.0, 12.0, 16.0, 12.0)).style(ui::boxed(Color::from_rgba8(20, 17, 15, 0.5), 0.0, None));
-            let right_of_case = column![ps.take("now"), Space::new().height(Length::Fill), ps.take("desk")].spacing(10.0).width(Length::Fixed(470.0)).height(Length::Fill);
-            let stage_inner = row![container(ps.take("picture")).width(Length::Fill).height(Length::Fill), right_of_case].spacing(20.0).padding(pad(40.0, 24.0, 40.0, 24.0));
+            let stage_inner: E<'_, Msg> = if ok {
+                let right_of_case = column![ps.take("now"), Space::new().height(Length::Fill), ps.take("desk")].spacing(10.0).width(Length::FillPortion(9)).height(Length::Fill);
+                row![container(ps.take("picture")).width(Length::FillPortion(11)).height(Length::Fill), right_of_case].spacing(20.0).padding(pad(40.0, 24.0, 40.0, 24.0)).into()
+            } else {
+                // OpenRGB isn't here or isn't running: what to do, across the whole picture
+                let _ = (ps.take("now"), ps.take("desk"));
+                container(ps.take("picture")).padding(pad(40.0, 24.0, 40.0, 24.0)).width(Length::Fill).height(Length::Fill).into()
+            };
             let stage = container(stage_inner).width(Length::Fill).height(Length::Fill).style(kit::gradient(180.0, Color::from_rgb8(0x2a, 0x1d, 0x15), Color::from_rgb8(0x14, 0x11, 0x10), 14.0, Some((p.line, 1.0))));
             let main = column![stage, container(ps.take("zones")).height(Length::Fixed(170.0))].spacing(16.0).padding(pad(20.0, 24.0, 20.0, 24.0)).width(Length::Fill);
             let panel = container(scrollable(column![ps.take("colour"), ps.take("effect"), ps.take("tuning"), ps.take("profiles")].spacing(14.0)).height(Length::Fill))

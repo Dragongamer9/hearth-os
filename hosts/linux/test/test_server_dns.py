@@ -103,6 +103,31 @@ class Config(Base):
         dns.set_conf(lambda c: dns.section(c, 'ads').update(on=True))
         self.assertEqual(len([n for n in os.listdir(os.path.dirname(dns.CONF)) if '.unreadable-' in n]), 1)
 
+    def test_shields_lists_blocks_and_family_rules(self):
+        # Hearth Shield: only the main list until another is turned on; always-block only while blocking; safe search
+        y = dns.adguard_yaml(self.conf(ads={'on': True}), '192.168.1.5', None)
+        self.assertIn('name: "Ads and trackers (main list)"', y)
+        self.assertEqual(y.count('enabled: true\n    url:'), 1, y)
+        self.assertIn('  safe_search:\n    enabled: false', y)
+        y = dns.adguard_yaml(self.conf(ads={'on': True, 'lists': {'tv': True, 'adult': True}, 'block': ['ads.example.com'], 'allow': ['ok.example.com'], 'safeSearch': True}), '192.168.1.5', None)
+        self.assertEqual(y.count('enabled: true\n    url:'), 3, y)
+        self.assertIn('"||ads.example.com^"', y)
+        self.assertIn('  safe_search:\n    enabled: true', y)
+        y = dns.adguard_yaml(self.conf(ads={'on': True, 'pausedUntil': time.time() + 60, 'block': ['ads.example.com']}), '192.168.1.5', None)
+        self.assertNotIn('||ads.example.com^', y, 'paused: nothing blocked')
+        self.assertEqual(dns.today_of({'dns_queries': [5] * 24, 'blocked_filtering': [1] * 24}, time.mktime(time.strptime('2026-11-26 01:30', '%Y-%m-%d %H:%M'))), (10, 2))
+
+    def test_each_devices_day_is_counted_once(self):
+        now = time.mktime(time.strptime('2026-11-26 10:00', '%Y-%m-%d %H:%M'))
+        log = {'data': [{'time': '2026-11-26T09:59:59Z', 'client': '192.168.1.20', 'reason': 'FilteredBlackList'},
+                        {'time': '2026-11-26T09:59:58Z', 'client': '192.168.1.20', 'reason': 'NotFilteredNotFound'},
+                        {'time': '2026-11-25T23:59:58Z', 'client': '192.168.1.21', 'reason': 'NotFilteredNotFound'}]}
+        c = dns.clients_tick(now, log)
+        self.assertEqual(c['clients']['192.168.1.20'], {'asked': 2, 'blocked': 1})
+        self.assertNotIn('192.168.1.21', c['clients'], 'yesterday is not today')
+        c = dns.clients_tick(now, log)
+        self.assertEqual(c['clients']['192.168.1.20'], {'asked': 2, 'blocked': 1}, 'the same entries are not counted twice')
+
     def test_commands_check_their_input(self):
         for args in (['store', 'origin', 'on'], ['cache-place', '/etc', '100'], ['cache-place', '/mnt/games', '5'],
                      ['allow', 'not a site'], ['device', '../x', 'on'], ['cache-empty', 'yes'], ['ads', 'maybe']):
