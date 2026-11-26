@@ -42,6 +42,8 @@ pub struct Act {
     pub confirm: String,
     /// started and not waited for (a window: Settings, the Store, Hearth Forge)
     pub detach: bool,
+    /// how many times it's been asked (removing a model asks twice)
+    pub asked: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -127,8 +129,8 @@ impl App {
     /// The open page's engine `status`, read again.
     fn read_page(&mut self) -> Task<Msg> {
         let mut t = Vec::new();
-        for e in self.pg().engines {
-            if self.reading.contains(e) {
+        for &e in self.pg().engines {
+            if self.reading.contains(&e) {
                 continue;
             }
             self.reading.push(e);
@@ -240,9 +242,13 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::Do(x) => return a.run(*x),
         Msg::Confirm(yes) => {
-            if let Some(x) = a.ask.take() {
-                if yes {
-                    let mut x = x;
+            if let Some(mut x) = a.ask.take() {
+                if yes && x.asked == 0 {
+                    // asked twice: the second time plainly
+                    x.asked = 1;
+                    x.confirm = "Are you sure? It can't be undone from here.".into();
+                    a.ask = Some(x);
+                } else if yes {
                     x.confirm.clear();
                     return a.run(x);
                 }
