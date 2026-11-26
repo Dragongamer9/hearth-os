@@ -87,6 +87,7 @@ pub enum Msg {
     Ra(Value),
     Tab(Tab),
     Pick(usize, usize),
+    ShelfScroll(i32),
     Play,
     PlayGame(usize, usize),
     PlaySlot(i32),
@@ -564,6 +565,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Tab(t) => set_tab(a, t),
+        Msg::ShelfScroll(d) => {
+            let max = a.shelves.len().saturating_sub(3) as i32;
+            a.top = (a.top as i32 + d).clamp(0, max) as usize;
+        }
         Msg::Pick(s, g) => {
             a.sel = (s, g);
             a.said.clear();

@@ -49,6 +49,10 @@ for sysid, (ext, n, games) in board.items():
 for sysid, (ext, n) in others.items():
     for k in range(n):
         touch(os.path.join(R, "roms", sysid, "Game %03d (Europe).%s" % (k + 1, ext)))
+# ES-DE's game list (as RetroDECK keeps it): Chrono Trigger's year
+gl = os.path.join(home, "retrodeck", "ES-DE", "gamelists", "snes")
+os.makedirs(gl, exist_ok=True)
+open(os.path.join(gl, "gamelist.xml"), "w").write('<?xml version="1.0"?>\n<gameList>\n  <game>\n    <path>./Chrono Trigger (USA).sfc</path>\n    <name>Chrono Trigger</name>\n    <releasedate>19950311T000000</releasedate>\n  </game>\n</gameList>\n')
 os.makedirs(os.path.join(home, ".local/share/hearth/retro"), exist_ok=True)
 json.dump(played, open(os.path.join(home, ".local/share/hearth/retro/played.json"), "w"))
 states = os.path.join(R, "states")

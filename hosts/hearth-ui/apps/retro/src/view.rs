@@ -192,7 +192,7 @@ fn top_bar(a: &App) -> E<'_> {
 /// One game's tile: its box art (or its own colours), its name on the dark fade; the picked one lifted and lit.
 pub fn game_tile<'a>(a: &'a App, g: &'a Game, sel: bool, si: usize, gi: usize) -> E<'a> {
     let p = a.p;
-    let (w, h) = if sel { (159.0, 212.0) } else { (150.0, 200.0) };
+    let (w, h) = (150.0, 200.0);
     let (top, bottom) = library::tile_colours(&g.title);
     let base: E = match library::art(g) {
         Some(path) => image(image::Handle::from_path(path)).width(Length::Fixed(w)).height(Length::Fixed(h)).content_fit(iced::ContentFit::Cover).into(),
@@ -212,7 +212,7 @@ pub fn game_tile<'a>(a: &'a App, g: &'a Game, sel: bool, si: usize, gi: usize) -
     let face: E = stack![base, fade, name].into();
     let face: E = if sel {
         container(face)
-            .padding(4.0)
+            .padding(5.0)
             .style(move |_: &Theme| container::Style {
                 border: Border { color: p.accent, width: 4.0, radius: 16.0.into() },
                 shadow: Shadow { color: Pal::a(p.accent, 0.45), offset: iced::Vector::new(0.0, 0.0), blur_radius: 40.0 },
@@ -220,7 +220,7 @@ pub fn game_tile<'a>(a: &'a App, g: &'a Game, sel: bool, si: usize, gi: usize) -
             })
             .into()
     } else {
-        container(face).padding(4.0).into()
+        container(face).padding(5.0).into()
     };
     mouse_area(face).on_press(Msg::Pick(si, gi)).on_double_click(Msg::PlayGame(si, gi)).interaction(mouse::Interaction::Pointer).into()
 }
@@ -238,8 +238,9 @@ fn shelves(a: &App) -> E<'_> {
         };
         return column![tb("Your shelves", 20.0, p.text), t(words, 15.0, p.muted), chip(&p, "Set up in one go", Ck::Acc, 44.0, 15.0, Some(Msg::Tab(Tab::Setup)))].spacing(14.0).into();
     }
-    let mut c = Column::new().spacing(22.0);
-    for (si, (sys, games)) in a.shelves.iter().enumerate().skip(a.top) {
+    let mut c = Column::new().spacing(14.0);
+    // three shelves in view, as the board has them: the controller and the wheel move down the consoles
+    for (si, (sys, games)) in a.shelves.iter().enumerate().skip(a.top).take(3) {
         let header = row![
             tb(sys.name, 20.0, p.text).wrapping(text::Wrapping::None),
             gap(12.0, 1.0),
@@ -250,13 +251,17 @@ fn shelves(a: &App) -> E<'_> {
         .align_y(iced::Alignment::End);
         let picked_here = a.sel.0 == si;
         let first = if picked_here { a.sel.1.saturating_sub(7) } else { 0 };
-        let mut tiles = Row::new().spacing(6.0).align_y(iced::Center).height(Length::Fixed(222.0));
+        let mut tiles = Row::new().spacing(4.0).align_y(iced::Center).height(Length::Fixed(212.0));
         for (gi, g) in games.iter().enumerate().skip(first).take(8) {
             tiles = tiles.push(game_tile(a, g, picked_here && a.sel.1 == gi, si, gi));
         }
         c = c.push(column![header, tiles].spacing(8.0));
     }
-    scrollable(container(c).width(Length::Fixed(1310.0)).padding(pad(0.0, 0.0, 20.0, 0.0))).height(Length::Fill).into()
+    mouse_area(container(c).width(Length::Fill).height(Length::Fill))
+        .on_scroll(|d| match d {
+            mouse::ScrollDelta::Lines { y, .. } | mouse::ScrollDelta::Pixels { y, .. } => Msg::ShelfScroll(if y > 0.0 { -1 } else { 1 }),
+        })
+        .into()
 }
 
 // ------------------------------------------------------------------ the cards on the right
