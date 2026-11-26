@@ -269,7 +269,41 @@ elif app == "hearth-3d":
         "frame": 32, "start": 0, "end": 96, "fps": 24, "action": "Walk cycle", "world": [0.05, 0.05, 0.05], "objects": objs}
     w(os.path.join(root, "scene.json"), json.dumps(scene))
     w(os.path.join(home, "Models/quad-mech.blend"), "BLENDER-v403 (a stand-in)\n")
-    cmd("blender", 'out=; take=; for a; do [ -n "$take" ] && { out="$a"; take=; }; [ "$a" = "--" ] && take=1; done\n[ -n "$out" ] && cp "%s" "$out"\nexit 0\n' % os.path.join(root, "scene.json"))
+    # Blender's stand-in: the scene's JSON as Blender's script writes it, or (Hearth 3D's Tab, Sculpt and Paint: the
+    # script marked HEARTH_MESH_DUMP) an object's own mesh: Body as a box of quads, 10 a side (as a modeller keeps it).
+    w(os.path.join(root, "blender.py"), r"""import json, sys
+a = sys.argv[1:]
+rest = a[a.index('--') + 1:] if '--' in a else []
+if any('HEARTH_MESH_DUMP' in x for x in a):
+    out, obj = rest[0], rest[1]
+    W, D, H, N = 4.0, 4.0, 1.2, 10
+    verts, faces, index = [], [], {}
+    def vid(p):
+        k = tuple(round(c, 5) for c in p)
+        if k not in index:
+            index[k] = len(verts)
+            verts.append(k)
+        return index[k]
+    for axis in range(3):
+        for side in (-1, 1):
+            for i in range(N):
+                for j in range(N):
+                    q = []
+                    for di, dj in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        u, v = -1 + 2 * (i + di) / N, -1 + 2 * (j + dj) / N
+                        p = [0.0, 0.0, 0.0]
+                        p[axis] = side
+                        o = [x for x in range(3) if x != axis]
+                        p[o[0]], p[o[1]] = u, v
+                        q.append(vid((p[0] * W / 2, p[1] * D / 2, p[2] * H / 2)))
+                    if side < 0:
+                        q.reverse()
+                    faces.append(q if axis != 1 else q[::-1])
+    json.dump({'obj': obj, 'verts': [c for p in verts for c in p], 'faces': faces, 'edges': [], 'colors': []}, open(out, 'w'))
+elif rest:
+    open(rest[0], 'w').write(open(%r).read())
+""" % os.path.join(root, "scene.json"))
+    cmd("blender", 'exec python3 "%s" "$@"\n' % os.path.join(root, "blender.py"))
 else:
     sys.exit("no such app: " + app)
 

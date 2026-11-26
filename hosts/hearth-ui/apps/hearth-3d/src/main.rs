@@ -23,9 +23,9 @@ use iced::widget::canvas::{self, Frame, Geometry, Path};
 use iced::widget::text::Wrapping;
 use iced::widget::{column, container, image, row, scrollable, stack, Column, Row, Space};
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Subscription, Task, Theme};
-use scene::{py, Coll, Scene};
+use scene::{py, Coll, EditMesh, Scene};
 use std::path::PathBuf;
-use view3d::{Cam, Shade, VEvent};
+use view3d::{Cam, Shade, VEvent, VMode};
 
 const APP: &str = "hearth-3d";
 const BLENDER: Need = Need { name: "Blender", cmd: "blender", flatpak: "org.blender.Blender", flatpak_cmd: "", licence: "GPL-2+" };
@@ -41,6 +41,8 @@ const ADDS: [(&str, &str); 8] = [
     ("Camera", "bpy.ops.object.camera_add(location=(12, -12, 8))"),
 ];
 const CHANGES: [(&str, &str); 6] = [("Mirror", "MIRROR"), ("Bevel", "BEVEL"), ("Subdivide", "SUBSURF"), ("Array", "ARRAY"), ("Solidify", "SOLIDIFY"), ("Weighted normals", "WEIGHTED_NORMAL")];
+/// Sculpt's brushes: Draw (raise), Dig (push in), Smooth, Flatten. Paint has one: paint the colour on.
+const SCULPT: [&str; 4] = ["Draw", "Dig", "Smooth", "Flatten"];
 const SWATCHES: [[f32; 3]; 8] = [[0.48, 0.54, 0.42], [0.55, 0.6, 0.48], [0.8, 0.8, 0.8], [0.15, 0.15, 0.15], [0.85, 0.35, 0.2], [0.25, 0.45, 0.8], [0.9, 0.75, 0.3], [0.6, 0.3, 0.7]];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +104,15 @@ pub enum Msg {
     Key(iced::keyboard::Event),
     GetBlender,
     GotBlender(run::Output),
+    /// the picked object's own mesh, from Blender (Tab, Sculpt, Paint)
+    Mesh(Result<Box<EditMesh>, String>),
+    EKind(u8),
+    EditOp(&'static str),
+    DoneEditing,
+    BrushKind(usize),
+    BrushSize(f32),
+    Strength(f32),
+    PaintColour(usize),
     Drag,
     Max,
     Min,
@@ -146,6 +157,24 @@ struct App {
     render: Option<PathBuf>,
     said: String,
     busy: bool,
+    /// Tab: editing the picked mesh's points (in Model)
+    editing: bool,
+    /// the picked object's own mesh while editing, sculpting or painting, as it is now and as it was (Undo)
+    emesh: Option<EditMesh>,
+    ebefore: Option<EditMesh>,
+    normals: Vec<[f32; 3]>,
+    nbrs: Vec<Vec<u32>>,
+    vsel: Vec<bool>,
+    ekind: u8,
+    egen: u64,
+    edirty: bool,
+    efrom: Option<Vec<[f32; 3]>>,
+    /// after Blender's delete / pull out: its mesh again
+    redump: bool,
+    brush_kind: usize,
+    brush_r: f32,
+    strength: f32,
+    paint_ix: usize,
 }
 
 fn cache_dir() -> PathBuf {
@@ -211,6 +240,21 @@ impl App {
             render: None,
             said: String::new(),
             busy: false,
+            editing: false,
+            emesh: None,
+            ebefore: None,
+            normals: Vec::new(),
+            nbrs: Vec::new(),
+            vsel: Vec::new(),
+            ekind: 0,
+            egen: 0,
+            edirty: false,
+            efrom: None,
+            redump: false,
+            brush_kind: 0,
+            brush_r: 40.0,
+            strength: 0.5,
+            paint_ix: 4,
         };
         (a, Task::perform(need::probe(&BLENDER), Msg::Have))
     }
@@ -233,6 +277,142 @@ impl App {
         }
         self.scene_fields = [self.scene.start.to_string(), self.scene.end.to_string(), self.scene.fps.to_string()];
     }
+    /// What a press and a drag in the viewport do now.
+    fn vmode(&self) -> VMode {
+        match (self.emesh.is_some(), self.mode, self.editing) {
+            (true, 1 | 2, _) => VMode::Brush,
+            (true, 0, true) => VMode::Edit(self.ekind),
+            _ if self.tool == 4 => VMode::Boxes,
+            _ => VMode::Object,
+        }
+    }
+    /// Blender's own mesh of the picked object (for Tab, Sculpt, Paint).
+    fn want_mesh(&mut self) -> Task<Msg> {
+        let (Some(f), Some(o)) = (self.file.clone(), self.picked_obj().cloned()) else {
+            self.said = "Pick a mesh first (click it in the viewport or the scene list).".into();
+            self.editing = false;
+            return Task::none();
+        };
+        if o.kind != "MESH" {
+            self.said = format!("{} isn't a mesh: Tab, Sculpt and Paint work on meshes.", o.name);
+            self.editing = false;
+            return Task::none();
+        }
+        if self.emesh.as_ref().map(|e| e.obj == o.name).unwrap_or(false) {
+            return Task::none();
+        }
+        self.busy = true;
+        let out = cache_dir().join(format!("mesh-{}.json", std::process::id()));
+        let _ = std::fs::create_dir_all(cache_dir());
+        let cmd = need::argv(&BLENDER, &self.have, &["-b", &f.to_string_lossy(), "--python-expr", scene::MESH_DUMP, "--", &out.to_string_lossy(), &o.name]);
+        Task::perform(run::spawn(cmd), move |r| {
+            let j = std::fs::read_to_string(&out).ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+            let _ = std::fs::remove_file(&out);
+            match j {
+                Some(j) => Msg::Mesh(Ok(Box::new(EditMesh::parse(&j)))),
+                None => Msg::Mesh(Err(if r.ok { "Blender didn't give the mesh.".into() } else { r.why() })),
+            }
+        })
+    }
+    /// What was edited, sculpted or painted written into the .blend by Blender (then, with `op`, Blender's own
+    /// delete or pull out on the picked points). Undo puts the mesh back as it was.
+    fn commit(&mut self, op: &str) -> Task<Msg> {
+        let Some(e) = self.emesh.clone() else { return Task::none() };
+        if !self.edirty && op.is_empty() {
+            return Task::none();
+        }
+        let n = self.undo.len();
+        let now = cache_dir().join(format!("mesh-edit-{}-{n}.json", std::process::id()));
+        let was = cache_dir().join(format!("mesh-undo-{}-{n}.json", std::process::id()));
+        let _ = std::fs::create_dir_all(cache_dir());
+        let _ = std::fs::write(&now, e.to_json().to_string());
+        let undo = self.ebefore.as_ref().filter(|_| op.is_empty()).and_then(|b| std::fs::write(&was, b.to_json().to_string()).ok().map(|_| scene::apply_code(&was.to_string_lossy(), "", &[], 0.0)));
+        let picked: Vec<u32> = self.vsel.iter().enumerate().filter(|(_, s)| **s).map(|(i, _)| i as u32).collect();
+        self.edirty = false;
+        self.ebefore = Some(e);
+        self.edit(scene::apply_code(&now.to_string_lossy(), op, &picked, 0.3), undo)
+    }
+    /// Leaving Tab, Sculpt or Paint: what changed goes into the file.
+    fn leave(&mut self) -> Task<Msg> {
+        let t = self.commit("");
+        self.editing = false;
+        self.emesh = None;
+        self.ebefore = None;
+        self.vsel.clear();
+        self.egen += 1;
+        t
+    }
+    /// One touch of the brush on the mesh (Sculpt's or Paint's), at `at` with radius `r` (the mesh's own space).
+    fn brush(&mut self, at: [f32; 3], r: f32, look: [f32; 3]) {
+        let paint = self.mode == 2;
+        let (kind, k) = (self.brush_kind, self.strength);
+        let pc = SWATCHES[self.paint_ix % SWATCHES.len()];
+        let Some(e) = self.emesh.as_mut() else { return };
+        if paint && e.colors.len() != e.verts.len() {
+            let o = self.scene.objects.iter().find(|o| o.name == e.obj).map(|o| o.color).unwrap_or([0.6, 0.6, 0.6]);
+            e.colors = vec![o; e.verts.len()];
+        }
+        let d2 = |v: [f32; 3]| (v[0] - at[0]).powi(2) + (v[1] - at[1]).powi(2) + (v[2] - at[2]).powi(2);
+        let inside: Vec<(usize, f32)> = e.verts.iter().enumerate().filter_map(|(i, v)| {
+            let d = d2(*v).sqrt();
+            (d < r).then(|| (i, (1.0 - d / r).powi(2)))
+        }).collect();
+        if inside.is_empty() {
+            return;
+        }
+        if paint {
+            for (i, f) in &inside {
+                let t = (f * k * 1.4).min(1.0);
+                let c = &mut e.colors[*i];
+                *c = [c[0] + (pc[0] - c[0]) * t, c[1] + (pc[1] - c[1]) * t, c[2] + (pc[2] - c[2]) * t];
+            }
+        } else {
+            // the brush's own direction: the points' normals there (facing the camera)
+            let mut n = [0.0f32; 3];
+            for (i, f) in &inside {
+                let v = self.normals.get(*i).copied().unwrap_or([0.0, 0.0, 1.0]);
+                n = [n[0] + v[0] * f, n[1] + v[1] * f, n[2] + v[2] * f];
+            }
+            let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            let n = if l > 1e-6 { [n[0] / l, n[1] / l, n[2] / l] } else { [-look[0], -look[1], -look[2]] };
+            let old = e.verts.clone();
+            for (i, f) in &inside {
+                let v = old[*i];
+                let w = f * k;
+                e.verts[*i] = match kind {
+                    0 | 1 => {
+                        let s = if kind == 0 { 1.0 } else { -1.0 } * r * 0.12 * w;
+                        let vn = self.normals.get(*i).copied().unwrap_or(n);
+                        [v[0] + vn[0] * s, v[1] + vn[1] * s, v[2] + vn[2] * s]
+                    }
+                    2 => {
+                        let nb = &self.nbrs[*i];
+                        if nb.is_empty() {
+                            v
+                        } else {
+                            let mut a = [0.0f32; 3];
+                            for j in nb {
+                                let q = old[*j as usize];
+                                a = [a[0] + q[0], a[1] + q[1], a[2] + q[2]];
+                            }
+                            let c = nb.len() as f32;
+                            let t = (w * 0.8).min(1.0);
+                            [v[0] + (a[0] / c - v[0]) * t, v[1] + (a[1] / c - v[1]) * t, v[2] + (a[2] / c - v[2]) * t]
+                        }
+                    }
+                    _ => {
+                        let dd = (v[0] - at[0]) * n[0] + (v[1] - at[1]) * n[1] + (v[2] - at[2]) * n[2];
+                        let t = (w * 0.8).min(1.0);
+                        [v[0] - n[0] * dd * t, v[1] - n[1] * dd * t, v[2] - n[2] * dd * t]
+                    }
+                };
+            }
+            self.normals = e.normals();
+        }
+        self.edirty = true;
+        self.egen += 1;
+    }
+
     /// Edits Blender makes and saves (then the scene is read again); `undo` is what puts it back.
     fn edit(&mut self, code: String, undo: Option<String>) -> Task<Msg> {
         let Some(f) = self.file.clone() else { return Task::none() };
@@ -308,10 +488,78 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                         a.keys_of = a.scene.root.children.iter().flat_map(|c| c.children.iter()).find(|c| c.objects.iter().any(|n| a.scene.objects.iter().any(|o| &o.name == n && !o.keys.is_empty()))).map(|c| c.name.clone()).unwrap_or_default();
                     }
                     a.fill_fields();
+                    if a.gen == 1 {
+                        // --mode edit | sculpt | paint, --tool box: opened in that mode (CI's pictures)
+                        if app::arg("--tool").as_deref() == Some("box") {
+                            a.tool = 4;
+                        }
+                        match app::arg("--mode").as_deref() {
+                            Some("edit") => {
+                                a.editing = true;
+                                return a.want_mesh();
+                            }
+                            Some("sculpt") => return update(a, Msg::Mode(1)),
+                            Some("paint") => return update(a, Msg::Mode(2)),
+                            _ => {}
+                        }
+                    }
+                    if a.redump {
+                        a.redump = false;
+                        a.emesh = None;
+                        return a.want_mesh();
+                    }
                 }
                 Err(e) => a.said = format!("Blender couldn't do that: {e}"),
             }
         }
+        Msg::Mesh(r) => {
+            a.busy = false;
+            match r {
+                Ok(m) => {
+                    a.vsel = vec![app::arg("--select").as_deref() == Some("all"); m.verts.len()];
+                    a.normals = m.normals();
+                    a.nbrs = m.neighbours();
+                    a.ebefore = Some((*m).clone());
+                    a.emesh = Some(*m);
+                    a.edirty = false;
+                    a.egen += 1;
+                    a.said = match (a.mode, a.editing) {
+                        (1, _) => "Sculpt: drag on the mesh. Draw raises it, Dig pushes it in, Smooth evens it, Flatten levels it.".into(),
+                        (2, _) => "Paint: drag on the mesh to paint its colour on (kept as Blender's colour attribute).".into(),
+                        _ => "Editing its points: click or draw a box to pick, drag the picked to move them. 1 points · 2 edges · 3 faces · E pull out · X delete · Tab done.".into(),
+                    };
+                }
+                Err(e) => {
+                    a.editing = false;
+                    a.said = format!("Blender couldn't give its mesh: {e}");
+                }
+            }
+        }
+        Msg::EKind(k) => {
+            a.ekind = k;
+            a.egen += 1;
+        }
+        Msg::EditOp(op) => {
+            if a.vsel.iter().any(|s| *s) {
+                a.redump = true;
+                return a.commit(op);
+            }
+            a.said = "Pick some points first.".into();
+        }
+        Msg::DoneEditing => {
+            let t = a.leave();
+            if a.mode != 0 {
+                a.mode = 0;
+            }
+            return t;
+        }
+        Msg::BrushKind(i) => a.brush_kind = i,
+        Msg::BrushSize(v) => {
+            a.brush_r = v;
+            a.egen += 1;
+        }
+        Msg::Strength(v) => a.strength = v,
+        Msg::PaintColour(i) => a.paint_ix = i,
         Msg::View(ev) => match ev {
             VEvent::Orbit(dx, dy) => {
                 a.cam.yaw -= dx * 0.008;
@@ -373,15 +621,86 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return a.edit(set(o.loc, o.rot, o.scale), Some(set(l0, r0, s0)));
             }
             VEvent::Size(..) => {}
+            VEvent::BoxPick(names, shift) => {
+                if !shift {
+                    a.picked.clear();
+                }
+                for n in names {
+                    if !a.picked.contains(&n) {
+                        a.picked.push(n);
+                    }
+                }
+                a.fill_fields();
+            }
+            VEvent::EditPick(list, shift, click) => {
+                if !shift {
+                    a.vsel.iter_mut().for_each(|s| *s = false);
+                }
+                for i in list {
+                    if let Some(s) = a.vsel.get_mut(i as usize) {
+                        *s = if shift && click { !*s } else { true };
+                    }
+                }
+                a.egen += 1;
+            }
+            VEvent::EditMove(dw, _dx, dy) => {
+                let Some(e) = a.emesh.as_mut() else { return Task::none() };
+                let from = a.efrom.get_or_insert_with(|| e.verts.clone()).clone();
+                let m = a.scene.objects.iter().find(|o| o.name == e.obj).map(|o| o.mat).unwrap_or(scene::IDENTITY);
+                let inv = view3d::inv3(&m);
+                let dl = view3d::mul3(&inv, dw);
+                let sel: Vec<usize> = a.vsel.iter().enumerate().filter(|(_, s)| **s).map(|(i, _)| i).collect();
+                if a.grab == Grab::Size {
+                    let n = sel.len().max(1) as f32;
+                    let c = sel.iter().fold([0.0f32; 3], |c, i| [c[0] + from[*i][0] / n, c[1] + from[*i][1] / n, c[2] + from[*i][2] / n]);
+                    let k = (1.0 - dy * 0.005).max(0.01);
+                    for i in &sel {
+                        let v = from[*i];
+                        e.verts[*i] = [c[0] + (v[0] - c[0]) * k, c[1] + (v[1] - c[1]) * k, c[2] + (v[2] - c[2]) * k];
+                    }
+                } else {
+                    for i in &sel {
+                        let v = from[*i];
+                        e.verts[*i] = [v[0] + dl[0], v[1] + dl[1], v[2] + dl[2]];
+                    }
+                }
+                a.edirty = true;
+                a.egen += 1;
+            }
+            VEvent::EditMoveEnd => {
+                a.efrom = None;
+                a.grab = Grab::None;
+                if let Some(e) = &a.emesh {
+                    a.normals = e.normals();
+                }
+            }
+            VEvent::Brush(at, r, look) => a.brush(at, r, look),
+            VEvent::BrushEnd => {}
         },
         Msg::Mode(i) => {
+            // leaving Tab, Sculpt or Paint: what changed goes into the file first
+            let was = a.mode;
+            let mut t = Task::none();
+            if (was == 1 || was == 2 || a.editing) && !(i == 1 || i == 2) {
+                t = a.leave();
+            } else if a.editing {
+                a.editing = false;
+            }
             a.mode = i;
             match i {
-                1 | 2 => a.said = "Sculpt and Paint aren't in Hearth 3D yet: Model, Animate and Render are.".into(),
+                1 | 2 => {
+                    if was == 1 || was == 2 {
+                        a.said = if i == 1 { "Sculpt: drag on the mesh.".into() } else { "Paint: drag on the mesh to paint its colour on.".into() };
+                        a.brush_kind = 0;
+                        return t;
+                    }
+                    return t.chain(a.want_mesh());
+                }
                 3 => a.said.clear(),
-                4 => return update(a, Msg::Render),
+                4 => return t.chain(update(a, Msg::Render)),
                 _ => a.said.clear(),
             }
+            return t;
         }
         Msg::Tool(i) => {
             a.tool = i;
@@ -618,13 +937,52 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if let Some(dm) = hearth_ui::arrange::arrange_key(&a.describe, &key, modifiers) {
                 return a.describe.update(dm).map(Msg::Describe);
             }
+            // Tab: editing the picked mesh's points (Model), and its keys while editing
+            if let Key::Named(Named::Tab) = key.as_ref() {
+                if a.mode != 0 {
+                    return Task::none();
+                }
+                if a.editing {
+                    return a.leave();
+                }
+                a.editing = true;
+                return a.want_mesh();
+            }
+            if a.editing && a.emesh.is_some() {
+                match key.as_ref() {
+                    Key::Character("1") => return update(a, Msg::EKind(0)),
+                    Key::Character("2") => return update(a, Msg::EKind(1)),
+                    Key::Character("3") => return update(a, Msg::EKind(2)),
+                    Key::Character("a") => {
+                        let all = a.vsel.iter().all(|s| *s);
+                        a.vsel.iter_mut().for_each(|s| *s = !all);
+                        a.egen += 1;
+                        return Task::none();
+                    }
+                    Key::Character("x") | Key::Named(Named::Delete) => return update(a, Msg::EditOp("delete")),
+                    Key::Character("e") => return update(a, Msg::EditOp("extrude")),
+                    Key::Character("g") => {
+                        a.grab = Grab::Move;
+                        return Task::none();
+                    }
+                    Key::Character("s") if !modifiers.control() => {
+                        a.grab = Grab::Size;
+                        return Task::none();
+                    }
+                    _ => {}
+                }
+            }
             match key.as_ref() {
                 Key::Character("g") => a.grab = Grab::Move,
                 Key::Character("r") => a.grab = Grab::Turn,
                 Key::Character("s") if !modifiers.control() => a.grab = Grab::Size,
-                Key::Character("s") => return update(a, Msg::Save),
+                Key::Character("s") => {
+                    if a.emesh.is_some() {
+                        return a.commit("");
+                    }
+                    return update(a, Msg::Save);
+                }
                 Key::Character("z") if modifiers.control() => return update(a, Msg::Undo),
-                Key::Named(Named::Tab) => a.said = "Editing a mesh's points (Tab) isn't in Hearth 3D yet.".into(),
                 Key::Named(Named::Escape) => a.grab = Grab::None,
                 Key::Named(Named::Space) => a.playing = !a.playing,
                 Key::Named(Named::Delete) => return update(a, Msg::Delete),
@@ -715,7 +1073,23 @@ fn viewport(a: &App) -> E<'_, Msg> {
     let canvas: E<'_, Msg> = if a.shade == Shade::Rendered && a.render.is_some() {
         container(image(image::Handle::from_path(a.render.clone().unwrap_or_default())).content_fit(iced::ContentFit::Contain)).center_x(Length::Fill).center_y(Length::Fill).into()
     } else {
-        canvas::Canvas::new(view3d::Viewport { scene: &a.scene, cam: a.cam, shade: a.shade, picked: &a.picked, frame: a.frame, accent: p.accent, gen: a.gen, overlays: a.overlays, on: Msg::View }).width(Length::Fill).height(Length::Fill).into()
+        canvas::Canvas::new(view3d::Viewport {
+            scene: &a.scene,
+            cam: a.cam,
+            shade: a.shade,
+            picked: &a.picked,
+            frame: a.frame,
+            accent: p.accent,
+            gen: a.gen,
+            overlays: a.overlays,
+            on: Msg::View,
+            mode: a.vmode(),
+            edit: a.emesh.as_ref(),
+            vsel: &a.vsel,
+            brush: a.brush_r,
+            paint: (a.mode == 2).then(|| { let c = SWATCHES[a.paint_ix % SWATCHES.len()]; Color::from_rgb(c[0], c[1], c[2]) }),
+            egen: a.egen,
+        }).width(Length::Fill).height(Length::Fill).into()
     };
     let name = a.picked.first().cloned().unwrap_or_default();
     let coll = path_of(&a.scene.root, &name).map(|mut v| {
@@ -728,6 +1102,37 @@ fn viewport(a: &App) -> E<'_, Msg> {
         k::chip(&p, format!("Collection: {}", coll.unwrap_or_else(|| "nothing picked".into())), Ch::Plain, Sz::Sm, Some(Msg::Tool(6))),
     ]
     .spacing(6.0);
+    // Tab's and the brushes' own bar under it
+    let tools: E<'_, Msg> = match a.vmode() {
+        VMode::Edit(kd) => row![
+            k::seg(&p, vec![("Points".into(), kd == 0, Msg::EKind(0)), ("Edges".into(), kd == 1, Msg::EKind(1)), ("Faces".into(), kd == 2, Msg::EKind(2))]),
+            k::mu1::<Msg>(&p, format!("{} of {} points picked", a.vsel.iter().filter(|s| **s).count(), a.vsel.len()), 11.0),
+            k::chip(&p, "Pull out (E)", Ch::Plain, Sz::Sm, Some(Msg::EditOp("extrude"))),
+            k::chip(&p, "Delete (X)", Ch::Plain, Sz::Sm, Some(Msg::EditOp("delete"))),
+            k::chip(&p, "Done (Tab)", Ch::Acc, Sz::Sm, Some(Msg::DoneEditing)),
+        ]
+        .spacing(6.0)
+        .align_y(iced::Center)
+        .into(),
+        VMode::Brush => {
+            let mut r = Row::new().spacing(8.0).align_y(iced::Center);
+            if a.mode == 1 {
+                r = r.push(k::seg(&p, SCULPT.iter().enumerate().map(|(i, n)| (n.to_string(), a.brush_kind == i, Msg::BrushKind(i))).collect()));
+            } else {
+                for (i, c) in SWATCHES.iter().enumerate() {
+                    r = r.push(k::click(container(Space::new()).width(Length::Fixed(20.0)).height(Length::Fixed(20.0)).style(ui::boxed(Color::from_rgb(c[0], c[1], c[2]), 5.0, Some((if a.paint_ix == i { Color::WHITE } else { p.line }, if a.paint_ix == i { 2.0 } else { 1.0 })))), Some(Msg::PaintColour(i))));
+                }
+            }
+            r.push(k::mu1::<Msg>(&p, "Size", 11.0))
+                .push(k::slider(&p, 8.0..=160.0, a.brush_r, 110.0, Msg::BrushSize, None))
+                .push(k::mu1::<Msg>(&p, "Strength", 11.0))
+                .push(k::slider(&p, 0.05..=1.0, a.strength, 90.0, Msg::Strength, None))
+                .push(k::chip(&p, "Done", Ch::Acc, Sz::Sm, Some(Msg::DoneEditing)))
+                .into()
+        }
+        _ => k::gap(1.0, 1.0),
+    };
+    let tl = column![tl, tools].spacing(6.0);
     let sh = |s: Shade, l: &str| (l.to_string(), a.shade == s, Msg::Shade(s));
     let tr = row![k::seg(&p, vec![sh(Shade::Wire, "Wire"), sh(Shade::Solid, "Solid"), sh(Shade::Material, "Material"), sh(Shade::Rendered, "Rendered")]), k::chip(&p, "Overlays ▾", Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::Overlays)))].spacing(6.0).align_y(iced::Center);
     let faces: u64 = a.scene.objects.iter().map(|o| o.faces).sum();
@@ -1110,7 +1515,7 @@ fn subscription(a: &App) -> Subscription<Msg> {
 }
 
 fn main() -> iced::Result {
-    if app::handle_cli("hearth-3d", "Hearth 3D: modelling with Blender as the engine.\n  hearth-3d [FILE.blend]   open it\n  --pick NAME,NAME        pick these objects") {
+    if app::handle_cli("hearth-3d", "Hearth 3D: modelling with Blender as the engine.\n  hearth-3d [FILE.blend]   open it\n  --pick NAME,NAME        pick these objects\n  --mode edit|sculpt|paint  open in Tab, Sculpt or Paint (the picked mesh)\n  --tool box              Box select\n  --select all            every point picked (Tab)") {
         return Ok(());
     }
     let w = app::window("hearth-3d", (1280.0, 800.0), (960.0, 600.0));

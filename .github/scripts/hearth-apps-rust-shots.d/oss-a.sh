@@ -100,3 +100,16 @@ H3="$BIN/hearth-3d"
 SHOT_WAIT=4 oss oss-a-17-hearth-3d hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body
 SHOT_WAIT=4 oss oss-a-17-hearth-3d-wire hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Gun --shade wire
 SHOT_WAIT=4.5 oss oss-a-17-hearth-3d-editing hearth-3d env HEARTH_ARRANGE_OPEN=hearth-3d:studio HEARTH_STUDIO_STAGE=hearth-3d:none "$H3" "$OH/Models/quad-mech.blend" --pick Body
+# Hearth 3D's Box select, Tab, Sculpt and Paint, each driven by a real drag (wl-drag.py, wlroots' virtual pointer):
+# a drawn box picks the objects in it; Tab with a box drawn over part of Body's own mesh (Blender's stand-in gives it:
+# a box of quads) picks those points; a Sculpt stroke (Draw) raises the mesh under it; a Paint stroke paints it.
+DRAG="python3 $ROOT/.github/scripts/wl-drag.py 1280 800"
+( sleep 3; $DRAG 250,160 760,470 --steps 25 >/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=5 oss oss-a-17-hearth-3d-box hearth-3d "$H3" "$OH/Models/quad-mech.blend" --tool box
+( sleep 3.5; $DRAG 420,220 560,330 --steps 20 >>/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=5.5 oss oss-a-17-hearth-3d-edit hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body --mode edit
+( sleep 3.5; $DRAG 400,300 470,280 540,300 610,290 680,310 --steps 12 >>/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=6 oss oss-a-17-hearth-3d-sculpt hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body --mode sculpt
+( sleep 3.5; $DRAG 400,300 470,280 540,300 610,290 680,310 --steps 12 >>/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=6 oss oss-a-17-hearth-3d-paint hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body --mode paint
+echo "::notice title=oss-17 drags::$(tr '\n' ' ' < /tmp/h3d-drag.log)"
