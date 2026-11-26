@@ -53,7 +53,12 @@ pub fn plan(a: &App, remove: bool) -> Plan {
                     (*k, a.own(g, *k), pick)
                 })
                 .collect();
-            add.push(One { rom: rom(g), name: a.name_of(g), system: g.system.to_string(), stem: g.stem.clone(), tags, art });
+            // two games of one name (Tetris on two consoles) would be one shortcut in Steam: the console goes in the name
+            let mut name = a.name_of(g);
+            if add.iter().any(|o: &One| o.name == name) || a.existing.iter().any(|(n, _)| *n == name.to_lowercase()) {
+                name = format!("{name} ({})", hearth_retro::library::system(g.system).map(|s| s.name).unwrap_or(g.system));
+            }
+            add.push(One { rom: rom(g), name, system: g.system.to_string(), stem: g.stem.clone(), tags, art });
         }
     }
     let added = a.prefs.get("added").and_then(|v| v.get(&a.user)).and_then(Value::as_array).map(|v| v.iter().filter_map(|x| x.as_u64().map(|n| n as u32)).collect()).unwrap_or_default();

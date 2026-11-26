@@ -74,7 +74,7 @@ BMA="$BIN/hearth-beat-maker-app"
 SONG="$BH/Music/Hearth Beat Maker/ember-rising.hbm.json"
 beat() { # NAME ARGS...
   n=$1; shift
-  SHOT_WAIT=3.5 run "oss-beat-$n" hearth-beat-maker "${REST:-0}" env HOME="$BH" HEARTH_LMMS_DATA="$BH/lmms" XDG_CONFIG_HOME="$BH/.config" "$@"
+  SHOT_WAIT=3.5 run "oss-beat-maker-$n" hearth-beat-maker "${REST:-0}" env HOME="$BH" HEARTH_LMMS_DATA="$BH/lmms" XDG_CONFIG_HOME="$BH/.config" "$@"
 }
 BOARD=(--open "$SONG" --at 42.6 --track "Ember Pad" --notes "Chords B" --beat "Drop A" --select-notes 9,10,11)
 REST=20 beat 1-board-export "$BMA" "${BOARD[@]}" --show export

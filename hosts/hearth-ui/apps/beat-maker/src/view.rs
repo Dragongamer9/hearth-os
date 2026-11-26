@@ -578,7 +578,7 @@ fn beat_pane(a: &App) -> E<'_> {
     } else {
         canvas::Canvas::new(Steps { rows, steps, acc: p.accent, cell: p.panel2, line: p.line, text: p.text }).width(Length::Fill).height(Length::Fixed(rows.len() as f32 * ROW_H)).into()
     };
-    let foot = row![t1("Click to add a hit · drag up and down for how hard", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "＋ Row", Ck::Normal, None, if pat.is_some() { Some(Msg::AddRow) } else { None })].align_y(iced::Center);
+    let foot = row![t1("Click to add a hit · drag up and down for how hard", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "+ Row", Ck::Normal, None, if pat.is_some() { Some(Msg::AddRow) } else { None })].align_y(iced::Center);
     let body = column![scrollable(grid).height(Length::Fill), container(foot).padding(pad(6.0, 0.0, 0.0, 0.0))];
     paned(&p, pane(&p, head.into(), container(body).padding(14.0).into()))
 }
@@ -1038,7 +1038,7 @@ pub fn view(a: &App) -> E<'_> {
         ("length", format!("{}:{:02}", (secs / 60.0) as i64, (secs % 60.0).round() as i64)),
     ]);
     let inst = hearth_ui::arrange::parts(&a.describe, &p, "inst", vec![("find", inst_find(a)), ("song", inst_list(a)), ("library", library(a)), ("knobs", knobs(a))], |ps| column![ps.take("find"), scrollable(column![ps.take("song"), ps.take("library")]).height(Length::Fill), ps.take("knobs")].into(), Msg::Describe);
-    let inst = paned(&p, pane(&p, row![ts("Instruments and sounds", 13.0, p.text), Space::new().width(Length::Fill), mouse_area(t("＋", 14.0, p.muted)).on_press(Msg::Open(Dlg::Library("Synths".into()))).interaction(mouse::Interaction::Pointer)].align_y(iced::Center).into(), inst));
+    let inst = paned(&p, pane(&p, row![ts("Instruments and sounds", 13.0, p.text), Space::new().width(Length::Fill), mouse_area(t("+", 14.0, p.muted)).on_press(Msg::Open(Dlg::Library("Synths".into()))).interaction(mouse::Interaction::Pointer)].align_y(iced::Center).into(), inst));
     let notes = hearth_ui::arrange::parts(&a.describe, &p, "notes", vec![("head", notes_head(a)), ("roll", roll(a)), ("vel", vel(a))], |ps| {
         column![container(ps.take("head")).padding(pad(0.0, 14.0, 0.0, 14.0)).height(Length::Fixed(40.0)).center_y(Length::Fixed(40.0)), ui::hline(p.line), ps.take("roll"), ps.take("vel")].into()
     }, Msg::Describe);

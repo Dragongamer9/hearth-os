@@ -56,7 +56,7 @@ mkdir -p "$SH/.local/share/nimbus" && cp "$HOME/.local/share/nimbus/desktop.json
 R2="$BIN/hearth-retro-to-steam-app"
 r2s() { # NAME FIXTURE ARGS...
   n=$1; fx=$2; shift 2
-  SHOT_WAIT=3.5 run "oss-r2s-$n" hearth-retro-to-steam "${REST:-0}" env HOME="$SH" HEARTH_R2S_FIXTURE="$SH/$fx" XDG_CONFIG_HOME="$SH/.config" "$@"
+  SHOT_WAIT=3.5 run "oss-retro-to-steam-$n" hearth-retro-to-steam "${REST:-0}" env HOME="$SH" HEARTH_R2S_FIXTURE="$SH/$fx" XDG_CONFIG_HOME="$SH/.config" "$@"
 }
 REST=20 r2s 1-board fixture.json "$R2" --pick "Super Metroid"
 r2s 2-close-steam-first fixture-open.json "$R2" --pick "Super Metroid" --show close-steam

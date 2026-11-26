@@ -50,6 +50,19 @@ pub fn request(kind: &str, id: &str, data: Value) {
     }
 }
 
+/// The sound meters on or off (obs-websocket's Reidentify): on only while Hearth Studio is in front.
+pub fn meters(on: bool) {
+    let subs = if on { 0x7ff | (1 << 16) } else { 0x7ff };
+    let msg = json!({"op": 3, "d": {"eventSubscriptions": subs}});
+    if let Ok(mut g) = writer().lock() {
+        if let Some(s) = g.as_mut() {
+            if ws::send_text(s, &msg.to_string()).is_err() {
+                *g = None;
+            }
+        }
+    }
+}
+
 pub fn req(kind: &str, data: Value) {
     request(kind, kind, data);
 }
@@ -248,8 +261,16 @@ fn session(tx: &UnboundedSender<Ev>) -> Result<(), String> {
     if tx.unbounded_send(Ev::Up).is_err() {
         return Ok(());
     }
+    // OBS sends its meters 20 times a second: 8 a second reach the window (enough to read, a third of the drawing)
+    let mut last_meter = std::time::Instant::now() - std::time::Duration::from_secs(1);
     loop {
         let t = c.read().map_err(|e| e.to_string())?;
+        if t.contains("\"InputVolumeMeters\"") {
+            if last_meter.elapsed() < std::time::Duration::from_millis(125) {
+                continue;
+            }
+            last_meter = std::time::Instant::now();
+        }
         let Ok(v) = serde_json::from_str::<Value>(&t) else { continue };
         if matches!(v.get("op").and_then(Value::as_u64), Some(5) | Some(7)) && tx.unbounded_send(Ev::Got(v)).is_err() {
             return Ok(());

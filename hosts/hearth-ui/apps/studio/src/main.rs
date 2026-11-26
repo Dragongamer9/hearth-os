@@ -276,7 +276,7 @@ fn read_items(scene: &str) {
 
 fn read_shot(a: &App) {
     if !a.scene.is_empty() {
-        obs::req("GetSourceScreenshot", json!({"sourceName": a.scene, "imageFormat": "jpg", "imageWidth": 1280, "imageCompressionQuality": 72}));
+        obs::req("GetSourceScreenshot", json!({"sourceName": a.scene, "imageFormat": "jpg", "imageWidth": 960, "imageCompressionQuality": 70}));
     }
 }
 
@@ -554,12 +554,13 @@ fn every(a: &mut App) -> Task<Msg> {
     obs::req("GetStats", json!({}));
     obs::req("GetStreamStatus", json!({}));
     obs::req("GetRecordStatus", json!({}));
-    if a.focused {
+    // what viewers see: every other second, only while Hearth Studio is in front
+    if a.focused && a.ticks % 2 == 0 {
         read_shot(a);
     }
     // the viewers once a minute while live (Twitch, through decapi.me: no account or key)
     let ch = a.prefs.get("twitch").and_then(Value::as_str).unwrap_or("").to_string();
-    if a.stream.active && !ch.is_empty() && a.ticks % 60 == 1 {
+    if a.stream.active && !ch.is_empty() && a.ticks % 60 == 1 && std::env::var_os("HEARTH_STUDIO_VIEWERS").is_none() {
         let url = format!("https://decapi.me/twitch/viewercount/{}", ch.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>());
         return Task::perform(run::spawn(vec!["curl".into(), "-fsS".into(), "--max-time".into(), "10".into(), url]), Msg::Viewers);
     }
@@ -792,7 +793,15 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 }
             }
         }
-        Msg::Focus(f) => a.focused = f,
+        Msg::Focus(f) => {
+            if a.focused != f && a.up {
+                obs::meters(f);
+                if !f {
+                    a.audio.iter_mut().for_each(|x| x.level = 0.0);
+                }
+            }
+            a.focused = f;
+        }
         Msg::Drag => return win::drag(),
         Msg::Max => return win::toggle_maximize(),
         Msg::Min => return win::minimize(),

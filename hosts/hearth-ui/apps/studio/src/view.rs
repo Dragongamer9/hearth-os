@@ -95,7 +95,11 @@ fn seg<'a>(p: &Pal, parts: Vec<(String, bool, Option<Msg>)>) -> E<'a> {
 
 /// A pane (.pane): the panel, a line, rounded 12, its heading.
 fn pane<'a>(p: &Pal, head: E<'a>, body: E<'a>) -> E<'a> {
-    container(column![container(head).padding(pad(0.0, 0.0, 10.0, 0.0)), body]).padding(14.0).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.panel, 12.0, Some((p.line, 1.0)))).into()
+    pane_h(p, head, body, Length::Fill)
+}
+
+fn pane_h<'a>(p: &Pal, head: E<'a>, body: E<'a>, h: Length) -> E<'a> {
+    container(column![container(head).padding(pad(0.0, 0.0, 10.0, 0.0)), body]).padding(14.0).width(Length::Fill).height(h).style(ui::boxed(p.panel, 12.0, Some((p.line, 1.0)))).into()
 }
 
 fn head<'a>(p: &Pal, title: &'a str, right: Option<E<'a>>) -> E<'a> {
@@ -210,7 +214,7 @@ fn setup_card(a: &App) -> E<'_> {
 fn preview(a: &App) -> E<'_> {
     let p = a.p;
     let pic: E = match (&a.shot, a.up) {
-        (Some(h), true) => image(h.clone()).width(Length::Fill).height(Length::Fill).content_fit(iced::ContentFit::Cover).into(),
+        (Some(h), true) => image(h.clone()).width(Length::Fill).height(Length::Fill).content_fit(iced::ContentFit::Contain).into(),
         _ => Space::new().width(Length::Fill).height(Length::Fill).into(),
     };
     let label = container(tb(format!("PREVIEW · WHAT VIEWERS SEE · {} × {}", a.base.0, a.base.1), 11.0, p.muted).wrapping(text::Wrapping::None)).padding(pad(3.0, 8.0, 3.0, 8.0)).style(ui::boxed(p.panel2, 6.0, Some((p.line, 1.0))));
@@ -245,7 +249,7 @@ fn live(a: &App) -> E<'_> {
     for s in &a.services {
         where_ = where_.push(chip(&p, s.clone(), Ck::Acc, 28.0, Some(Msg::Open(Dlg::Where))));
     }
-    where_ = where_.push(chip(&p, "＋", Ck::Normal, 28.0, Some(Msg::Open(Dlg::Where))));
+    where_ = where_.push(chip(&p, "+", Ck::Normal, 28.0, Some(Msg::Open(Dlg::Where))));
     let title = container(text_input("Your stream's title", &a.title_edit).on_input(Msg::Title).on_submit(Msg::TitleDone).size(12.0).padding(pad(7.0, 10.0, 7.0, 10.0)).style(input_style(p))).width(Length::Fixed(330.0));
     let q = |w: u32, h: u32| a.output.0 == w && a.output.1 == h;
     let qual = seg(&p, vec![("720p".into(), q(1280, 720), Some(Msg::Quality(1280, 720))), ("1080p60".into(), q(1920, 1080), Some(Msg::Quality(1920, 1080))), ("1440p".into(), q(2560, 1440), Some(Msg::Quality(2560, 1440)))]);
@@ -274,7 +278,7 @@ fn live(a: &App) -> E<'_> {
         row_of(&p, "Also make a 9:16 for phones", switch(&p, a.vertical(), Msg::Vertical(!a.vertical()))),
         container(grid).padding(pad(10.0, 0.0, 0.0, 0.0))
     ];
-    pane(&p, head(&p, "Going live", Some(state)), body.into())
+    pane_h(&p, head(&p, "Going live", Some(state)), body.into(), Length::Shrink)
 }
 
 fn health(a: &App) -> E<'_> {
@@ -359,7 +363,7 @@ fn scenes(a: &App) -> E<'_> {
         let ic = container(Space::new()).width(Length::Fixed(16.0)).height(Length::Fixed(16.0)).style(ui::boxed(if on { p.accent } else { hexc(0xd8cfc8) }, 4.0, None));
         c = c.push(it_row(&p, on, row![ic, t1(sc.clone(), 13.0, p.text)].spacing(10.0).align_y(iced::Center).into(), Some(Msg::Scene(sc.clone()))));
     }
-    pane(&p, head(&p, "Scenes", Some(mouse_area(t("＋", 14.0, p.muted)).on_press(Msg::Open(Dlg::NewScene)).interaction(mouse::Interaction::Pointer).into())), iced::widget::scrollable(c).height(Length::Fill).into())
+    pane(&p, head(&p, "Scenes", Some(mouse_area(t("+", 14.0, p.muted)).on_press(Msg::Open(Dlg::NewScene)).interaction(mouse::Interaction::Pointer).into())), iced::widget::scrollable(c).height(Length::Fill).into())
 }
 
 fn kind_colour(p: &Pal, i: &Item) -> Color {
@@ -418,7 +422,7 @@ fn items(a: &App) -> E<'_> {
     if a.items.is_empty() {
         c = c.push(mu(&p, if a.up { "Nothing in this scene yet" } else { "OBS isn't connected" }));
     }
-    let add = mouse_area(t1("＋ Add", 13.0, p.muted)).on_press(Msg::Open(Dlg::AddSource)).interaction(mouse::Interaction::Pointer);
+    let add = mouse_area(t1("+ Add", 13.0, p.muted)).on_press(Msg::Open(Dlg::AddSource)).interaction(mouse::Interaction::Pointer);
     pane(&p, head(&p, "In this scene", Some(add.into())), iced::widget::scrollable(c).height(Length::Fill).into())
 }
 
