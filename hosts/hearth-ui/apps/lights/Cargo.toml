@@ -1,0 +1,21 @@
+# Hearth Lights (pure Rust, hearth-ui; board docs/mockups/open-source-apps/09-lights.png, checklist
+# docs/mockups/checklists/open-source-09-lights.md): every RGB light in the PC, built on OpenRGB (GPL-2) through its
+# SDK server. No version line: the owner picks every version number.
+[package]
+name = "hearth-lights"
+edition = "2021"
+description = "Hearth Lights: every light in your PC, one place (built on OpenRGB)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-lights-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+# Game colours: the game's cover in Steam's library, read small (the same image crate iced already uses)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
