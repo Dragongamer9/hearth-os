@@ -401,6 +401,13 @@ FocusScope {
             { id: "chart", title: "The chart", x: 0, y: 3, w: 24, h: 7 },
             { id: "events", title: "The day's events", x: 0, y: 10, w: 24, h: 14 }] }]
         parts: ({ title: relTitle, header: relHead, chart: chart, events: relEvents })
+        // Reliability history's own blocks (drag and drop board 3): days or weeks, look again, close
+        actions: [{ id: "days", label: "Days", icon: "calendar", run: () => v.setWeeks(false) },
+                  { id: "weeks", label: "Weeks", icon: "calendar", run: () => v.setWeeks(true) },
+                  { id: "reload", label: "Look again", icon: "sync", run: () => v.load() },
+                  { id: "close", label: "Close", icon: "close", run: () => v.closeAll() }]
+        panes: [{ id: "title", label: "The title bar", icon: "window", part: "title" }, { id: "header", label: "The header", icon: "menu", part: "header" },
+                { id: "chart", label: "The chart", icon: "list", part: "chart" }, { id: "events", label: "The day's events", icon: "doc", part: "events" }]
     }
 
     // ---- Details

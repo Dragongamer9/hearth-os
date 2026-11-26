@@ -292,6 +292,40 @@ ShellRoot {
         function edit(app: string): void { const b = AppBlocksHub.get(app); if (b) b.edit(""); }
         function pick(app: string, id: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) b.picked = id; }
         function done(app: string): void { const b = AppBlocksHub.get(app); if (b) { b.menuShown = false; if (b.editing) b.done(); } }
+        // drag and drop board 3 (AppBlocksEditor.qml): a block held at x, y (from the app's Blocks window: "action:share",
+        // "pane:details", "make:button", or one already placed, by its id), let go; a part's edge held and moved; Customize
+        function hold(app: string, id: string, x: real, y: real): string {
+            const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "";
+            if (id.indexOf(":") > 0) e.grabLib(id, Qt.point(x, y)); else e.grabBlock(id, Qt.point(x, y));
+            return JSON.stringify({ target: e.target, note: e.note, line: e.lineX >= 0 });
+        }
+        function barItems(app: string, bar: string): string {
+            const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "[]";
+            const row = b.rowOf(b.parts[bar]); const p = b.draft.parts.find(q => q.id === bar);
+            if (!row || !p) return "[]";
+            return JSON.stringify(e.visibleKids(row).map(v => ({ name: e.itemName(v.item), x: Math.round(v.cx), y: Math.round(p.y + p.h / 2) })));
+        }
+        function marks(app: string): string { const b = AppBlocksHub.get(app); return b && b.editorItem ? JSON.stringify(b.editorItem.marksNow()) : "[]"; }
+        function letGo(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) b.editorItem.endDrag(); }
+        function size(app: string, id: string, edge: string, dx: real, dy: real): string {
+            const b = AppBlocksHub.get(app); const e = b ? b.editorItem : null; if (!e) return "";
+            const p = b.draft.parts.find(q => q.id === id); if (!p) return "";
+            const ed = {}; ed[edge] = 1;
+            const at = edge === "l" ? Qt.point(p.x, p.y + p.h / 2) : edge === "r" ? Qt.point(p.x + p.w, p.y + p.h / 2) : edge === "t" ? Qt.point(p.x + p.w / 2, p.y) : Qt.point(p.x + p.w / 2, p.y + p.h);
+            e.grabPart(id, ed, at); e.movePart(Qt.point(at.x + dx, at.y + dy));
+            return JSON.stringify({ note: e.note, guides: e.guides });
+        }
+        function sizeLetGo(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) b.editorItem.letGoPart(); }
+        function customize(app: string, id: string, tab: string): void { const b = AppBlocksHub.get(app); if (b) b.customize(id, tab || "look"); }
+        function look(app: string, id: string, json: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) { try { b.setLook(id, JSON.parse(json)); } catch (e) {} } }
+        function layers(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) { b.editorItem.layersShown = !b.editorItem.layersShown; b.editorItem.startShown = false; } }
+        function startFrom(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editorItem) { b.editorItem.startShown = !b.editorItem.startShown; b.editorItem.layersShown = false; } }
+        function keep(app: string): void { const b = AppBlocksHub.get(app); if (b) b.keepThis(); }
+        function tryIt(app: string): void { const b = AppBlocksHub.get(app); if (b) b.tryIt(); }
+        function goBack(app: string): void { const b = AppBlocksHub.get(app); if (b) b.goBack(); }
+        function cancel(app: string): void { const b = AppBlocksHub.get(app); if (b && (b.editing || b.trying)) b.cancel(); }
+        function undo(app: string): void { const b = AppBlocksHub.get(app); if (b) b.undo(); }
+        function draft(app: string): string { const b = AppBlocksHub.get(app); return b && b.editing ? JSON.stringify(b.draft) : ""; }
         function partMenu(app: string, id: string): void { const b = AppBlocksHub.get(app); if (b) b.partMenu(id !== "" ? id : (b.defs.length ? b.defs[b.defs.length > 1 ? 1 : 0].id : ""), 160, 140); }
         function menus(app: string): void { const b = AppBlocksHub.get(app); if (b && b.editing) b.openMenus(); }
         function describe(app: string): void { const b = AppBlocksHub.get(app); if (b) b.describe(); }
@@ -304,7 +338,9 @@ ShellRoot {
         function state(app: string): string {
             const b = AppBlocksHub.get(app);
             if (!b) return JSON.stringify({ open: false });
-            return JSON.stringify({ open: true, page: b.pageId, mode: b.mode, editing: b.editing, picked: b.picked, unreadable: b.unreadable,
+            return JSON.stringify({ open: true, page: b.pageId, mode: b.mode, editing: b.editing, trying: b.trying, picked: b.picked, unreadable: b.unreadable,
+                                    editor: !!b.editorItem, customize: b.customizeFor, added: b.effAdded.map(x => x.id + ":" + x.kind + ":" + (x.in || "window")),
+                                    looks: Object.keys(b.effLooks), lib: b.editorItem ? b.editorItem.lib.length : 0, bars: b.barIds, actions: b.actions.map(a => a.id),
                                     blocks: b.defs.map(d => d.id), parts: Object.keys(b.parts).filter(k => !!b.parts[k]),
                                     hidden: b.placed.filter(p => p.hidden).map(p => p.id), menus: b.menus.map(m => m.id),
                                     layoutItems: b.menuItems().map(i => i.label) });

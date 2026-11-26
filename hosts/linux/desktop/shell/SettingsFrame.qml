@@ -396,6 +396,18 @@ Item {
             { id: "page", title: "The page", x: 5, y: 0, w: 19, h: 23 },
             { id: "hints", title: "What the buttons do", x: 0, y: 23, w: 24, h: 1, bg: SetStyle.nav }] }]
         parts: ({ side: side, page: main, hints: hints })
+        // Settings' own blocks (drag and drop board 3): a button for every category, Search, Back and the next one
+        actions: [{ id: "search", label: "Search Settings", icon: "search", run: () => frame.focusSearch() },
+                  { id: "back", label: "Back", icon: "back", run: () => frame.back() },
+                  { id: "next", label: "Next category", icon: "forward", run: () => frame.stepCategory(1) },
+                  { id: "prev", label: "Previous category", icon: "back", run: () => frame.stepCategory(-1) },
+                  { id: "close", label: "Close Settings", icon: "close", run: () => frame.app.close() }]
+            .concat(Reg.CATEGORIES.map(c => ({ id: "cat-" + c.id, label: c.label, icon: c.icon, run: () => frame.app.open(c.landing) })))
+        panes: [{ id: "side", label: "The categories", icon: "list", part: "side" }, { id: "page", label: "The page", icon: "doc", part: "page" },
+                { id: "hints", label: "What the buttons do", icon: "pad", part: "hints" }]
+        counts: [{ id: "page", label: "This page", value: () => frame.entry ? frame.entry.label : "" },
+                 { id: "category", label: "This category", value: () => frame.cat ? frame.cat.label : "" }]
+        marks: ({ "Search": searchBox })
     }
 
     // ---------------------------------------------------------------- search results, over the page

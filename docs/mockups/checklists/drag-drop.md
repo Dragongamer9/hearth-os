@@ -11,29 +11,29 @@ you make yourself; Describe it makes one when Hearth hasn't got it. Nothing chan
 nothing made here can stop the desktop or an app from starting.
 
 ## 1. Editing your real desktop (board 1)
-- [ ] Edit desktop opens over the real desktop (not a picture of it): every bar, panel and widget outlined (dashed, accent)
-- [ ] A label under each one: what it is and its size ("TOP BAR · 44 px · FULL WIDTH", "LEFT PANEL · FLOATING · DRAG ITS ENDS", "CLOCK WIDGET · ON THE DESKTOP · 420 × 210")
-- [ ] The Blocks window, its own window you can move: title "Blocks", "drag onto anything"
-- [ ] Find a block (with the count), and kinds: All, Bar items, Widgets, Launchers, Info, Media, Your own, Made by your AI
-- [ ] BAR ITEMS: App menu, Open apps, Clock, Quick Access, Downloads, Tray (and every other bar block Mantel has)
-- [ ] WIDGETS · ANYWHERE ON THE DESKTOP: Big clock, Weather, Now playing, Friends online (and the rest)
-- [ ] MAKE YOUR OWN: Button · runs anything; Text · picture · spacer
-- [ ] Drag a block from Blocks onto any bar, any panel or straight onto the desktop
-- [ ] Drag a block that's already placed to anywhere else: along its bar, to another bar or panel, onto the desktop, or back
-- [ ] The block follows the pointer while dragged (tilted, with a shadow)
-- [ ] A lit line where it will land in a bar, and a note saying where ("Drop: top bar, after the clock")
-- [ ] Snap guides that line things up, with a note ("Lined up with the clock")
-- [ ] Panels anywhere on the screen, not locked to the four sides (the owner, Nov 26: "i want to be able to place pannes ect anywere i want, dont want them locked to just 4 sides"): dragged to any spot, any length and thickness, across or up and down; an edge is only a snap you can use
-- [ ] A panel's ends and sides dragged to size it (handles)
-- [ ] An empty edge shows "+" while editing; dragging to it makes a new panel there ("Drag here for a panel on the right")
-- [ ] Widgets free on the desktop at any place and size (corner handles)
-- [ ] A floating panel holds blocks too (icons, "+" to add)
-- [ ] The toolbar: Undo, Redo
-- [ ] The toolbar: Snap to grid (with its size, 8 px), Guides, Layers, Screen (which screen)
-- [ ] The toolbar: + Panel, Start from (a ready-made layout)
-- [ ] The toolbar: Cancel, Try it, Keep this
-- [ ] "EDITING YOUR DESKTOP · NOTHING IS KEPT UNTIL KEEP THIS · ESC CANCELS"
-- [ ] Kept the safe way (merged, atomic, a .bak; nothing saved over a file that can't be read); Game Mode stays in a bar
+- [x] Edit desktop opens over the real desktop (not a picture of it): every bar, panel and widget outlined (dashed, accent) — hosts/linux/desktop/shell/DesktopEditor.qml: "WlrLayershell.namespace: \"hearth-desktop-editor\""
+- [x] A label under each one: what it is and its size ("TOP BAR · 44 px · FULL WIDTH", "LEFT PANEL · FLOATING · DRAG ITS ENDS", "CLOCK WIDGET · ON THE DESKTOP · 420 × 210") — hosts/linux/desktop/shell/desktop-edit.js: "\" · ON THE DESKTOP · \""
+- [x] The Blocks window, its own window you can move: title "Blocks", "drag onto anything" — hosts/linux/desktop/shell/DesktopEditor.qml: "text: \"drag onto anything\""
+- [x] Find a block (with the count), and kinds: All, Bar items, Widgets, Launchers, Info, Media, Your own, Made by your AI — hosts/linux/desktop/shell/DesktopEditor.qml: "[\"own\", \"Your own\"], [\"ai\", \"Made by your AI"
+- [x] BAR ITEMS: App menu, Open apps, Clock, Quick Access, Downloads, Tray (and every other bar block Mantel has) — hosts/linux/desktop/shell/widget-tools.js: "{ id: \"quickaccess\", name: \"Quick Access\", icon: \"grid\", zone: \"end\", extra: true },"
+- [ ] WIDGETS · ANYWHERE ON THE DESKTOP: Big clock, Weather, Now playing, Friends online (and the rest) (open: Hearth has Clock, Weather, Media player and the rest, but no Friends online widget yet, and the clock is named Clock, not Big clock)
+- [x] MAKE YOUR OWN: Button · runs anything; Text · picture · spacer — hosts/linux/desktop/shell/DesktopEditor.qml: "LibTile { label: \"Text · picture · spacer\"; icon: \"edit\"; dashed: true; make: \"text\" }"
+- [x] Drag a block from Blocks onto any bar, any panel or straight onto the desktop — hosts/linux/desktop/shell/desktop-edit.js: "function drop(draft, id, from, target, widgetInfo, newId) {"
+- [x] Drag a block that's already placed to anywhere else: along its bar, to another bar or panel, onto the desktop, or back — hosts/linux/desktop/shell/DesktopEditor.qml: "function startDrag(id, from, p) {"
+- [x] The block follows the pointer while dragged (tilted, with a shadow) — hosts/linux/desktop/shell/DesktopEditor.qml: "// ---- the block being dragged: it follows the pointer, tilted, with a shadow"
+- [x] A lit line where it will land in a bar, and a note saying where ("Drop: top bar, after the clock") — hosts/linux/desktop/shell/DesktopEditor.qml: "note = \"Drop: \" + mainEdge + \" bar\""
+- [x] Snap guides that line things up, with a note ("Lined up with the clock") — hosts/linux/desktop/shell/desktop-edit.js: "note = \"Lined up with \" + (o.name || \"it\");"
+- [x] Panels anywhere on the screen, not locked to the four sides (the owner, Nov 26: "i want to be able to place pannes ect anywere i want, dont want them locked to just 4 sides"): dragged to any spot, any length and thickness, across or up and down; an edge is only a snap you can use — hosts/linux/desktop/shell/desktop-edit.js: "function placePanel(rec, r, sw, sh, snapEdges) {"
+- [x] A panel's ends and sides dragged to size it (handles) — hosts/linux/desktop/shell/DesktopEditor.qml: "else if (m.mode === \"len1\") { if (down) b.h += dy; else b.w += dx; }"
+- [x] An empty edge shows "+" while editing; dragging to it makes a new panel there ("Drag here for a panel on the right") — hosts/linux/desktop/shell/DesktopEditor.qml: "ed.note = \"Drag here for a panel on the \" + parent.modelData"
+- [x] Widgets free on the desktop at any place and size (corner handles) — hosts/linux/desktop/shell/DesktopEditor.qml: "else if (m.mode === \"corner\") { b.w += dx; b.h += dy; }"
+- [x] A floating panel holds blocks too (icons, "+" to add) — hosts/linux/desktop/shell/DesktopEditor.qml: "ed.note = \"Drag a block from Blocks onto this panel\";"
+- [x] The toolbar: Undo, Redo — hosts/linux/desktop/shell/DesktopEditor.qml: "Btn { label: \"Undo\"; icon: \"undo\"; enabled: ed.undoStack.length > 0; onClicked: ed.undo() }"
+- [x] The toolbar: Snap to grid (with its size, 8 px), Guides, Layers, Screen (which screen) — hosts/linux/desktop/shell/DesktopEditor.qml: "Btn { label: \"Snap to grid\" + (ed.snapOn ? \" · \" + ed.grid + \" px\" : \"\")"
+- [x] The toolbar: + Panel, Start from (a ready-made layout) — hosts/linux/desktop/shell/DesktopEditor.qml: "Btn { label: \"Panel\"; icon: \"plus\"; onClicked: ed.addPanel(\"\") }"
+- [x] The toolbar: Cancel, Try it, Keep this — hosts/linux/desktop/shell/DesktopEditor.qml: "Btn { label: \"Try it\"; onClicked: ed.tryIt() }"
+- [x] "EDITING YOUR DESKTOP · NOTHING IS KEPT UNTIL KEEP THIS · ESC CANCELS" — hosts/linux/desktop/shell/DesktopEditor.qml: "text: \"EDITING YOUR DESKTOP · NOTHING IS KEPT UNTIL KEEP THIS · ESC CANCELS\""
+- [x] Kept the safe way (merged, atomic, a .bak; nothing saved over a file that can't be read); Game Mode stays in a bar — hosts/linux/desktop/shell/DesktopEditor.qml: "if (Object.keys(c.bar).length) BarLayout.put(c.bar);"
 
 ## 2. One block picked: everything about it (board 2)
 - [x] The picked block lit in its place, with handles — hosts/linux/desktop/shell/DesktopEditor.qml: "// picked: lit in its place, with handles at its ends (drag one to give it a width)"
@@ -72,7 +72,7 @@ nothing made here can stop the desktop or an app from starting.
 - [x] The same toolbar: Undo, Redo, Snap to grid · 8 px, Guides, Layers, Start from, Menus…, Cancel, Try it, Keep this — hosts/hearth-ui/src/studio.rs: "tbtn(&p, \"Menus…\".into(), st.pop == Pop::Menus, false, Some(s(SMsg::Pop(Pop::Menus)))),"
 - [x] Right-click any part › Customize opens board 2's side panel for it — hosts/hearth-ui/src/studio.rs: "let tabs = [\"Look\", \"Shows\", \"Does\", \"Place\", \"When\", \"Motion\"];"
 - [x] "THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE …" — hosts/hearth-ui/src/studio.rs: "ts(\"THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE … · RIGHT-CLICK ANY PART › CUSTOMIZE\""
-- [ ] Files (Rust and Mantel's)
+- [x] Files (Rust and Mantel's; Mantel's Settings, Task Manager, Capture, Resource monitor, System Restore and Reliability history have it too) — hosts/linux/desktop/shell/FileManager.qml: "{ id: \"terminal\", label: \"Open in terminal\", icon: \"window\" }, { id: \"compress\", label: \"Compress\", icon: \"archive\" },"
 - [x] Settings — hosts/hearth-ui/apps/settings/src/main.rs: ".with_pages(STATIC_BLOCKS).with_kit(&frame::KIT)"
 - [x] Task Manager — hosts/hearth-ui/apps/task-manager/src/main.rs: ".with_pages(pages::BLOCKS).with_kit(&pages::KIT)"
 - [x] Capture — hosts/hearth-ui/apps/capture/src/main.rs: ".with_pages(pages::BLOCKS).with_kit(&pages::KIT)"

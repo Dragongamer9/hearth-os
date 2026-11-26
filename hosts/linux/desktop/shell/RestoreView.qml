@@ -443,6 +443,15 @@ FocusScope {
             { id: "body", title: "The restore points and what changes", x: 0, y: 4, w: 24, h: 18 },
             { id: "footer", title: "The buttons", x: 0, y: 22, w: 24, h: 2 }] }]
         parts: ({ title: rsTitle, header: rsHead, body: rsBody, footer: rsFoot })
+        // System Restore's own blocks (drag and drop board 3): make a restore point, see what changes, restore, look again
+        actions: [{ id: "make", label: "Make a restore point", icon: "plus", run: () => v.makePoint() },
+                  { id: "changes", label: "See what changes", icon: "list", run: () => v.seeChanges() },
+                  { id: "restore", label: "Restore…", icon: "restart", run: () => v.askRestore() },
+                  { id: "reload", label: "Look again", icon: "sync", run: () => v.load() },
+                  { id: "close", label: "Close", icon: "close", run: () => v.closeAll() }]
+        panes: [{ id: "title", label: "The title bar", icon: "window", part: "title" }, { id: "header", label: "The header", icon: "menu", part: "header" },
+                { id: "body", label: "The restore points", icon: "list", part: "body" }, { id: "footer", label: "The buttons", icon: "check", part: "footer" }]
+        counts: [{ id: "points", label: "Restore points", value: () => v.rowCount }]
     }
 
     // ---- dialogs: confirm, every changed setting, working, done
