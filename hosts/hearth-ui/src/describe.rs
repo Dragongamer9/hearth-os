@@ -777,8 +777,14 @@ mod tests {
 /// | square). A right-click on it opens Describe it, so even an app without menus can be changed. The window can always
 /// be moved (what's left of the bar moves it), and a window without Close still closes with Alt+F4 or Super+Q.
 pub fn title_bar<'a, M: Clone + 'a>(p: &Pal, d: &Describe, mark: ui::G, title: &'a str, middle: Option<Element<'a, M>>, m: ui::TitleMsgs<M>, bg: Color, open: M) -> Element<'a, M> {
+    title_bar_with(p, d, ui::glyph(mark, p.accent, 16.0, 2.0), title, middle, m, bg, open)
+}
+
+/// [`title_bar`] with the app's own mark (a lettered tile, as the open-source apps' boards draw it) for the glyph.
+pub fn title_bar_with<'a, M: Clone + 'a>(p: &Pal, d: &Describe, mark: Element<'a, M>, title: &'a str, middle: Option<Element<'a, M>>, m: ui::TitleMsgs<M>, bg: Color, open: M) -> Element<'a, M> {
     use iced::widget::button;
     let p = *p;
+    let mut mark = Some(mark);
     let style = d.knob("winbuttons");
     let wbtn = |id: &str| -> Element<'a, M> {
         let (g, msg, red, c) = match id {
@@ -821,7 +827,11 @@ pub fn title_bar<'a, M: Clone + 'a>(p: &Pal, d: &Describe, mark: ui::G, title: &
     let mut dragged = false;
     for i in &items {
         match i.as_str() {
-            "mark" => r = r.push(container(ui::glyph(mark, p.accent, 16.0, 2.0)).padding(Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 14.0 })),
+            "mark" => {
+                if let Some(mk) = mark.take() {
+                    r = r.push(container(mk).padding(Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 14.0 }));
+                }
+            }
             "title" => {
                 let mut tr = Row::new().align_y(iced::Center).push(ui::tm(title, 13.0, p.text).wrapping(iced::widget::text::Wrapping::None));
                 if d.open || d.studio_editing() {

@@ -1,0 +1,20 @@
+# hearth-oss-kit: what the open-source apps for the Hearth Store share (docs/mockups/open-source-apps, the owner's
+# approved boards of Nov 26, 2026): the boards' pieces (chips, tags, switches, choices side by side, fields, cards),
+# the window with its lettered mark and the credit line, checking for the open-source project an app is built on and
+# installing it the Hearth way (Flathub, for this person only), and the safe writers (red flag 9).
+# A library only: no program of its own. No version line: the owner picks every version number.
+[package]
+name = "hearth-oss-kit"
+edition = "2021"
+description = "The pieces Hearth's open-source apps share (Game Fixer, Proton Manager, Overlay, Bottles, 3D)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

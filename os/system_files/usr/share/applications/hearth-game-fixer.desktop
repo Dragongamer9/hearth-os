@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Game Fixer
+Comment=Any Windows game, with the community's fixes (built on Lutris)
+Exec=/usr/bin/hearth-game-fixer
+TryExec=/usr/bin/hearth-game-fixer
+Icon=hearth-game-fixer
+Categories=Game;
+Keywords=lutris;wine;proton;windows;games;install;script;fix;dxvk;
+StartupWMClass=hearth-game-fixer
