@@ -1,0 +1,318 @@
+::notice title=Desktop editor::unit tests pass: Ran 14 tests in 1.391s  OK 
++ pkill -f labwc/autostart
++ true
++ pkill -x labwc
++ pkill -f quickshell
++ sleep 2
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ '[' -S /tmp/xdg/bus ']'
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\n# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds\' copies of the menu entries, with the\n# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages\' own (same ids).\nif [ -d /usr/share/hearth/app-kinds/applications ]; then\n  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac\nfi\n# Apps for hardware this PC doesn\'t have (NVIDIA Settings without an Nvidia card) are hidden from every menu: NoDisplay\n# copies in this sign-in\'s runtime folder, worked out again at every sign-in (a new card shows them at once). Never\n# holds the session up: 5 seconds at most, and nothing changes when it fails.\nhw_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-hw-apps"\nif [ -x /usr/libexec/hearth-app-kinds ] && XDG_DATA_DIRS="$data_dirs" timeout 5 python3 /usr/libexec/hearth-app-kinds hardware --out "$hw_dir" >/dev/null 2>&1 && [ -d "$hw_dir/applications" ]; then\n  case ":$data_dirs:" in *":$hw_dir:"*) ;; *) data_dirs="$hw_dir:$data_dirs" ;; esac\nfi\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d hw_dir\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ '[' -d /usr/share/hearth/app-kinds/applications ']'
+++ hw_dir=/tmp/xdg/hearth-hw-apps
+++ '[' -x /usr/libexec/hearth-app-kinds ']'
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d hw_dir
++ SH=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell
++ rm -f '/tmp/xdg/wayland-*'
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-system labwc-config
++ CONF=/tmp/xdg/hearth-labwc
++ labwc -C /tmp/xdg/hearth-labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ B=/tmp/home/.config/nimbus/bar.json
+++ cat /tmp/home/.config/nimbus/bar.json
+++ md5sum
+++ true
++ before='d41d8cd98f00b204e9800998ecf8427e  -'
++ ipc deskedit open ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit open ''
++ tail -n1
+for more information.
++ sleep 5
+++ ipc deskedit shown
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit shown
+++ tail -n1
++ '[' true = true ']'
++ say 'Edit desktop opens'
++ echo '::notice title=Desktop editor::Edit desktop opens'
+::notice title=Desktop editor::Edit desktop opens
++ grim shots/desktop-editor/deskedit-1-open.png
+++ ipc deskedit hold widget:weather 900 520
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit hold widget:weather 900 520
+++ tail -n1
++ h='{"target":{"kind":"desk","x":736,"y":504},"note":"Drop: on the desktop"}'
++ sleep 1
++ grim shots/desktop-editor/deskedit-2-widget-held-over-the-desktop.png
++ case "$h" in
+++ echo '{"target":{"kind":"desk","x":736,"y":504},"note":"Drop: on the desktop"}'
+++ cut -c1-200
++ say 'a widget over the desktop lands there: {"target":{"kind":"desk","x":736,"y":504},"note":"Drop: on the desktop"}'
++ echo '::notice title=Desktop editor::a widget over the desktop lands there: {"target":{"kind":"desk","x":736,"y":504},"note":"Drop: on the desktop"}'
+::notice title=Desktop editor::a widget over the desktop lands there: {"target":{"kind":"desk","x":736,"y":504},"note":"Drop: on the desktop"}
++ ipc deskedit letGo
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit letGo
+for more information.
++ sleep 1
+++ ipc deskedit hold quickaccess 1500 16
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit hold quickaccess 1500 16
+++ tail -n1
++ h='{"target":{"kind":"main","zone":"end","index":5},"note":"Drop: top bar, after the printing"}'
++ sleep 1
++ grim shots/desktop-editor/deskedit-3-held-over-the-bar.png
++ case "$h" in
+++ echo '{"target":{"kind":"main","zone":"end","index":5},"note":"Drop: top bar, after the printing"}'
+++ cut -c1-200
++ say 'over the bar: {"target":{"kind":"main","zone":"end","index":5},"note":"Drop: top bar, after the printing"}'
++ echo '::notice title=Desktop editor::over the bar: {"target":{"kind":"main","zone":"end","index":5},"note":"Drop: top bar, after the printing"}'
+::notice title=Desktop editor::over the bar: {"target":{"kind":"main","zone":"end","index":5},"note":"Drop: top bar, after the printing"}
++ ipc deskedit letGo
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit letGo
++ tail -n1
+for more information.
++ sleep 1
+++ ipc deskedit draft
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit draft
+++ tail -n1
++ d='{"main":{"start":["menu","search","desktops","activity","window"],"centre":[],"end":["jobs","tray","background","privacy","printers","quickaccess","disks","discord","keyboard","layout","network","bluetooth","volume","battery","notifications"],"hidden":["overview","taskview","appname","appmenus","showdesktop","power"]},"panels":{},"widgets":{"nmwxu6dum":{"type":"weather","x":736,"y":504,"w":330,"h":230}},"own":{},"looks":{},"bar":{}}'
++ case "$d" in
++ say 'let go: it'\''s in the bar'
++ echo '::notice title=Desktop editor::let go: it'\''s in the bar'
+::notice title=Desktop editor::let go: it's in the bar
++ ipc deskedit addPanel ''
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit addPanel ''
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-4-panel-anywhere.png
+++ ipc deskedit draft
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit draft
+++ tail -n1
++ d='{"main":{"start":["menu","search","desktops","activity","window"],"centre":[],"end":["jobs","tray","background","privacy","printers","quickaccess","disks","discord","keyboard","layout","network","bluetooth","volume","battery","notifications"],"hidden":["overview","taskview","appname","appmenus","showdesktop","power"]},"panels":{"mwxu6gfd":{"screen":"","items":["spacer"],"size":44,"place":"free","orient":"across","fx":0.5,"fy":0.5,"length":400}},"widgets":{"nmwxu6dum":{"type":"weather","x":736,"y":504,"w":330,"h":230}},"own":{},"looks":{},"bar":{}}'
++ case "$d" in
++ say 'a panel anywhere (not on an edge)'
++ echo '::notice title=Desktop editor::a panel anywhere (not on an edge)'
+::notice title=Desktop editor::a panel anywhere (not on an edge)
+++ cat /tmp/home/.config/nimbus/bar.json
+++ md5sum
+++ true
++ '[' 'd41d8cd98f00b204e9800998ecf8427e  -' = 'd41d8cd98f00b204e9800998ecf8427e  -' ']'
++ say 'nothing written before Keep this'
++ echo '::notice title=Desktop editor::nothing written before Keep this'
+::notice title=Desktop editor::nothing written before Keep this
++ ipc deskedit keep
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit keep
++ tail -n1
+for more information.
++ sleep 4
++ grep -q '"place": *"free"' /tmp/home/.config/nimbus/bar.json
++ grep -q quickaccess /tmp/home/.config/nimbus/bar.json
+++ tr -d '\n '
+++ cut -c1-300
++ say 'Keep this wrote it: {"items":{"start":["menu","search","desktops","activity","window"],"centre":[],"end":["jobs","tray","background","privacy","printers","quickaccess","disks","discord","keyboard","layout","network","bluetooth","volume","battery","notifications"],"hidden":["overview","taskview","appname","appmenus","sh'
++ echo '::notice title=Desktop editor::Keep this wrote it: {"items":{"start":["menu","search","desktops","activity","window"],"centre":[],"end":["jobs","tray","background","privacy","printers","quickaccess","disks","discord","keyboard","layout","network","bluetooth","volume","battery","notifications"],"hidden":["overview","taskview","appname","appmenus","sh'
+::notice title=Desktop editor::Keep this wrote it: {"items":{"start":["menu","search","desktops","activity","window"],"centre":[],"end":["jobs","tray","background","privacy","printers","quickaccess","disks","discord","keyboard","layout","network","bluetooth","volume","battery","notifications"],"hidden":["overview","taskview","appname","appmenus","sh
++ ls '/tmp/home/.config/nimbus/bar.json.bak*'
++ say 'no .bak (bar.json was new)'
++ echo '::notice title=Desktop editor::no .bak (bar.json was new)'
+::notice title=Desktop editor::no .bak (bar.json was new)
++ grim shots/desktop-editor/deskedit-5-kept-the-real-desktop.png
++ ipc deskedit open ''
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit open ''
+for more information.
++ sleep 4
+++ ipc deskedit menu jobs
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit menu jobs
+++ tail -n1
++ r=true
++ sleep 1
++ grim shots/desktop-editor/deskedit-6-right-click-a-block.png
++ '[' true = true ']'
++ say 'right-click menu on a block (Copies and downloads)'
++ echo '::notice title=Desktop editor::right-click menu on a block (Copies and downloads)'
+::notice title=Desktop editor::right-click menu on a block (Copies and downloads)
++ ipc deskedit pickBlock jobs
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit pickBlock jobs
+true
++ sleep 1
+++ ipc deskedit look jobs $'{"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","edgeW":1,"icon":"sync","iconSize":16,"words":"Downloads \302\267 {count}","fontSize":14,"show":"both","hover":"lighter","pressed":"darker"}'
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit look jobs $'{"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","edgeW":1,"icon":"sync","iconSize":16,"words":"Downloads \302\267 {count}","fontSize":14,"show":"both","hover":"lighter","pressed":"darker"}'
+++ tail -n1
++ l=$'{"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","icon":"sync","iconSize":16,"words":"Downloads \302\267 {count}","fontSize":14,"hover":"lighter","pressed":"darker"}'
++ case "$l" in
+++ cut -c1-200
+++ echo $'{"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","icon":"sync","iconSize":16,"words":"Downloads \302\267 {count}","fontSize":14,"hover":"lighter","pressed":"darker"}'
++ say $'a look set in the side panel: {"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","icon":"sync","iconSize":16,"words":"Downloads \302\267 {count}","fontSize":14,"hover"'
++ echo $'::notice title=Desktop editor::a look set in the side panel: {"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","icon":"sync","iconSize":16,"words":"Downloads \302\267 {count}","fontSize":14,"hover"'
+::notice title=Desktop editor::a look set in the side panel: {"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","icon":"sync","iconSize":16,"words":"Downloads · {count}","fontSize":14,"hover"
++ ipc deskedit tab look
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit tab look
++ tail -n1
+for more information.
++ ipc deskedit menu jobs
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit menu jobs
++ tail -n1
+true
++ sleep 1
++ grim shots/desktop-editor/deskedit-7-side-panel-look.png
++ ipc deskedit closeMenu
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit closeMenu
+for more information.
++ for t in shows does place when motion
++ ipc deskedit tab shows
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit tab shows
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-8-tab-shows.png
++ for t in shows does place when motion
++ ipc deskedit tab does
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit tab does
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-8-tab-does.png
++ for t in shows does place when motion
++ ipc deskedit tab place
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit tab place
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-8-tab-place.png
++ for t in shows does place when motion
++ ipc deskedit tab when
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit tab when
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-8-tab-when.png
++ for t in shows does place when motion
++ ipc deskedit tab motion
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit tab motion
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-8-tab-motion.png
++ say 'the side panel'\''s tabs pictured: Look, Shows, Does, Place, When, Motion'
++ echo '::notice title=Desktop editor::the side panel'\''s tabs pictured: Look, Shows, Does, Place, When, Motion'
+::notice title=Desktop editor::the side panel's tabs pictured: Look, Shows, Does, Place, When, Motion
++ ipc deskedit pickBar main
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit pickBar main
++ tail -n1
+for more information.
++ sleep 1
++ grim shots/desktop-editor/deskedit-9-the-bar-picked.png
+++ ipc deskedit panels
+++ tr ' ' '\n'
+++ head -1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit panels
+++ tail -n1
++ pid=mwxu6gfd
++ '[' -n mwxu6gfd ']'
++ ipc deskedit pickBar mwxu6gfd
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit pickBar mwxu6gfd
+for more information.
++ sleep 1
+++ ipc deskedit barSet '{"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit barSet '{"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'
+++ tail -n1
++ b='{"screen":"","items":["spacer"],"size":44,"place":"free","orient":"across","fx":0.5,"fy":0.5,"length":400,"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'
++ sleep 1
++ grim shots/desktop-editor/deskedit-9b-a-panel-picked.png
++ case "$b" in
+++ echo '{"screen":"","items":["spacer"],"size":44,"place":"free","orient":"across","fx":0.5,"fy":0.5,"length":400,"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'
+++ cut -c1-200
++ say 'a panel'\''s own settings: {"screen":"","items":["spacer"],"size":44,"place":"free","orient":"across","fx":0.5,"fy":0.5,"length":400,"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'
++ echo '::notice title=Desktop editor::a panel'\''s own settings: {"screen":"","items":["spacer"],"size":44,"place":"free","orient":"across","fx":0.5,"fy":0.5,"length":400,"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'
+::notice title=Desktop editor::a panel's own settings: {"screen":"","items":["spacer"],"size":44,"place":"free","orient":"across","fx":0.5,"fy":0.5,"length":400,"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}
++ ipc deskedit look quickaccess $'{"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick \302\267 {time}","weight":"bold","mr":8,"ml":8,"pad":6}'
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit look quickaccess $'{"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick \302\267 {time}","weight":"bold","mr":8,"ml":8,"pad":6}'
++ ipc deskedit look notifications '{"fill":"#3b5ba5","corners":8,"words":"{count} new","show":"both","w":"fixed","wpx":110,"doMiddle":"panel","argMiddle":"quick"}'
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit look notifications '{"fill":"#3b5ba5","corners":8,"words":"{count} new","show":"both","w":"fixed","wpx":110,"doMiddle":"panel","argMiddle":"quick"}'
++ tail -n1
++ grep -q '"s:quickaccess"' /tmp/home/.config/nimbus/bar.json
++ say 'nothing written before Keep this (board 2)'
++ echo '::notice title=Desktop editor::nothing written before Keep this (board 2)'
+::notice title=Desktop editor::nothing written before Keep this (board 2)
++ ipc deskedit keep
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit keep
++ tail -n1
+for more information.
++ sleep 5
+++ ipc deskedit kept quickaccess
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call deskedit kept quickaccess
++ k=$'{"mr":8,"ml":8,"pad":6,"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick \302\267 {time}","weight":"bold"}'
++ case "$k" in
+++ echo $'{"mr":8,"ml":8,"pad":6,"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick \302\267 {time}","weight":"bold"}'
+++ cut -c1-200
++ say $'Keep this kept the looks (bar.json s:quickaccess): {"mr":8,"ml":8,"pad":6,"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick \302\267 {time}","weight":"bold"}'
++ echo $'::notice title=Desktop editor::Keep this kept the looks (bar.json s:quickaccess): {"mr":8,"ml":8,"pad":6,"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick \302\267 {time}","weight":"bold"}'
+::notice title=Desktop editor::Keep this kept the looks (bar.json s:quickaccess): {"mr":8,"ml":8,"pad":6,"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick · {time}","weight":"bold"}
++ grep -q '"s:jobs"' /tmp/home/.config/nimbus/bar.json
++ grep -q '"s:notifications"' /tmp/home/.config/nimbus/bar.json
++ say 'one key per block: s:jobs, s:notifications, s:quickaccess'
++ echo '::notice title=Desktop editor::one key per block: s:jobs, s:notifications, s:quickaccess'
+::notice title=Desktop editor::one key per block: s:jobs, s:notifications, s:quickaccess
++ grim shots/desktop-editor/deskedit-10-looks-kept-on-the-real-desktop.png
++ cp /tmp/xdg/nimbus-shell.log shots/desktop-editor/nimbus-shell.log
++ grep -q 'using the classic taskbar' /tmp/xdg/nimbus-shell.log
++ say 'the main bar came up with the looks'
++ echo '::notice title=Desktop editor::the main bar came up with the looks'
+::notice title=Desktop editor::the main bar came up with the looks
+++ grep -E '(DesktopEditor|desktop-edit|block-look|BlockLook|NestedPanel|PanelBlocks|DeskNow|OwnBarBlock|ExtraPanels|Islands|widget-tools)\.(qml|js)' /tmp/xdg/nimbus-shell.log
+++ grep -i -E 'error|warning|unavailable|not a type|cannot|undefined|loop'
+++ head -8
++ xbad=
++ true
++ '[' -z '' ']'
++ say 'no QML errors from the editor, the bars or the panels'
++ echo '::notice title=Desktop editor::no QML errors from the editor, the bars or the panels'
+::notice title=Desktop editor::no QML errors from the editor, the bars or the panels
++ pkill -x labwc
++ pkill -f quickshell

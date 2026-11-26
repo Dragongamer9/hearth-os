@@ -1,0 +1,126 @@
+{
+ "idle": {
+  "quickshell shell": {
+   "cpu": 3.03,
+   "mb": 421.4,
+   "n": 9
+  },
+  "labwc": {
+   "cpu": 0.97,
+   "mb": 122.2,
+   "n": 1
+  },
+  "hearth-notifyd": {
+   "cpu": 0.2,
+   "mb": 35.2,
+   "n": 1
+  },
+  "perf-measure.py": {
+   "cpu": 0.07,
+   "mb": 17.1,
+   "n": 1
+  },
+  "python3": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 28
+  },
+  "hearth-buttons": {
+   "cpu": 0.0,
+   "mb": 22.8,
+   "n": 1
+  },
+  "nimbus": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-disks": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-text": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-portal": {
+   "cpu": 0.0,
+   "mb": 77.1,
+   "n": 2
+  }
+ },
+ "Settings (cold)": {
+  "first": 0.43,
+  "ready": null,
+  "mbBefore": 421.4,
+  "mbAfter": 434.0
+ },
+ "Settings \u203a Display (cold)": {
+  "first": 0.17,
+  "ready": null,
+  "mbBefore": 427.0,
+  "mbAfter": 436.8
+ },
+ "Hearth Files (cold)": {
+  "first": 0.54,
+  "ready": null,
+  "mbBefore": 429.1,
+  "mbAfter": 424.5
+ },
+ "Task Manager (cold)": {
+  "first": 0.14,
+  "ready": null,
+  "mbBefore": 424.3,
+  "mbAfter": 449.8
+ },
+ "App menu (cold)": {
+  "first": 0.2,
+  "ready": null,
+  "mbBefore": 443.7,
+  "mbAfter": 453.7
+ },
+ "Quick Access (cold)": {
+  "first": 0.14,
+  "ready": null,
+  "mbBefore": 444.8,
+  "mbAfter": 400.5
+ },
+ "Settings (warm)": {
+  "first": 0.23,
+  "ready": null,
+  "mbBefore": 420.0,
+  "mbAfter": 431.0
+ },
+ "Settings \u203a Display (warm)": {
+  "first": 0.15,
+  "ready": null,
+  "mbBefore": 424.0,
+  "mbAfter": 434.0
+ },
+ "Hearth Files (warm)": {
+  "first": 0.32,
+  "ready": null,
+  "mbBefore": 427.0,
+  "mbAfter": 423.7
+ },
+ "Task Manager (warm)": {
+  "first": 0.14,
+  "ready": null,
+  "mbBefore": 423.7,
+  "mbAfter": 442.3
+ },
+ "App menu (warm)": {
+  "first": 0.2,
+  "ready": null,
+  "mbBefore": 431.0,
+  "mbAfter": 447.8
+ },
+ "Quick Access (warm)": {
+  "first": 0.14,
+  "ready": null,
+  "mbBefore": 439.2,
+  "mbAfter": 402.8
+ }
+}
