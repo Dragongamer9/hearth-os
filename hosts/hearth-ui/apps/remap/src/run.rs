@@ -24,7 +24,7 @@ pub fn now_write(v: &Value) {
     }
 }
 
-/// What's in front: the game Steam is running (its app id), the window in front's app (KWin, through kdotool), and
+/// What's in front: the game Steam is running (its app id), the window in front's app (Mantel's own word for it: `hearth-mantel-ipc call pad state`, its "front"), and
 /// whether this is the desktop.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Front {
@@ -46,16 +46,26 @@ pub fn front() -> Front {
         .and_then(|l| l.split('"').filter(|x| !x.trim().is_empty()).nth(1).map(str::to_string))
         .filter(|x| x != "0")
         .unwrap_or_default();
-    let app = std::process::Command::new("kdotool")
-        .args(["getactivewindow", "getwindowclassname"])
+    let app = std::process::Command::new("hearth-mantel-ipc")
+        .args(["call", "pad", "state"])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()
         .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_lowercase())
+        .map(|o| front_of(&String::from_utf8_lossy(&o.stdout)))
         .unwrap_or_default();
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").map(|d| !d.to_lowercase().contains("gamescope")).unwrap_or(false);
     Front { game, app, desktop }
+}
+
+/// The app in front from Mantel's pad state ({"front":"<app id>",...}), lower case; "" when Mantel isn't there.
+pub fn front_of(state: &str) -> String {
+    let key = "\"front\":\"";
+    state
+        .find(key)
+        .map(|i| &state[i + key.len()..])
+        .and_then(|r| r.find('"').map(|j| r[..j].to_lowercase()))
+        .unwrap_or_default()
 }
 
 /// Does a profile's "turns on when" fit what's in front? (Everywhere fits always; it's only used when nothing else does.)
