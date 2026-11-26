@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 35,
+  "serial": 36,
   "apps": [
     {
       "id": "command-center",
@@ -1230,6 +1230,27 @@
       },
       "group": "apps",
       "open": "hearth-proton-manager"
+    },
+    {
+      "id": "part-hearth-imagine-app",
+      "name": "Hearth Imagine",
+      "kind": "builtin",
+      "part": {
+        "id": "hearth-imagine-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-imagine-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-imagine-app-1.18.1/hearth-imagine-app-1.18.1.tar.gz",
+        "sha256": "2371211898ef701742b8b4df19f986e358cb1b5434d0e3dc3c3e7e16df8c0a18",
+        "size": 7458227,
+        "notes": [
+          "New: type what you want and your Nvidia PC makes the picture, with the node graph beside it",
+          "Built on ComfyUI (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-imagine-app"
     }
   ],
   "tests": [
