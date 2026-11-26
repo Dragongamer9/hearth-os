@@ -38,7 +38,8 @@ put() {    # put VERSION FILE: as the Store installs a copy
   rm -rf "$P"; mkdir -p "$P/$1/gamescope"
   cp -a "$2"/. "$P/$1/gamescope/"
   printf '{"id": "gamescope", "version": "%s", "os": "1.19", "path": "gamescope/gamescope"}\n' "$1" > "$P/part.json"
-  rm -f "$S"; chown -R t: /home/t/.local
+  # a new install starts with a clean slate, as hearth-part install does (this sign-in's failure mark goes)
+  rm -f "$S" /tmp/r/hearth-part-gamescope.failed; chown -R t: /home/t/.local
 }
 r=$(start none); echo "$r"
 grep -q 'INNER-UP-none' /tmp/inner.log && headless=1 || headless=0
@@ -47,10 +48,16 @@ grep -q 'INNER-UP-none' /tmp/inner.log && headless=1 || headless=0
 
 put 1.19.1 /out/gamescope
 r=$(start built); echo "$r"; ann notice "the CI-built copy: $r"
-[ "$(grep -c BUILTIN /tmp/calls.log)" = 1 ] || fail "the CI-built copy wasn't used: $r $(tail -5 /tmp/run-built.log)"
 if [ "$headless" = 1 ]; then
+  [ "$(grep -c BUILTIN /tmp/calls.log)" = 1 ] || fail "the CI-built copy wasn't used: $r $(tail -5 /tmp/run-built.log)"
   grep -q INNER-UP-built /tmp/inner.log || fail "the CI-built gamescope didn't run the app: $(tail -8 /tmp/run-built.log)"
   grep -q '"pending"' "$S" && fail "the CI-built copy wasn't marked good: $(cat $S)"
+else
+  # gamescope can't run here at all (no GPU), so the CI-built copy can only show it's tried, fails like the built-in
+  # one does here, and hands over to it at once, marked as not working: the same path a copy broken on a device takes.
+  grep -q 'gamescope version' /tmp/run-built.log || grep -q 'vulkan' /tmp/run-built.log || fail "the CI-built copy wasn't started: $(tail -5 /tmp/run-built.log)"
+  [ "$(grep -c BUILTIN /tmp/calls.log)" = 2 ] || fail "after the CI-built copy failed here, the built-in one wasn't started: $r"
+  grep -q '"fails": *[2-9]' "$S" || fail "the CI-built copy that failed here wasn't marked: $(cat $S 2>/dev/null)"
 fi
 
 mkdir -p /tmp/hang /tmp/quit
