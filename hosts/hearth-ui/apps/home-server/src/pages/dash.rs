@@ -24,8 +24,20 @@ pub const BLOCKS: PageDef = PageDef {
     blocks: &[
         bl("head", "Dashboard, its views and Fix everything", 0, 0, 9, 1),
         bl("kpis", "The PC: CPU, graphics card, memory, drives, temperatures", 0, 1, 9, 2),
-        bl("services", "Every service", 0, 3, 9, 5),
-        bl("small", "Game servers, game cache, remote play, Tailscale", 0, 8, 9, 1),
+        bl("services", "Services and their tabs", 0, 3, 9, 1),
+        bl("ollama", "Ollama", 0, 4, 3, 1),
+        bl("colibri", "Colibri", 3, 4, 3, 1),
+        bl("jellyfin", "Jellyfin", 6, 4, 3, 1),
+        bl("comfyui", "Imagine · ComfyUI", 0, 5, 3, 1),
+        bl("kokoro", "Kokoro voices", 3, 5, 3, 1),
+        bl("vaultwarden", "Passwords · Vaultwarden", 6, 5, 3, 1),
+        bl("nextcloud", "Cloud · Nextcloud", 0, 6, 3, 1),
+        bl("homeassistant", "Home · Home Assistant", 3, 6, 3, 1),
+        bl("shield", "Hearth Shield · AdGuard Home", 6, 6, 3, 1),
+        bl("games", "Game servers", 0, 7, 2, 1),
+        bl("cache", "Game cache", 2, 7, 2, 1),
+        bl("sunshine", "Remote play · Sunshine", 4, 7, 2, 1),
+        bl("tailscale", "Tailscale · Hearth Link", 6, 7, 3, 1),
         bl("network", "Network · 24 h", 0, 9, 3, 2),
         bl("power", "Power · 24 h", 3, 9, 3, 2),
         bl("tonight", "Tonight", 6, 9, 3, 2),
@@ -37,6 +49,9 @@ pub const BLOCKS: PageDef = PageDef {
         bl("alerts", "Alerts go to", 9, 10, 3, 2),
     ],
 };
+
+/// The services' ids (each card is its own block).
+const SVC_IDS: [&str; 13] = ["ollama", "colibri", "jellyfin", "comfyui", "kokoro", "vaultwarden", "nextcloud", "homeassistant", "shield", "games", "cache", "sunshine", "tailscale"];
 
 fn tags(a: &App) -> crate::Tags {
     let d = a.d("dash");
@@ -170,9 +185,21 @@ fn view(a: &App) -> E<'_> {
     let svcs = arr(d, "services");
     let shown: Vec<&Value> = svcs.iter().filter(|x| tab == "All" || s(x, "group") == tab).collect();
     let tabs = w::tabs(&p, ["All", "AI", "Media", "Home", "Games", "Network"].iter().map(|x| (x.to_string(), tab == *x, Some(set("dashTab", json!(x))))).collect());
-    let big: Vec<E<'_>> = shown.iter().filter(|x| !b(x, "small")).map(|x| service(&p, x)).collect();
-    let little: Vec<E<'_>> = shown.iter().filter(|x| b(x, "small")).map(|x| small(&p, x)).collect();
-    let services = column![row![cap(&p, format!("Services · {}", svcs.iter().filter(|x| b(x, "on")).count())), Space::new().width(Length::Fill), tabs].align_y(iced::Center), grid(big, 3, 10.0)].spacing(10.0);
+    // each service's card is a block of its own (its id from SVC_IDS: the blocks above)
+    let mut cards: Vec<(&'static str, E<'_>)> = Vec::new();
+    let mut big_ids: Vec<&'static str> = Vec::new();
+    let mut small_ids: Vec<&'static str> = Vec::new();
+    for x in &shown {
+        let Some(id) = SVC_IDS.iter().copied().find(|i| *i == s(x, "id")) else { continue };
+        if b(x, "small") {
+            small_ids.push(id);
+            cards.push((id, small(&p, x)));
+        } else {
+            big_ids.push(id);
+            cards.push((id, service(&p, x)));
+        }
+    }
+    let services = row![cap(&p, format!("Services · {}", svcs.iter().filter(|x| b(x, "on")).count())), Space::new().width(Length::Fill), tabs].align_y(iced::Center);
     let net = panel(&p, column![row![cap(&p, "Network · 24 h"), Space::new().width(Length::Fill), t(s(d, "network.line"), 12.0, p.muted)].align_y(iced::Center), container(draw::spark(nums(d, "network.spark"), w::blue(), true, Length::Fill, 46.0)).padding(pad(6.0, 0.0, 0.0, 0.0))]);
     let pw = panel(&p, column![row![cap(&p, "Power · 24 h"), Space::new().width(Length::Fill), t(s(d, "power.line"), 12.0, p.muted)].align_y(iced::Center), container(draw::bars(&p, nums(d, "power.bars"), Length::Fill, 46.0)).padding(pad(6.0, 0.0, 0.0, 0.0))]);
     let mut ton = Column::new().spacing(6.0).push(row![cap(&p, "Tonight"), Space::new().width(Length::Fill), t(s(d, "tonightFrom"), 12.0, p.muted)].align_y(iced::Center));
@@ -223,7 +250,6 @@ fn view(a: &App) -> E<'_> {
         ("head", head.into()),
         ("kpis", kpis.into()),
         ("services", services.into()),
-        ("small", grid(little, 4, 10.0)),
         ("network", net),
         ("power", pw),
         ("tonight", ton),
@@ -234,17 +260,22 @@ fn view(a: &App) -> E<'_> {
         ("temps", temps.into()),
         ("alerts", alerts.into()),
     ];
+    let mut items = items;
+    items.extend(cards);
     hearth_ui::arrange::parts(
         &a.describe,
         &p,
         "dash",
         items,
         move |ps| {
+            let big: Vec<E<'_>> = big_ids.iter().map(|id| ps.take(id)).collect();
+            let little: Vec<E<'_>> = small_ids.iter().map(|id| ps.take(id)).collect();
             let main = column![
                 ps.take("head"),
                 container(ps.take("kpis")).padding(pad(14.0, 0.0, 0.0, 0.0)),
-                container(ps.take("services")).padding(pad(16.0, 0.0, 0.0, 0.0)),
-                container(ps.take("small")).padding(pad(10.0, 0.0, 0.0, 0.0)),
+                container(ps.take("services")).padding(pad(16.0, 0.0, 10.0, 0.0)),
+                grid(big, 3, 10.0),
+                container(grid(little, 4, 10.0)).padding(pad(10.0, 0.0, 0.0, 0.0)),
                 container(row![container(ps.take("network")).width(Length::FillPortion(1)), container(ps.take("power")).width(Length::FillPortion(1)), container(ps.take("tonight")).width(Length::FillPortion(1))].spacing(10.0)).padding(pad(10.0, 0.0, 0.0, 0.0)),
                 container(ps.take("foot")).padding(pad(12.0, 0.0, 0.0, 0.0)),
                 crate::said(a),
