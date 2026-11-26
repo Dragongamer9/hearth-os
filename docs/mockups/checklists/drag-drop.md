@@ -23,7 +23,7 @@ nothing made here can stop the desktop or an app from starting.
 - [ ] The block follows the pointer while dragged (tilted, with a shadow)
 - [ ] A lit line where it will land in a bar, and a note saying where ("Drop: top bar, after the clock")
 - [ ] Snap guides that line things up, with a note ("Lined up with the clock")
-- [ ] Panels on any edge or floating anywhere, moved by dragging them
+- [ ] Panels anywhere on the screen, not locked to the four sides (the owner, Nov 26: "i want to be able to place pannes ect anywere i want, dont want them locked to just 4 sides"): dragged to any spot, any length and thickness, across or up and down; an edge is only a snap you can use
 - [ ] A panel's ends and sides dragged to size it (handles)
 - [ ] An empty edge shows "+" while editing; dragging to it makes a new panel there ("Drag here for a panel on the right")
 - [ ] Widgets free on the desktop at any place and size (corner handles)
