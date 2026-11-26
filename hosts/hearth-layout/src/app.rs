@@ -277,6 +277,16 @@ pub fn check_layout(a: &AppSchema, l: &Map<String, Value>) -> Result<Map<String,
             }
             continue;
         }
+        if k == "studio" {
+            // drag and drop (board 3): the app's parts placed anywhere, restyled, and the blocks dragged in
+            match crate::studio_model::check(v) {
+                Ok(s) => {
+                    out.insert(k.clone(), s);
+                }
+                Err(mut e) => errs.append(&mut e),
+            }
+            continue;
+        }
         if k == "zones" {
             match check_zones(a, v) {
                 Ok(z) => {
@@ -630,6 +640,16 @@ pub fn keep(a: &AppSchema, change: &Value) -> Result<Value, String> {
                 }
                 continue;
             }
+            if k == "studio" {
+                // the pages named replace those pages (an empty one: the app's own page again); "own" when named
+                let m = crate::studio_model::merge(l.get("studio"), &v);
+                if m["pages"].as_object().map(|p| p.is_empty()).unwrap_or(true) && m["own"].as_array().map(|o| o.is_empty()).unwrap_or(true) {
+                    l.remove("studio");
+                } else {
+                    l.insert(k, m);
+                }
+                continue;
+            }
             if k == "zones" {
                 // the zones named replace those zones; the others stay
                 let mut z = l.get("zones").and_then(Value::as_object).cloned().unwrap_or_default();
@@ -804,6 +824,30 @@ mod tests {
         assert!(get("task-manager")["layout"].get("blocks").is_none(), "an empty page: the app's own again");
         let chips = chips(&TASK_MANAGER, &check_layout(&TASK_MANAGER, &json!({"blocks": {"main": {"rail": {"hidden": true}, "page": {"x": 0, "w": 12}}}}).as_object().cloned().unwrap()).unwrap(), &[]);
         assert_eq!(chips.len(), 2, "{chips:?}");
+    }
+
+    #[test]
+    fn drag_and_drop_is_checked_and_kept_page_by_page() {
+        // board 3: a part sized, a block dragged into a bar, a pane free in the window; then a page put back
+        let page = json!({"parts": {"preview": {"style": {"width": "fixed", "w": 514}}, "sidebar": {"at": [0, 48, 216, 0], "from": "ssse"}},
+            "adds": [{"uid": "b1", "block": "act:sort-downloads", "title": "Sort my Downloads", "in": "toolbar", "after": "sort"},
+                     {"uid": "b2", "block": "pane:tree", "title": "Folder tree", "at": [300, 200, 200, 100], "from": "ssee"}]});
+        assert!(check_layout(&FILES, &json!({"studio": {"pages": {"window": page.clone()}}}).as_object().cloned().unwrap()).is_ok());
+        assert!(check_layout(&FILES, &json!({"studio": {"pages": {"window": {"adds": [{"uid": "b1", "block": "run:rm", "title": "x", "in": "bar"}]}}}}).as_object().cloned().unwrap()).is_err());
+        assert!(check_layout(&FILES, &json!({"studio": {"pages": {"window": {"parts": {"side": {"style": {"does": {"press": "rm -rf ~"}}}}}}}}).as_object().cloned().unwrap()).is_err());
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", d.path());
+        keep(&FILES, &json!({"layout": {"studio": {"pages": {"window": page, "bars": {"adds": [{"uid": "b3", "block": "own:spacer", "title": "Space", "in": "status"}]}}}}})).unwrap();
+        let g = get("files");
+        assert_eq!(g["layout"]["studio"]["pages"]["window"]["adds"][0]["after"], "sort");
+        keep(&FILES, &json!({"layout": {"studio": {"pages": {"bars": {}}}}})).unwrap();
+        let g = get("files");
+        assert!(g["layout"]["studio"]["pages"].get("bars").is_none(), "an empty page: the app's own again");
+        assert!(g["layout"]["studio"]["pages"].get("window").is_some(), "a page not named stays");
+        undo("files").unwrap();
+        assert!(get("files")["layout"]["studio"]["pages"].get("bars").is_some(), "Undo has it back");
+        keep(&FILES, &json!({"layout": {"studio": {"pages": {"bars": {}, "window": {}}}}})).unwrap();
+        assert!(get("files")["layout"].get("studio").is_none(), "nothing left: the whole app its own again");
     }
 
     #[test]

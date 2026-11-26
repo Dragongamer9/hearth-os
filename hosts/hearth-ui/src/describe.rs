@@ -48,8 +48,10 @@ pub enum DMsg {
     ArrUndo,
     ArrReset,
     ArrKeep,
-    /// Edit layout, in place (arrange.rs: right-click a block, drag it, its edges, saved as you go)
+    /// Edit layout, in place (arrange.rs: right-click a block, its menu)
     Edit(crate::arrange::EMsg),
+    /// drag and drop (studio.rs, drag-drop board 3): editing the whole window, nothing kept until Keep this
+    Studio(crate::studio::SMsg),
 }
 
 fn pos(a: &Arrange, id: &str) -> Option<usize> {
@@ -85,6 +87,16 @@ pub struct Describe {
     pub arr: Option<Arrange>,
     /// Edit layout's own (arrange.rs: the right-click menu, the block under the pointer, what was saved)
     pub ed: crate::arrange::EditState,
+    /// drag and drop (studio.rs): the app's own blocks window (its buttons, panes, info, menus), the editing under way
+    /// (None: not editing), where the window's parts were drawn while it's edited, the app's values for its info
+    /// blocks, what's kept of it (`layout.studio`, read once each time it's kept), and the panes put away by a part's
+    /// Does › Show a panel (not a setting: back the next time the app starts)
+    pub kit: Option<&'static crate::studio::Kit>,
+    pub st: Option<crate::studio::Studio>,
+    pub geo: std::cell::RefCell<crate::studio::Geo>,
+    pub values: std::cell::RefCell<Vec<(&'static str, String)>>,
+    pub studio_kept: crate::studio_model::Draft,
+    pub panes_closed: std::cell::RefCell<Vec<String>>,
     closing: bool,
     /// the ask being waited for: its number, when it started, how long so far, and who's answering it
     /// (hearth-layout's HEARTH_DESCRIBE_STATUS file: {"engine", "model", "from", "words", "slow"})
@@ -139,7 +151,46 @@ impl Describe {
     pub fn new(app: &'static str, name: &'static str) -> Describe {
         // HEARTH_DESCRIBE_OPEN=<app> opens the box at start (the CI pictures).
         let open = std::env::var("HEARTH_DESCRIBE_OPEN").map(|v| v == app).unwrap_or(false);
-        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app), pages: &[], laid: Vec::new(), arr: None, ed: Default::default(), closing: false, ask: 0, started: None, secs: 0, wait: Value::Null }
+        let kept = read_kept(app);
+        let studio_kept = crate::studio_model::Draft::read(kept.get("layout").unwrap_or(&Value::Null));
+        Describe {
+            app,
+            name,
+            open,
+            text: String::new(),
+            busy: false,
+            result: None,
+            error: String::new(),
+            said: String::new(),
+            kept,
+            pages: &[],
+            laid: Vec::new(),
+            arr: None,
+            ed: Default::default(),
+            kit: None,
+            st: None,
+            geo: Default::default(),
+            values: Default::default(),
+            studio_kept,
+            panes_closed: Default::default(),
+            closing: false,
+            ask: 0,
+            started: None,
+            secs: 0,
+            wait: Value::Null,
+        }
+    }
+
+    /// The app's own blocks window (drag and drop, board 3): its buttons, panes, info and menus.
+    pub fn with_kit(mut self, kit: &'static crate::studio::Kit) -> Describe {
+        self.kit = Some(kit);
+        self
+    }
+
+    /// What's kept read again (after Keep this, Undo, Back to the original).
+    pub(crate) fn reload_kept(&mut self) {
+        self.kept = read_kept(self.app);
+        self.studio_kept = crate::studio_model::Draft::read(self.kept.get("layout").unwrap_or(&Value::Null));
     }
 
     /// The app's pages made of blocks (every Hearth app names its own). HEARTH_ARRANGE_OPEN=<app>[:<page>] opens Arrange
@@ -310,6 +361,16 @@ impl Describe {
     /// One of the app's zones (its bars' pieces, in order): what's being tried, else what's kept, else None (the app's
     /// own). A piece the zones don't name anywhere stays in its own zone.
     pub fn zone(&self, zone: &str) -> Option<Vec<String>> {
+        // being edited or tried (Menus…): the draft's menus and what's hidden from them
+        if let Some(st) = &self.st {
+            if let Some(m) = zone.strip_prefix("menu:") {
+                if let Some(v) = st.s.draft.menu(m) {
+                    return Some(v.clone());
+                }
+            } else if zone == "hidden" && st.s.draft.hidden_items != st.s.kept.hidden_items {
+                return Some(st.s.draft.hidden_items.clone());
+            }
+        }
         let get = |v: &Value| v.pointer(&format!("/layout/zones/{zone}")).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>());
         self.trying().and_then(get).or_else(|| get(&self.kept))
     }
@@ -382,11 +443,35 @@ impl Describe {
     }
 
     fn update_inner(&mut self, m: DMsg) -> Task<DMsg> {
+        use crate::studio::{Sel, SMsg};
         match m {
             DMsg::Edit(e) => return self.edit(e),
-            // Edit layout in place (arrange.rs): every way into it starts the same
-            DMsg::Arrange(Some(p)) => return self.edit(crate::arrange::EMsg::StartAt(p, None)),
-            DMsg::Arrange(_) | DMsg::Grab(..) | DMsg::Cell(..) | DMsg::Drop | DMsg::Pick(_) | DMsg::Hide(_) | DMsg::Show(_) | DMsg::Look(_) | DMsg::ArrUndo | DMsg::ArrReset | DMsg::ArrKeep => {
+            DMsg::Studio(s) => return self.studio(s),
+            // every way into Edit layout starts drag and drop (board 3) on that page
+            DMsg::Arrange(Some(p)) => return self.studio(SMsg::Start(Some(p), None)),
+            DMsg::Arrange(None) => return self.studio(SMsg::Cancel),
+            DMsg::Pick(id) => {
+                let page = self.st.as_ref().map(|s| s.focus).or(self.arr.as_ref().map(|a| a.page));
+                if let (Some(page), Some(st)) = (page, self.st.as_mut()) {
+                    if let Some(b) = self.pages.iter().find(|p| p.id == page).and_then(|p| p.blocks.iter().find(|b| b.id == id)) {
+                        st.pick = Some(Sel::Part(page, b.id));
+                    }
+                }
+                return Task::none();
+            }
+            DMsg::Hide(id) | DMsg::Show(id) => {
+                let hide = matches!(m, DMsg::Hide(_));
+                if let Some(page) = self.st.as_ref().map(|s| s.focus) {
+                    if let Some(st) = self.st.as_mut() {
+                        st.s.change(|d| d.page_mut(page).part_mut(id).hidden = hide);
+                    }
+                }
+                return Task::none();
+            }
+            DMsg::ArrUndo => return self.studio(SMsg::Undo),
+            DMsg::ArrKeep => return self.studio(SMsg::Keep),
+            DMsg::ArrReset => return self.studio(SMsg::StartFrom("hearth")),
+            DMsg::Grab(..) | DMsg::Cell(..) | DMsg::Drop | DMsg::Look(_) => {
                 return self.arrange(m);
             }
             DMsg::Open => {
@@ -464,7 +549,7 @@ impl Describe {
             DMsg::Kept(o) => {
                 let closing = std::mem::take(&mut self.closing);
                 if o.ok {
-                    self.kept = read_kept(self.app);
+                    self.reload_kept();
                     self.result = None;
                     self.text.clear();
                     self.error.clear();
@@ -739,7 +824,7 @@ pub fn title_bar<'a, M: Clone + 'a>(p: &Pal, d: &Describe, mark: ui::G, title: &
             "mark" => r = r.push(container(ui::glyph(mark, p.accent, 16.0, 2.0)).padding(Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 14.0 })),
             "title" => {
                 let mut tr = Row::new().align_y(iced::Center).push(ui::tm(title, 13.0, p.text).wrapping(iced::widget::text::Wrapping::None));
-                if d.open {
+                if d.open || d.studio_editing() {
                     tr = tr.push(container(editing::<M>(&p)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 10.0 }));
                 }
                 r = r.push(mouse_area(container(tr).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 4.0 }).center_y(Length::Fixed(40.0))).on_press(m.drag.clone()).on_right_press(open.clone()));
