@@ -22,18 +22,18 @@ Board: Hearth Overlay (MangoHud + GOverlay, MIT/GPL-3): the overlay over a game 
 
 ## Where and Look
 - [x] WHERE: the 3 × 3 places and its name (Top left) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "const PLACES: [(&str, &str); 9]"
-- [ ] "Drag it in the game to place it anywhere" (MangoHud can't be dragged in a game; the words are shown, the dragging needs a MangoHud change)
+- [x] "Drag it in the game to place it anywhere": pressing the words opens Hearth's own see-through window over the game with the overlay's ghost; dragging it (or the arrows) writes MangoHud's position and offsets live, Enter keeps, Esc puts back (CI picture oss-a-03-overlay-place, a real drag; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/place.rs: "pub fn placed(text: &str, at: Point) -> String"
 - [x] LOOK: Size 14 px, See-through 62 % (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "format!(\"{} %\", a.see.round())"
 - [x] Layout: Rows / One line (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "(\"One line\".into(), one, Msg::OneLine(true))"
 - [x] Colours (the four rows' colours) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "const COLOUR_KEYS"
 - [x] Warn when hot: GPU 83 °C (the field) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "format!(\"GPU {warn} °C\")"
-- [ ] Warn when hot doing something in the game (MangoHud has no temperature warning: the number is kept, nothing in the game warns yet)
+- [x] Warn when hot doing something in the game: Hearth watches the graphics card itself (hearth-overlay-hot user service, on only once a temperature is picked) and MangoHud shows its warning line in the game (its exec= line); a notification too (CI picture oss-a-03-overlay-hot; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/hot.rs: "pub fn watch() -> i32"
 
 ## Frame rate
 - [x] Limit: Off / 30 / 40 / 60 / 120 / 144 / Own… (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "const LIMITS: [u32; 6]"
 - [x] Smoother frame pacing (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "\"Smoother frame pacing\""
 - [x] Show and hide: Shift + F12 (MangoHud's toggle_hud) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "\"toggle_hud\""
-- [ ] or Controller: ≡ + R3 (shown; the controller combination needs Hearth's controller host to send MangoHud's key, not done)
+- [x] or Controller: ≡ + R3: Hearth's controller helper presses MangoHud's own show-and-hide keys, over a fullscreen game too (test_hearth_pad OverlayChord; needs testing on a device) — hosts/linux/desktop/shell/hearth-pad: "def overlay_chord(self, now):"
 - [x] Save the numbers to a file: ~/Hearth/Benchmarks (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "\"Save the numbers to a file\""
 
 ## In Game Mode and the buttons
@@ -54,18 +54,18 @@ Board: Hearth Overlay (MangoHud + GOverlay, MIT/GPL-3): the overlay over a game 
 
 ## Where and Look
 - [x] WHERE: the 3 × 3 places and its name (Top left) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "const PLACES: [(&str, &str); 9]"
-- [ ] "Drag it in the game to place it anywhere" (MangoHud can't be dragged in a game; the words are shown, the dragging needs a MangoHud change)
+- [x] "Drag it in the game to place it anywhere": pressing the words opens Hearth's own see-through window over the game with the overlay's ghost; dragging it (or the arrows) writes MangoHud's position and offsets live, Enter keeps, Esc puts back (CI picture oss-a-03-overlay-place, a real drag; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/place.rs: "pub fn placed(text: &str, at: Point) -> String"
 - [x] LOOK: Size 14 px, See-through 62 % (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "format!(\"{} %\", a.see.round())"
 - [x] Layout: Rows / One line (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "(\"One line\".into(), one, Msg::OneLine(true))"
 - [x] Colours (the four rows' colours) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "const COLOUR_KEYS"
 - [x] Warn when hot: GPU 83 °C (the field) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "format!(\"GPU {warn} °C\")"
-- [ ] Warn when hot doing something in the game (MangoHud has no temperature warning: the number is kept, nothing in the game warns yet)
+- [x] Warn when hot doing something in the game: Hearth watches the graphics card itself (hearth-overlay-hot user service, on only once a temperature is picked) and MangoHud shows its warning line in the game (its exec= line); a notification too (CI picture oss-a-03-overlay-hot; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/hot.rs: "pub fn watch() -> i32"
 
 ## Frame rate
 - [x] Limit: Off / 30 / 40 / 60 / 120 / 144 / Own… (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "const LIMITS: [u32; 6]"
 - [x] Smoother frame pacing (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "\"Smoother frame pacing\""
 - [x] Show and hide: Shift + F12 (MangoHud's toggle_hud) (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "\"toggle_hud\""
-- [ ] or Controller: ≡ + R3 (shown; the controller combination needs Hearth's controller host to send MangoHud's key, not done)
+- [x] or Controller: ≡ + R3: Hearth's controller helper presses MangoHud's own show-and-hide keys, over a fullscreen game too (test_hearth_pad OverlayChord; needs testing on a device) — hosts/linux/desktop/shell/hearth-pad: "def overlay_chord(self, now):"
 - [x] Save the numbers to a file: ~/Hearth/Benchmarks (CI picture oss-a-03-overlay; needs testing on a device) — hosts/hearth-ui/apps/overlay/src/main.rs: "\"Save the numbers to a file\""
 
 ## In Game Mode and the buttons

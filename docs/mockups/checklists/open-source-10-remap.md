@@ -32,7 +32,7 @@ Board: Hearth Remap (Input Remapper, GPL-3): any key, mouse or controller button
 - [x] YOUR MACROS · 5 with where each is used (X · BFME II, Y · BFME II, Mouse 5 · Files, View · everywhere, Keyboard F9) (CI pictures remap-1…5; needs testing on a device) — hosts/hearth-ui/apps/remap/src/main.rs: "Your macros · {}"
 - [x] ＋ New macro (CI pictures remap-1…5; needs testing on a device) — hosts/hearth-ui/apps/remap/src/main.rs: "＋ New macro"
 - [x] Steps can be: press, hold, let go, type words, click, move the pointer, scroll, wait (CI pictures remap-1…5; needs testing on a device) — hosts/hearth-ui/apps/remap/src/main.rs: "Steps can be: press, hold, let go, type words, click, move the pointer, scroll, wait"
-- [ ] Steps can be: run a command (Input Remapper's macros can't run a program, and a Hearth helper reading the keyboard would need root: not built)
+- [x] Steps can be: run a command: Input Remapper presses Super+Ctrl+Alt+F13…F24 and labwc runs that step's command as you through Hearth Remap (never root) (CI picture remap-6-run-step, and --run-step ran it; needs testing on a device) — hosts/hearth-ui/apps/remap/src/run.rs: "pub fn run_step(slot: u8) -> i32"
 - [x] Try it (CI pictures remap-1…5; needs testing on a device) — hosts/hearth-ui/apps/remap/src/main.rs: "\"Try it\""
 - [x] All changes · 8 in this profile (CI pictures remap-1…5; needs testing on a device) — hosts/hearth-ui/apps/remap/src/main.rs: "{} in this profile"
 - [x] Each change: its key, →, what it does (Shift, Macro: Build farm, Left click, Right click, Arrow keys (camera), Mouse pointer, Ctrl + 1, F12 (screenshot)), Edit (CI pictures remap-1…5; needs testing on a device) — hosts/hearth-ui/apps/remap/src/ir.rs: "Some(\"screenshot\")"
