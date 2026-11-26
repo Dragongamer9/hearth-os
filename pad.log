@@ -1,0 +1,12 @@
+2026-11-26 10:39:26 no access to /dev/uinput: "/dev/uinput" does not exist or is not a character device file - verify that the uinput module is loaded
+2026-11-26 11:40:29 started (simulated controller in /tmp/padsim)
+2026-11-26 11:40:29 controller apps: 53 listed, 0 by .desktop files
+2026-11-26 11:40:29 keys: on (A is Enter, B Esc; RT / LT click; A clicks after the pointer moves) [Quick Access]
+2026-11-26 11:40:29 firehold couch: off
+2026-11-26 11:40:49 keys: off
+2026-11-26 11:40:49 controller: 'hearth-mods' in front reads the controller itself: desktop controls off (Guide: Hearth menu, Guide + R3: pointer) [Mods (stand-in)]
+2026-11-26 11:40:53 keys: on (A is Enter, B Esc; RT / LT click; A clicks after the pointer moves) [Quick Access]
+2026-11-26 11:40:59 last 30 s: 18 controller events, pointer moved 1491 px, 0 clicks, keys (Quick Access)
+2026-11-26 11:41:00 controller: pointer in 'hearth-mods' on (Guide + R3)
+2026-11-26 11:41:02 controller: pointer in 'hearth-mods' off: the app has the controller again
+2026-11-26 11:41:07 controller: 'the desktop' in front: desktop controls on

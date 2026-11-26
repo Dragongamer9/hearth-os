@@ -1,0 +1,126 @@
+{
+ "idle": {
+  "quickshell shell": {
+   "cpu": 1.53,
+   "mb": 412.4,
+   "n": 9
+  },
+  "labwc": {
+   "cpu": 0.43,
+   "mb": 115.8,
+   "n": 1
+  },
+  "hearth-notifyd": {
+   "cpu": 0.17,
+   "mb": 35.3,
+   "n": 1
+  },
+  "perf-measure.py": {
+   "cpu": 0.03,
+   "mb": 16.9,
+   "n": 1
+  },
+  "python3": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 27
+  },
+  "hearth-buttons": {
+   "cpu": 0.0,
+   "mb": 22.8,
+   "n": 1
+  },
+  "nimbus": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-disks": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-text": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-portal": {
+   "cpu": 0.0,
+   "mb": 77.0,
+   "n": 2
+  }
+ },
+ "Settings (cold)": {
+  "first": 0.09,
+  "ready": null,
+  "mbBefore": 412.4,
+  "mbAfter": 426.1
+ },
+ "Settings \u203a Display (cold)": {
+  "first": 0.08,
+  "ready": null,
+  "mbBefore": 419.1,
+  "mbAfter": 430.3
+ },
+ "Hearth Files (cold)": {
+  "first": 0.19,
+  "ready": null,
+  "mbBefore": 423.2,
+  "mbAfter": 417.7
+ },
+ "Task Manager (cold)": {
+  "first": 0.08,
+  "ready": null,
+  "mbBefore": 417.7,
+  "mbAfter": 444.4
+ },
+ "App menu (cold)": {
+  "first": 0.1,
+  "ready": null,
+  "mbBefore": 435.4,
+  "mbAfter": 451.9
+ },
+ "Quick Access (cold)": {
+  "first": 0.08,
+  "ready": null,
+  "mbBefore": 443.1,
+  "mbAfter": 406.7
+ },
+ "Settings (warm)": {
+  "first": 0.1,
+  "ready": null,
+  "mbBefore": 425.7,
+  "mbAfter": 437.9
+ },
+ "Settings \u203a Display (warm)": {
+  "first": 0.08,
+  "ready": null,
+  "mbBefore": 431.1,
+  "mbAfter": 442.1
+ },
+ "Hearth Files (warm)": {
+  "first": 0.16,
+  "ready": null,
+  "mbBefore": 435.4,
+  "mbAfter": 421.0
+ },
+ "Task Manager (warm)": {
+  "first": 0.08,
+  "ready": null,
+  "mbBefore": 421.0,
+  "mbAfter": 447.7
+ },
+ "App menu (warm)": {
+  "first": 0.11,
+  "ready": null,
+  "mbBefore": 441.8,
+  "mbAfter": 454.2
+ },
+ "Quick Access (warm)": {
+  "first": 0.08,
+  "ready": null,
+  "mbBefore": 445.7,
+  "mbAfter": 409.1
+ }
+}

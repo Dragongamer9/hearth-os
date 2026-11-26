@@ -1,0 +1,49 @@
+test_block_ids_and_grid_check (test_app_blocks.AppsHaveBlocks.test_block_ids_and_grid_check) ... ok
+test_every_app_window_has_blocks_with_its_parts (test_app_blocks.AppsHaveBlocks.test_every_app_window_has_blocks_with_its_parts) ... ok
+test_the_app_ids_are_hearth_layouts (test_app_blocks.AppsHaveBlocks.test_the_app_ids_are_hearth_layouts) ... /__w/hearth-os/hearth-os/hosts/linux/test/test_app_blocks.py:58: ResourceWarning: unclosed file <_io.TextIOWrapper name='/__w/hearth-os/hearth-os/hosts/hearth-layout/src/app.rs' mode='r' encoding='utf-8'>
+  rs = open(APP_RS, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_a_part_with_nothing_to_show_gives_its_place (test_app_blocks.Rules.test_a_part_with_nothing_to_show_gives_its_place) ... ok
+test_a_place_already_covered_isnt_given_again (test_app_blocks.Rules.test_a_place_already_covered_isnt_given_again) ... ok
+test_catalog_is_what_hearth_layout_checks (test_app_blocks.Rules.test_catalog_is_what_hearth_layout_checks) ... ok
+test_edit_layout_keeps_only_what_changed (test_app_blocks.Rules.test_edit_layout_keeps_only_what_changed) ... ok
+test_hidden_only_is_natural_and_places_are_the_grid (test_app_blocks.Rules.test_hidden_only_is_natural_and_places_are_the_grid) ... ok
+test_inside_and_beside_give_way (test_app_blocks.Rules.test_inside_and_beside_give_way) ... ok
+test_kept_reads_back_the_same (test_app_blocks.Rules.test_kept_reads_back_the_same) ... ok
+test_menus_in_order_and_left_out (test_app_blocks.Rules.test_menus_in_order_and_left_out) ... ok
+test_nothing_kept_is_the_apps_own (test_app_blocks.Rules.test_nothing_kept_is_the_apps_own) ... ok
+test_sizing_pulls_the_neighbour_and_moving_swaps (test_app_blocks.Rules.test_sizing_pulls_the_neighbour_and_moving_swaps) ... ok
+test_what_doesnt_check_is_the_original (test_app_blocks.Rules.test_what_doesnt_check_is_the_original) ... ok
+test_kept_only_through_hearth_layout (test_app_blocks.SettingsRedFlag.test_kept_only_through_hearth_layout) ... ok
+test_nothing_customised_moves_nothing (test_app_blocks.SettingsRedFlag.test_nothing_customised_moves_nothing) ... ok
+test_nothing_runs_at_rest (test_app_blocks.SettingsRedFlag.test_nothing_runs_at_rest) ... ok
+test_always_findable_edit_layout (test_app_blocks.WaysIn.test_always_findable_edit_layout) ... ok
+test_describe_it_opens_for_an_app (test_app_blocks.WaysIn.test_describe_it_opens_for_an_app) ... ok
+test_files_view_menu_has_layout_and_describe_it (test_app_blocks.WaysIn.test_files_view_menu_has_layout_and_describe_it) ... ok
+test_part_menu_and_menu_items (test_app_blocks.WaysIn.test_part_menu_and_menu_items) ... ok
+test_settings_pages_groups_are_blocks (test_app_blocks.WaysIn.test_settings_pages_groups_are_blocks) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.693s
+
+OK
+test_button_on_the_command_bar_only_in_downloads_accent_when_loose (test_files_sort_downloads.In_Mantels_Files.test_button_on_the_command_bar_only_in_downloads_accent_when_loose) ... ok
+test_folders_in_their_colours (test_files_sort_downloads.In_Mantels_Files.test_folders_in_their_colours) ... ok
+test_status_bar (test_files_sort_downloads.In_Mantels_Files.test_status_bar) ... ok
+test_the_note_and_undo (test_files_sort_downloads.In_Mantels_Files.test_the_note_and_undo) ... ok
+test_the_sheet (test_files_sort_downloads.In_Mantels_Files.test_the_sheet) ... ok
+test_a_copy_of_another_size_is_not_old (test_files_sort_downloads.Rules.test_a_copy_of_another_size_is_not_old) ... ok
+test_copies_are_found (test_files_sort_downloads.Rules.test_copies_are_found) ... ok
+test_hidden_and_the_five_folders_stay (test_files_sort_downloads.Rules.test_hidden_and_the_five_folders_stay) ... ok
+test_places_match_the_rust_files (test_files_sort_downloads.Rules.test_places_match_the_rust_files) ... ok
+test_sorts_only_moves_and_undo_puts_back (test_files_sort_downloads.Rules.test_sorts_only_moves_and_undo_puts_back) ... ok
+test_a_plan_outside_the_five_folders_moves_nothing (test_files_sort_downloads.Through_hearth_files.test_a_plan_outside_the_five_folders_moves_nothing) ... ok
+test_state_plan_apply_undo_redo (test_files_sort_downloads.Through_hearth_files.test_state_plan_apply_undo_redo) ... ok
+test_the_ai_places_unknown_names_only_and_only_where_it_may (test_files_sort_downloads.Through_hearth_files.test_the_ai_places_unknown_names_only_and_only_where_it_may) ... ok
+test_xdg_download_dir_is_where (test_files_sort_downloads.Through_hearth_files.test_xdg_download_dir_is_where) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.959s
+
+OK

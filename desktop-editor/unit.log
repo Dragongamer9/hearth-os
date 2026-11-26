@@ -1,0 +1,81 @@
+test_board_2_is_all_there (test_desktop_edit.Editor.test_board_2_is_all_there) ... ok
+test_every_block_on_the_real_desktop_is_drawn_in_its_look (test_desktop_edit.Editor.test_every_block_on_the_real_desktop_is_drawn_in_its_look) ... ok
+test_it_is_loaded_on_its_own_so_a_problem_only_loses_the_editor (test_desktop_edit.Editor.test_it_is_loaded_on_its_own_so_a_problem_only_loses_the_editor) ... ok
+test_it_writes_only_through_the_safe_writers (test_desktop_edit.Editor.test_it_writes_only_through_the_safe_writers) ... ok
+test_the_board_is_all_there (test_desktop_edit.Editor.test_the_board_is_all_there) ... ok
+test_a_copy_is_drawn_as_its_block (test_desktop_edit.OneBlockPicked.test_a_copy_is_drawn_as_its_block) ... ok
+test_a_file_that_cant_be_read_is_never_saved_over (test_desktop_edit.OneBlockPicked.test_a_file_that_cant_be_read_is_never_saved_over) ... ok
+test_a_look_has_its_defaults_and_a_bad_record_is_the_defaults (test_desktop_edit.OneBlockPicked.test_a_look_has_its_defaults_and_a_bad_record_is_the_defaults) ... ok
+test_apply_to_every_bar_item (test_desktop_edit.OneBlockPicked.test_apply_to_every_bar_item) ... ok
+test_copy_and_paste_a_look_take_only_the_look (test_desktop_edit.OneBlockPicked.test_copy_and_paste_a_look_take_only_the_look) ... ok
+test_duplicate_move_to_and_take_it_out (test_desktop_edit.OneBlockPicked.test_duplicate_move_to_and_take_it_out) ... ok
+test_its_words_values_and_when_it_shows (test_desktop_edit.OneBlockPicked.test_its_words_values_and_when_it_shows) ... ok
+test_keep_this_writes_each_look_under_its_own_key_and_the_bars_settings (test_desktop_edit.OneBlockPicked.test_keep_this_writes_each_look_under_its_own_key_and_the_bars_settings) ... ok
+test_merging_keeps_only_what_differs (test_desktop_edit.OneBlockPicked.test_merging_keeps_only_what_differs) ... ok
+test_more_than_one_panel_on_an_edge_and_panels_inside (test_desktop_edit.OneBlockPicked.test_more_than_one_panel_on_an_edge_and_panels_inside) ... ok
+test_the_bars_own_settings (test_desktop_edit.OneBlockPicked.test_the_bars_own_settings) ... ok
+test_what_it_does (test_desktop_edit.OneBlockPicked.test_what_it_does) ... ok
+test_a_block_goes_into_the_main_bar_where_it_is_dropped (test_desktop_edit.Rules.test_a_block_goes_into_the_main_bar_where_it_is_dropped) ... ok
+test_a_block_moves_from_a_panel_to_the_main_bar_with_its_bar_name (test_desktop_edit.Rules.test_a_block_moves_from_a_panel_to_the_main_bar_with_its_bar_name) ... ok
+test_a_widget_moves_from_the_desktop_into_a_panel_and_back (test_desktop_edit.Rules.test_a_widget_moves_from_the_desktop_into_a_panel_and_back) ... ok
+test_keep_this_writes_only_what_changed (test_desktop_edit.Rules.test_keep_this_writes_only_what_changed) ... ok
+test_moving_along_the_same_bar_keeps_the_place (test_desktop_edit.Rules.test_moving_along_the_same_bar_keeps_the_place) ... ok
+test_panels_go_anywhere_and_an_edge_is_only_a_snap (test_desktop_edit.Rules.test_panels_go_anywhere_and_an_edge_is_only_a_snap) ... ok
+test_snapping_to_the_grid_and_lining_up (test_desktop_edit.Rules.test_snapping_to_the_grid_and_lining_up) ... ok
+test_the_blocks_window_lists_every_kind_and_finds_by_name (test_desktop_edit.Rules.test_the_blocks_window_lists_every_kind_and_finds_by_name) ... ok
+test_what_a_place_cant_hold_is_refused_with_a_reason (test_desktop_edit.Rules.test_what_a_place_cant_hold_is_refused_with_a_reason) ... ok
+test_your_own_block_goes_anywhere_a_bar_or_panel_is (test_desktop_edit.Rules.test_your_own_block_goes_anywhere_a_bar_or_panel_is) ... ok
+
+----------------------------------------------------------------------
+Ran 27 tests in 1.451s
+
+OK
+test_block_ids_and_grid_check (test_app_blocks.AppsHaveBlocks.test_block_ids_and_grid_check) ... ok
+test_every_app_window_has_blocks_with_its_parts (test_app_blocks.AppsHaveBlocks.test_every_app_window_has_blocks_with_its_parts) ... ok
+test_the_app_ids_are_hearth_layouts (test_app_blocks.AppsHaveBlocks.test_the_app_ids_are_hearth_layouts) ... /__w/hearth-os/hearth-os/hosts/linux/test/test_app_blocks.py:58: ResourceWarning: unclosed file <_io.TextIOWrapper name='/__w/hearth-os/hearth-os/hosts/hearth-layout/src/app.rs' mode='r' encoding='utf-8'>
+  rs = open(APP_RS, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_a_part_with_nothing_to_show_gives_its_place (test_app_blocks.Rules.test_a_part_with_nothing_to_show_gives_its_place) ... ok
+test_a_place_already_covered_isnt_given_again (test_app_blocks.Rules.test_a_place_already_covered_isnt_given_again) ... ok
+test_catalog_is_what_hearth_layout_checks (test_app_blocks.Rules.test_catalog_is_what_hearth_layout_checks) ... ok
+test_edit_layout_keeps_only_what_changed (test_app_blocks.Rules.test_edit_layout_keeps_only_what_changed) ... ok
+test_hidden_only_is_natural_and_places_are_the_grid (test_app_blocks.Rules.test_hidden_only_is_natural_and_places_are_the_grid) ... ok
+test_inside_and_beside_give_way (test_app_blocks.Rules.test_inside_and_beside_give_way) ... ok
+test_kept_reads_back_the_same (test_app_blocks.Rules.test_kept_reads_back_the_same) ... ok
+test_menus_in_order_and_left_out (test_app_blocks.Rules.test_menus_in_order_and_left_out) ... ok
+test_nothing_kept_is_the_apps_own (test_app_blocks.Rules.test_nothing_kept_is_the_apps_own) ... ok
+test_sizing_pulls_the_neighbour_and_moving_swaps (test_app_blocks.Rules.test_sizing_pulls_the_neighbour_and_moving_swaps) ... ok
+test_what_doesnt_check_is_the_original (test_app_blocks.Rules.test_what_doesnt_check_is_the_original) ... ok
+test_kept_only_through_hearth_layout (test_app_blocks.SettingsRedFlag.test_kept_only_through_hearth_layout) ... ok
+test_nothing_customised_moves_nothing (test_app_blocks.SettingsRedFlag.test_nothing_customised_moves_nothing) ... ok
+test_nothing_runs_at_rest (test_app_blocks.SettingsRedFlag.test_nothing_runs_at_rest) ... ok
+test_always_findable_edit_layout (test_app_blocks.WaysIn.test_always_findable_edit_layout) ... ok
+test_describe_it_opens_for_an_app (test_app_blocks.WaysIn.test_describe_it_opens_for_an_app) ... ok
+test_files_view_menu_has_layout_and_describe_it (test_app_blocks.WaysIn.test_files_view_menu_has_layout_and_describe_it) ... ok
+test_part_menu_and_menu_items (test_app_blocks.WaysIn.test_part_menu_and_menu_items) ... ok
+test_settings_pages_groups_are_blocks (test_app_blocks.WaysIn.test_settings_pages_groups_are_blocks) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.689s
+
+OK
+test_button_on_the_command_bar_only_in_downloads_accent_when_loose (test_files_sort_downloads.In_Mantels_Files.test_button_on_the_command_bar_only_in_downloads_accent_when_loose) ... ok
+test_folders_in_their_colours (test_files_sort_downloads.In_Mantels_Files.test_folders_in_their_colours) ... ok
+test_status_bar (test_files_sort_downloads.In_Mantels_Files.test_status_bar) ... ok
+test_the_note_and_undo (test_files_sort_downloads.In_Mantels_Files.test_the_note_and_undo) ... ok
+test_the_sheet (test_files_sort_downloads.In_Mantels_Files.test_the_sheet) ... ok
+test_a_copy_of_another_size_is_not_old (test_files_sort_downloads.Rules.test_a_copy_of_another_size_is_not_old) ... ok
+test_copies_are_found (test_files_sort_downloads.Rules.test_copies_are_found) ... ok
+test_hidden_and_the_five_folders_stay (test_files_sort_downloads.Rules.test_hidden_and_the_five_folders_stay) ... ok
+test_places_match_the_rust_files (test_files_sort_downloads.Rules.test_places_match_the_rust_files) ... ok
+test_sorts_only_moves_and_undo_puts_back (test_files_sort_downloads.Rules.test_sorts_only_moves_and_undo_puts_back) ... ok
+test_a_plan_outside_the_five_folders_moves_nothing (test_files_sort_downloads.Through_hearth_files.test_a_plan_outside_the_five_folders_moves_nothing) ... ok
+test_state_plan_apply_undo_redo (test_files_sort_downloads.Through_hearth_files.test_state_plan_apply_undo_redo) ... ok
+test_the_ai_places_unknown_names_only_and_only_where_it_may (test_files_sort_downloads.Through_hearth_files.test_the_ai_places_unknown_names_only_and_only_where_it_may) ... ok
+test_xdg_download_dir_is_where (test_files_sort_downloads.Through_hearth_files.test_xdg_download_dir_is_where) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.913s
+
+OK

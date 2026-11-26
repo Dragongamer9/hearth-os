@@ -1,0 +1,9 @@
+1401 quickshell -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell
+17344 [quickshell] <defunct>
+17352 [quickshell] <defunct>
+17399 [quickshell] <defunct>
+17854 [quickshell] <defunct>
+18234 [quickshell] <defunct>
+18264 [quickshell] <defunct>
+18281 [quickshell] <defunct>
+18321 [quickshell] <defunct>
