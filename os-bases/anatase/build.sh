@@ -1524,7 +1524,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-layout; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # 1.17, quick updates through the Hearth Store (docs/HEARTH-STORE.md): the program itself in /usr/libexec/hearth/apps,
   # and /usr/bin/$b a two-line start that uses the Store's newer copy only when one is installed (hearth-part checks
@@ -1661,15 +1661,7 @@ fi
 # while it's open. Not built: its entry goes too.
 [ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
 # <<< Hearth Notes
-# >>> Open-source apps in Rust (feature/open-source-apps; docs/mockups/checklists/open-source-*.md)
-# Hearth Retro, Retro to Steam, Hearth Studio and Hearth Beat Maker: built into this image like Hearth's other hearth-ui
-# apps (Built in, in the Store); each finds the open-source project it's built on and offers to install it from Flathub
-# for you. No service, no timer. Not built: its entry goes too.
-for app in retro:hearth-retro-app retro-to-steam:hearth-retro-to-steam-app studio:hearth-studio-app beat-maker:hearth-beat-maker-app; do
-  [ -x "/usr/bin/${app#*:}" ] || rm -f "/usr/share/applications/hearth-${app%%:*}.desktop"
-done
-# <<< Open-source apps in Rust
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-layout; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-layout; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE

@@ -188,6 +188,20 @@ pub fn run(p: Plan, progress: Arc<Mutex<String>>) -> Result<String, String> {
                 kept.push(node);
                 added.push(id);
             }
+            // Hearth Retro itself, so Game Mode has its shelves too (full screen, the controller): once
+            if !p.add.is_empty() && !kept.iter().any(|n| n.str("AppName") == "Hearth Retro") {
+                let id = vdf::shortcut_id(&exe, "Hearth Retro");
+                let mut node = entry(&One { rom: String::new(), name: "Hearth Retro".into(), system: String::new(), stem: String::new(), tags: vec!["Retro".into()], art: vec![] }, &exe, "").1;
+                if let Node::Map(fields) = &mut node {
+                    for (k, v) in fields.iter_mut() {
+                        if k == "LaunchOptions" {
+                            *v = Node::Str("--game-mode".into());
+                        }
+                    }
+                }
+                kept.push(node);
+                added.push(id);
+            }
         }
         *entries = kept.into_iter().enumerate().map(|(i, n)| (i.to_string(), n)).collect();
         say(&progress, "Writing Steam's list…".into());
