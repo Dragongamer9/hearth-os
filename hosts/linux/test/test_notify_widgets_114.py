@@ -339,7 +339,7 @@ class WidgetsAndPanels(unittest.TestCase):
     def test_every_bar_item_has_a_component_and_game_mode_stays(self):
         i = read('Islands.qml')
         ids = run_js('widget-tools.js', 'console.log(JSON.stringify(BAR_ITEMS.map(b => b.id)))') if NODE else []
-        fn = i[i.index('function compFor(id)'):i.index('component BarSlot')]
+        fn = i[i.index('function compFor(id0)'):i.index('component BarSlot')]
         for b in ids:
             self.assertIn('case "%s": return c' % b, fn, b)
         self.assertIn('Repeater { model: isl.zoneItems("start"); delegate: BarSlot {} }', i)

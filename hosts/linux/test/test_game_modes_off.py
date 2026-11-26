@@ -246,7 +246,7 @@ class EntriesHidden(unittest.TestCase):
         self.assertIn('property bool gameModeOff: false', st)
         self.assertIn('onGameModeOffChanged: save("gameModeOff")', st)
         self.assertIn('"Game Mode on this PC"', (SHELL / 'SetStartup.qml').read_text())
-        for f in ('Bar.qml', 'Islands.qml', 'ExtraPanels.qml', 'Launcher.qml'):
+        for f in ('Bar.qml', 'Islands.qml', 'PanelBlocks.qml', 'Launcher.qml'):   # a panel's blocks: PanelBlocks.qml
             self.assertIn('visible: !Settings.gameModeOff', (SHELL / f).read_text(), f)
         self.assertIn('Settings.gameModeOff ? [] :', (SHELL / 'PowerMenu.qml').read_text())
         self.assertIn('Settings.gameModeOff ? [] :', (SHELL / 'WinTools.qml').read_text())

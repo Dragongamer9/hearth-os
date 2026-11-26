@@ -3,8 +3,10 @@ import Quickshell
 
 // A block you made in the desktop editor (DesktopEditor.qml › Make your own; docs/mockups/checklists/drag-drop.md):
 // "own:<key>" in a bar or a panel, its look and what it does in bar.json "b:<key>" (BarLayout.qml):
-//   { kind: "button" | "text" | "picture" | "spacer", label, icon, run, pic }
-// A button runs what you gave it (your own command, as you typed it), only when you press it.
+//   { kind: "button" | "text" | "picture" | "spacer", label, icon, run, app, panel, pic }
+// A button runs what you gave it (your own command, as you typed it), opens an app or shows a panel, only when you
+// press it. Its look, and what its other buttons do (drag and drop board 2), come from bar.json "s:own:<key>" through
+// BlockLook.qml, the wrapper Islands.qml and ExtraPanels.qml put around every block (yours included).
 Item {
     id: ob
     property string kind: ""                 // "own:<key>" (set by the bar or the panel)
@@ -38,9 +40,13 @@ Item {
     MouseArea {
         id: ma
         anchors.fill: parent
-        enabled: ob.def.kind === "button" && (ob.def.run || "") !== ""
+        enabled: ob.def.kind === "button" && ((ob.def.run || "") !== "" || (ob.def.app || "") !== "" || (ob.def.panel || "") !== "")
         hoverEnabled: true
         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: Quickshell.execDetached(["sh", "-c", ob.def.run])
+        onClicked: {
+            if ((ob.def.run || "") !== "") Quickshell.execDetached(["sh", "-c", ob.def.run]);
+            else if ((ob.def.app || "") !== "") { const e = AppEntries.byId(ob.def.app); if (e) e.execute(); else Quickshell.execDetached(["gtk-launch", ob.def.app]); }
+            else if (["launcher", "quick", "calendar", "overview", "clipboard"].indexOf(ob.def.panel) >= 0) Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", ob.def.panel, "toggle"]);
+        }
     }
 }

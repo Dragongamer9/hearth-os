@@ -50,11 +50,13 @@ ShellRoot {
                 property var dockWin: null
                 property bool newFailed: false
                 property string builtKey: ""
+                // the bar's look and, from the desktop editor (drag and drop board 2), the main bar's own edge
+                function wantKey() { return Theme.barKey + "|" + BarLayout.mainKey; }
                 function makeNew() {
                     dropNew();
                     // Build anything: a whole-screen desktop that does what the bar and dock do (its guide, menu and
                     // Game Mode) has them away while it's drawn; they come back the moment it isn't.
-                    if (perScreen.primary && ScreenLayout.hidesBars && perScreen.screenWin) { builtKey = Theme.barKey; newFailed = false; return; }
+                    if (perScreen.primary && ScreenLayout.hidesBars && perScreen.screenWin) { builtKey = perScreen.wantKey(); newFailed = false; return; }
                     const wantDock = Theme.dockFloats;
                     const ci = Qt.createComponent("Islands.qml"), cd = wantDock ? Qt.createComponent("Dock.qml") : null;
                     if (ci.status !== Component.Ready || cd && cd.status !== Component.Ready) {
@@ -62,8 +64,8 @@ ShellRoot {
                         newFailed = true;
                         return;
                     }
-                    builtKey = Theme.barKey;
-                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock && !Theme.appsNowhere });
+                    builtKey = perScreen.wantKey();
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: BarLayout.mainSide(Theme.barEdge), holdsApps: !wantDock && !Theme.appsNowhere });
                     dockWin = wantDock ? cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu }) : null;
                     if (!islandsWin || wantDock && !dockWin) {
                         console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");
@@ -101,9 +103,13 @@ ShellRoot {
                 onSettingsReadyChanged: if (settingsReady && !portrait) makeNew()
                 Connections {
                     target: Theme
-                    function onBarKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && Theme.barKey !== perScreen.builtKey) rebuild.restart(); }
+                    function onBarKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && perScreen.wantKey() !== perScreen.builtKey) rebuild.restart(); }
                 }
-                Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && Theme.barKey !== perScreen.builtKey) perScreen.makeNew() }
+                Connections {
+                    target: BarLayout
+                    function onMainKeyChanged() { if (perScreen.settingsReady && !perScreen.portrait && !perScreen.newFailed && perScreen.wantKey() !== perScreen.builtKey) rebuild.restart(); }
+                }
+                Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && perScreen.wantKey() !== perScreen.builtKey) perScreen.makeNew() }
                 onPortraitChanged: { if (portrait) dropNew(); else if (settingsReady) makeNew(); }
                 Component.onCompleted: { makeHints(); if (ScreenLayout.loaded) makeScreen(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
                 Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); if (screenWin) screenWin.destroy(); }
@@ -240,6 +246,27 @@ ShellRoot {
         function addPanel(edge: string): void { if (deskEdit.item) deskEdit.item.addPanel(edge); }
         function undo(): void { if (deskEdit.item) deskEdit.item.undo(); }
         function draft(): string { return deskEdit.item ? JSON.stringify(deskEdit.item.draft) : ""; }
+        // board 2 (one block picked): pick a block, its right-click menu, a tab of the side panel, a look set, the
+        // bar itself picked and its settings set; what's kept in bar.json for a block
+        function pickBlock(id: string): bool { return !!deskEdit.item && deskEdit.item.pickById(id); }
+        function menu(id: string): bool { return !!deskEdit.item && deskEdit.item.menuAtBlock(id); }
+        function closeMenu(): void { if (deskEdit.item) { deskEdit.item.menuBlk = null; deskEdit.item.popup = ""; } }
+        function tab(name: string): void { if (deskEdit.item) { deskEdit.item.tab = name; deskEdit.item.popup = ""; } }
+        function popup(name: string): void { if (deskEdit.item) deskEdit.item.popup = name; }
+        function look(id: string, json: string): string {
+            const e = deskEdit.item; if (!e) return "";
+            if (!e.blk || e.blk.id !== id) e.pickById(id);
+            try { e.setLook(JSON.parse(json), "ipc"); } catch (x) { return "bad json: " + x; }
+            return JSON.stringify(e.draft.looks[id] || null);
+        }
+        function pickBar(which: string): void { const e = deskEdit.item; if (!e) return; e.blk = null; e.menuBlk = null; e.picked = which === "main" || which === "" ? "main" : "p:" + which; }
+        function barSet(json: string): string {
+            const e = deskEdit.item; if (!e) return "";
+            try { const o = JSON.parse(json); for (const k in o) { if (k === "edge") e.setBarEdge(o[k]); else e.setBarKey(k, o[k]); } } catch (x) { return "bad json: " + x; }
+            return JSON.stringify(e.picked === "main" ? e.draft.bar : e.draft.panels[e.picked.slice(2)] || null);
+        }
+        function panels(): string { return deskEdit.item ? Object.keys(deskEdit.item.draft.panels).join(" ") : ""; }
+        function kept(id: string): string { return JSON.stringify(BarLayout.lookOf(id)); }
     }
     // Describe it (DescribeIt.qml, loaded the first time it's asked for)
     Loader {

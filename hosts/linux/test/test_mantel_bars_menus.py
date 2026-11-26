@@ -174,11 +174,15 @@ class SettingsOnlyWhenYouChangeThem(unittest.TestCase):
 class BarOnEveryEdge(unittest.TestCase):
     def test_anchors_and_reserved_space_for_each_edge(self):
         i = code(read('Islands.qml'))
-        self.assertIn('anchors { top: edge !== "bottom"; bottom: edge !== "top"; left: edge !== "right"; right: edge !== "left" }', i)
-        self.assertIn('implicitHeight: vertical ? 0 : band', i)
-        self.assertIn('implicitWidth: vertical ? band : 0', i)
+        # full length on its edge (the default), or shorter at an offset, or anywhere (drag and drop board 2)
+        self.assertIn('top: free || edge === "top" || (vertical && (fullLength || !centredAlong))', i)
+        self.assertIn('bottom: !free && (edge === "bottom" || (vertical && fullLength))', i)
+        self.assertIn('left: free || edge === "left" || (!vertical && (fullLength || !centredAlong))', i)
+        self.assertIn('right: !free && (edge === "right" || (!vertical && fullLength))', i)
+        self.assertIn('implicitHeight: vertical ? (fullLength ? 0 : alongLen) : band', i)
+        self.assertIn('implicitWidth: vertical ? band : (fullLength ? 0 : alongLen)', i)
         self.assertIn('exclusiveZone: reserved', i)
-        self.assertIn('readonly property int reserved: autoHide ? 0 : band', i)
+        self.assertIn('readonly property int reserved: autoHide || free || mb.over || !onThisScreen ? 0 : band', i)
         for e, k in (('top', 'barTop'), ('bottom', 'barBottom'), ('left', 'barLeft'), ('right', 'barRight')):
             self.assertIn('DeskState.%s = edge === "%s" ? reserved : 0;' % (k, e), i)
 
@@ -218,7 +222,7 @@ class BarOnEveryEdge(unittest.TestCase):
     def test_layout_changes_rebuild_live_and_the_classic_taskbar_stays_the_fallback(self):
         sh = code(read('shell.qml'))
         self.assertIn('const wantDock = Theme.dockFloats;', sh)
-        self.assertIn('edge: Theme.barEdge, holdsApps: !wantDock', sh)
+        self.assertIn('edge: BarLayout.mainSide(Theme.barEdge), holdsApps: !wantDock', sh)
         self.assertIn('function onBarKeyChanged()', sh)
         self.assertIn('Timer { id: rebuild; interval: 300;', sh)
         self.assertIn('active: perScreen.portrait || perScreen.newFailed', sh)

@@ -42,6 +42,8 @@ Singleton {
     property bool classicBar: false        // the classic bottom taskbar is in use (fallback, or an upright screen)
     property bool dockPeek: false          // an auto-hide dock shown on purpose (hover, `ipc call dock show`)
     property double padSeen: 0             // when the controller was last used for Hearth's menus (the hint strip)
+    property int deskNow: 0                // the desktop you're on, from 1 (0: not known; DeskNow.qml)
+    property int deskCount: 4              // how many desktops there are (DeskNow.qml)
     property bool locked: false            // the lock screen is up (Lock.qml): moving wallpapers pause
     property bool screenOff: false         // the screen was turned off for idling (IdlePower.qml): they pause too
     property bool idle: false              // nothing typed, clicked or moved for 30 seconds (IdlePower.qml; 3 minutes before 1.16): they pause too

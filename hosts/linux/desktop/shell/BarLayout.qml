@@ -6,6 +6,9 @@ pragma Singleton
 //   "p:<id>": {screen, edge, items, size, autoHide}     one key per extra panel, so changing one merges only it
 //   "clockZones", "clockAlt", "clockHolidays"          the clock's panel: world clocks, another calendar, holidays
 //                                                      (Settings › Date & time)
+//   "s:<block id>"                                     a block's look and what it does (drag and drop board 2,
+//                                                      block-look.js; one key per block), drawn by BlockLook.qml
+//   "bar"                                              the main bar's own settings (board 2, widget-tools.js barLook)
 // Written only when you change something (SettingsWriter: merged, atomic, .bak; a file that can't be read is put back
 // from its .bak and nothing is saved over it). Game Mode is always in the main bar, last; the flame is never hidden.
 import QtQuick
@@ -18,6 +21,14 @@ Singleton {
     readonly property string path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/bar.json"
     property var raw: ({})
     property bool loaded: false
+    // false while bar.json can't be read (its last good copy is being put back): the desktop editor saves nothing then
+    property bool readOk: true
+    // the main bar's own settings, and its look key (a change builds the bar again: shell.qml)
+    readonly property var mainBar: T.barLook(raw.bar)
+    readonly property string mainKey: mainBar.edge + "/" + mainBar.layer + "/" + mainBar.orient + "/" + T.barSide(mainBar, "")
+    function mainSide(fallback) { return T.barSide(mainBar, fallback); }
+    // a block's look (sparse; BlockLook.qml normalizes it)
+    function lookOf(id) { const v = raw["s:" + id]; return v && typeof v === "object" && !Array.isArray(v) ? v : null; }
     readonly property var layout: T.barLayout(raw.items)
     readonly property var panels: {
         const out = [];
@@ -69,7 +80,7 @@ Singleton {
             let o = null;
             try { o = JSON.parse(text()); } catch (e) { o = null; }
             if (!o || typeof o !== "object" || Array.isArray(o)) {
-                if (text().trim() !== "") { console.warn("bar: bar.json couldn't be read; putting back the last good copy (the bar stays as it is)"); writer.repair(); }
+                if (text().trim() !== "") { console.warn("bar: bar.json couldn't be read; putting back the last good copy (the bar stays as it is)"); bl.readOk = false; writer.repair(); }
                 bl.loaded = true;
                 return;
             }
@@ -77,6 +88,7 @@ Singleton {
             for (const k in bl.raw) if (writer.owns(k)) r[k] = bl.raw[k];
             for (const k in r) if (writer.owns(k) && bl.raw[k] === undefined) delete r[k];
             bl.raw = r;
+            bl.readOk = true;
             bl.loaded = true;
         }
         onLoadFailed: bl.loaded = true

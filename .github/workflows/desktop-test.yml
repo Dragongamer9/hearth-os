@@ -2815,7 +2815,9 @@ jobs:
       # Edit desktop, drag and drop (DesktopEditor.qml; docs/mockups/checklists/drag-drop.md board 1): open over the
       # real desktop, a widget held over the desktop (snapped, its note), a block held over the main bar (the lit line
       # and "Drop: …"), let go into the bar, a panel anywhere (not on an edge), Keep this (bar.json written the safe
-      # way), and the real desktop afterwards with the panel where it was put. Pictures in shots/desktop-editor.
+      # way), and the real desktop afterwards with the panel where it was put. Board 2 (one block picked): the right-click
+      # menu on a block, the side panel's Look tab with a look set (as on the board) and each other tab, the bar itself
+      # picked and a panel picked, then looks kept and shown on the real desktop. Pictures in shots/desktop-editor.
       - name: Edit desktop (drag and drop)
         if: always()
         shell: bash
@@ -2824,7 +2826,7 @@ jobs:
           exec > >(tee $o/step.log) 2>&1
           say() { echo "::notice title=Desktop editor::$*"; }
           bad() { echo "::error title=Desktop editor::$*"; touch shots/FAILED; }
-          python3 -m unittest discover -s hosts/linux/test -p 'test_app_blocks.py' -v > $o/unit.log 2>&1 && python3 -m unittest discover -s hosts/linux/test -p 'test_files_sort_downloads.py' -v >> $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -5 | tr '\n' ' ')"
+          python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_edit.py' -v > $o/unit.log 2>&1 && python3 -m unittest discover -s hosts/linux/test -p 'test_app_blocks.py' -v >> $o/unit.log 2>&1 && python3 -m unittest discover -s hosts/linux/test -p 'test_files_sort_downloads.py' -v >> $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -5 | tr '\n' ' ')"
           set -x
           pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
@@ -2866,8 +2868,39 @@ jobs:
           grep -q '"place": *"free"' "$B" && grep -q quickaccess "$B" && say "Keep this wrote it: $(tr -d '\n ' < "$B" | cut -c1-300)" || bad "Keep this: $(cat "$B" 2>/dev/null | head -c 400)"
           ls "$B".bak* >/dev/null 2>&1 && say "a .bak was kept" || say "no .bak (bar.json was new)"
           grim $o/deskedit-5-kept-the-real-desktop.png || true
+          # ---- board 2: one block picked
+          ipc deskedit open ""; sleep 4
+          r=$(ipc deskedit menu jobs); sleep 1
+          grim $o/deskedit-6-right-click-a-block.png || true
+          [ "$r" = true ] && say "right-click menu on a block (Copies and downloads)" || bad "the right-click menu didn't open on a block: $r"
+          ipc deskedit pickBlock jobs; sleep 1
+          l=$(ipc deskedit look jobs '{"w":"fixed","wpx":158,"h":30,"mt":7,"mr":6,"mb":7,"ml":6,"pad":12,"fill":"#3b2a1d","see":15,"corners":99,"edge":"line","edgeW":1,"icon":"sync","iconSize":16,"words":"Downloads · {count}","fontSize":14,"show":"both","hover":"lighter","pressed":"darker"}')
+          case "$l" in *'"wpx":158'*'"fill":"#3b2a1d"'*) say "a look set in the side panel: $(echo "$l" | cut -c1-200)" ;; *) bad "setting a look: $l" ;; esac
+          ipc deskedit tab look; ipc deskedit menu jobs; sleep 1
+          grim $o/deskedit-7-side-panel-look.png || true
+          ipc deskedit closeMenu
+          for t in shows does place when motion; do ipc deskedit tab $t; sleep 1; grim $o/deskedit-8-tab-$t.png || true; done
+          say "the side panel's tabs pictured: Look, Shows, Does, Place, When, Motion"
+          ipc deskedit pickBar main; sleep 1
+          grim $o/deskedit-9-the-bar-picked.png || true
+          pid=$(ipc deskedit panels | tr ' ' '\n' | head -1)
+          if [ -n "$pid" ]; then
+            ipc deskedit pickBar "$pid"; sleep 1
+            b=$(ipc deskedit barSet '{"lineup":"centre","corners":99,"fill":"#2a2d36","gap":10}'); sleep 1
+            grim $o/deskedit-9b-a-panel-picked.png || true
+            case "$b" in *'"lineup":"centre"'*) say "a panel's own settings: $(echo "$b" | cut -c1-200)" ;; *) bad "a panel's settings: $b" ;; esac
+          else bad "no panel to pick (board 1 made one)"; fi
+          ipc deskedit look quickaccess '{"fill":"#ff8a3d","see":10,"corners":99,"edge":"glow","edgeColor":"#ffd166","edgeW":2,"shadow":"deep","icon":"sparkle","words":"Quick · {time}","weight":"bold","mr":8,"ml":8,"pad":6}' > /dev/null
+          ipc deskedit look notifications '{"fill":"#3b5ba5","corners":8,"words":"{count} new","show":"both","w":"fixed","wpx":110,"doMiddle":"panel","argMiddle":"quick"}' > /dev/null
+          grep -q '"s:quickaccess"' "$B" 2>/dev/null && bad "a look was written before Keep this" || say "nothing written before Keep this (board 2)"
+          ipc deskedit keep; sleep 5
+          k=$(ipc deskedit kept quickaccess)
+          case "$k" in *'"fill":"#ff8a3d"'*) say "Keep this kept the looks (bar.json s:quickaccess): $(echo "$k" | cut -c1-200)" ;; *) bad "the look wasn't kept: $k / $(tr -d '\n ' < "$B" | cut -c1-300)" ;; esac
+          grep -q '"s:jobs"' "$B" && grep -q '"s:notifications"' "$B" && say "one key per block: s:jobs, s:notifications, s:quickaccess" || bad "looks in bar.json: $(tr -d '\n ' < "$B" | cut -c1-400)"
+          grim $o/deskedit-10-looks-kept-on-the-real-desktop.png || true
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
-          xbad=$(grep -E "(DesktopEditor|desktop-edit|OwnBarBlock|ExtraPanels|Islands|widget-tools)\.(qml|js)" "$LOG" | grep -i -E "error|warning|unavailable|not a type|cannot" | head -8)
+          grep -q "using the classic taskbar" "$LOG" && bad "the main bar didn't load (the classic taskbar came up): $(grep -i 'classic taskbar' "$LOG" | tail -2 | tr '\n' ' ' | cut -c1-300)" || say "the main bar came up with the looks"
+          xbad=$(grep -E "(DesktopEditor|desktop-edit|block-look|BlockLook|NestedPanel|PanelBlocks|DeskNow|OwnBarBlock|ExtraPanels|Islands|widget-tools)\.(qml|js)" "$LOG" | grep -i -E "error|warning|unavailable|not a type|cannot|undefined|loop" | head -8)
           [ -z "$xbad" ] && say "no QML errors from the editor, the bars or the panels" || bad "$(echo "$xbad" | cut -c1-300 | tr '\n' ' ')"
           pkill -x labwc || true; pkill -f quickshell || true
 
