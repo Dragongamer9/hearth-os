@@ -12,9 +12,18 @@ mkdir -p /tmp/w/hosts/linux/desktop/theme /tmp/w/cargo
 export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo
 # hearth-ui includes hearth-core's settings_file.rs by path, and carries palettes.json as its built-in look.
 cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /src/hosts/hearth-layout /tmp/w/hosts/
+# The Mod Manager (apps/mods) uses Hearth Mods' library (hosts/hearth-gaming, without its Tauri window), which uses
+# hearth-core's library; hearth-core carries these files in it.
+cp -a /src/hosts/hearth-gaming /tmp/w/hosts/
+rm -rf /tmp/w/hosts/hearth-gaming/target
+mkdir -p /tmp/w/hosts/linux/session /tmp/w/hosts/linux/desktop/cosmic /tmp/w/os/system_files/usr/share/hearth
+cp /src/hosts/linux/session/nimbus-session /tmp/w/hosts/linux/session/
+cp /src/hosts/linux/desktop/cosmic/hearth-cosmic /tmp/w/hosts/linux/desktop/cosmic/
+cp /src/os/system_files/usr/share/hearth/recomps.json /tmp/w/os/system_files/usr/share/hearth/
 cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
 # Settings' KDE pages (cats/kde.rs draws them from the same file hearth-kde-settings checks against).
 mkdir -p /tmp/w/hosts/linux/desktop/shell && cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
+cp /src/hosts/linux/desktop/shell/input-layouts.json /tmp/w/hosts/linux/desktop/shell/
 # hearth-layout carries Mantel's ready-made desktops (screen.rs READY: one copy for both Mantels).
 cp -a /src/hosts/linux/desktop/shell/screens /tmp/w/hosts/linux/desktop/shell/
 cd /tmp/w/hosts/hearth-ui
@@ -31,7 +40,7 @@ if ! cargo build --release --manifest-path /tmp/w/hosts/hearth-layout/Cargo.toml
 fi
 mkdir -p /tmp/w/out
 cp /tmp/w/hosts/hearth-layout/target/release/hearth-layout /tmp/w/out/ || { echo "::error title=hearth-layout build::hearth-layout didn't build"; exit 1; }
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-lights-app hearth-remap-app hearth-mouse-app hearth-shield-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-game-fixer hearth-proton-manager hearth-overlay hearth-bottles hearth-3d hearth-ideas-app hearth-retro-app hearth-retro-to-steam-app hearth-studio-app hearth-beat-maker-app hearth-lights-app hearth-remap-app hearth-mouse-app hearth-shield-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-mods; do
   test -x "target/release/$b" || { echo "::error title=Hearth's pure-Rust apps build::$b didn't build"; exit 1; }
   cp "target/release/$b" /tmp/w/out/
 done

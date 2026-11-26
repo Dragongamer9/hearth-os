@@ -11,29 +11,39 @@ license = "GPL-3.0-or-later"
 name = "hearth_gaming"
 path = "src/lib.rs"
 
+# The windows (Tauri) are the "app" feature, on by default. The Mod Manager (hosts/hearth-ui/apps/mods, pure Rust) uses
+# the library without it, so it builds without WebKit.
+[features]
+default = ["app"]
+app = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-build"]
+
 [[bin]]
 name = "hearth-controller-lab"
 path = "src/apps/controller_lab.rs"
+required-features = ["app"]
 
 [[bin]]
 name = "hearth-saves"
 path = "src/apps/saves.rs"
+required-features = ["app"]
 
 [[bin]]
 name = "hearth-mods"
 path = "src/apps/mods.rs"
+required-features = ["app"]
 
 [[bin]]
 name = "hearth-gamestore"
 path = "src/apps/gamestore.rs"
+required-features = ["app"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = [], optional = true }
 # Choosing a mod file or folder: the desktop portal (Hearth Files in Hearth OS: desktop/shell/hearth-portal), not GTK's own.
-tauri-plugin-dialog = { version = "2.5", default-features = false, features = ["xdg-portal"] }
+tauri-plugin-dialog = { version = "2.5", default-features = false, features = ["xdg-portal"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"

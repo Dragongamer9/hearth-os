@@ -34,5 +34,8 @@ pub mod launch;
 pub mod gamestore;
 #[cfg(unix)]
 pub mod service;
+/// Hearth Mods' calls by name, its worker and its command line (both windows share them; mods_app.rs).
+#[cfg(unix)]
+pub mod mods_app;
 #[cfg(target_os = "linux")]
 pub mod pads;

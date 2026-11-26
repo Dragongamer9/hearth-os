@@ -5,5 +5,6 @@ fn main() {
     println!("cargo:rerun-if-env-changed=PATH");
     let found = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join("fuse-overlayfs").is_file())).unwrap_or(false);
     if found && std::path::Path::new("/dev/fuse").exists() { println!("cargo:rustc-cfg=has_fuse_overlayfs"); }
-    tauri_build::build()
+    #[cfg(feature = "app")]
+    tauri_build::build();
 }

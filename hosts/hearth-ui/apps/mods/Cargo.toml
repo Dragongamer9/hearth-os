@@ -1,0 +1,30 @@
+# Mod Manager (pure Rust, hearth-ui; docs/mockups/checklists/mod-manager.md, the approved boards docs/mockups/mod-manager):
+# our Mod Manager, the new Hearth Mods. Its program is still `hearth-mods` (the Hearth Store part, the nxm handler, Game
+# Mode's worker and the Steam shortcuts all run that name), and it uses Hearth Mods' own Rust logic (hosts/hearth-gaming:
+# the Hearth Mod Organizer, Nexus Mods, Wabbajack, Play modded, Add to Steam) without its Tauri window. Made of blocks.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-mod-manager"
+edition = "2021"
+description = "Mod Manager: every game's mods in one place (Hearth Mod Organizer, Nexus Mods, Thunderstore, mod.io, CurseForge, Wabbajack)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-mods"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit-a = { path = "../oss-kit-a" }
+hearth-oss-kit = { path = "../oss-kit" }
+hearth-gaming = { path = "../../../hearth-gaming", default-features = false }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+# LOOT's masterlist is used only when it's the pinned one (its SHA-256).
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"

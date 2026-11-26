@@ -121,7 +121,7 @@ jobs:
             python3 -c 'import json,sys; assert sys.argv[1] in json.load(open("os/system_files/usr/share/hearth/store/system-parts.json"))["parts"]' "$APP"
             mkdir -p /tmp/part && install -m755 "$src" "/tmp/part/$APP"
             echo "INNER=$APP" >> "$GITHUB_ENV"
-          elif [ "$APP" = hearth-controller-lab ] || [ "$APP" = hearth-saves ] || [ "$APP" = hearth-mods ] || [ "$APP" = hearth-gamestore ]; then
+          elif [ "$APP" = hearth-controller-lab ] || [ "$APP" = hearth-saves ] || [ "$APP" = hearth-gamestore ]; then
             # Hearth's gaming apps (hosts/hearth-gaming): /usr/bin/<app> starts the Store's copy through hearth-part.
             base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
             docker pull -q "$base"
@@ -174,6 +174,8 @@ jobs:
             tar -C /tmp/part/mantel-rust -xf /tmp/out/hearth-ui.tar ./hearth-layout && test -x /tmp/part/mantel-rust/hearth-layout
             echo "INNER=mantel-rust" >> "$GITHUB_ENV"
           else
+            # Hearth's pure-Rust apps (hosts/hearth-ui), the Mod Manager (hearth-mods, apps/mods: the new Hearth Mods,
+            # still the hearth-mods part, so /usr/bin/hearth-mods starts the Store's copy through hearth-part) among them.
             base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
             docker pull -q "$base"
             docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -40
