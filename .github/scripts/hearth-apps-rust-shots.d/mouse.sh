@@ -11,5 +11,8 @@ MCFG=/tmp/mouse-cfg; rm -rf "$MCFG"; mkdir -p "$MCFG"
 SHOT_WAIT=3 run mouse-1-board hearth-mouse 0 env XDG_CONFIG_HOME="$MCFG" HEARTH_MOUSE_FIXTURE="$MFX" "$M" --pin 3
 run mouse-2-not-installed hearth-mouse 0 env XDG_CONFIG_HOME="$MCFG" HEARTH_MOUSE_FIXTURE=/nonexistent HEARTH_MOUSE_INSTALLED=0 "$M"
 SHOT_WAIT=3 run mouse-3-edit-layout hearth-mouse 0 env XDG_CONFIG_HOME="$MCFG" HEARTH_MOUSE_FIXTURE="$MFX" HEARTH_ARRANGE_OPEN=mouse:main HEARTH_ARRANGE_PICK=dpi "$M" --pin 3
+# Sleep after on a mouse whose own protocol Hearth knows (hid.rs; the board's mouse standing in as a Razer DeathAdder
+# V2 Pro), its choices open; the board's own mouse (not known) says it can't be told from Linux (picture 1)
+SHOT_WAIT=3 run mouse-4-sleep-known hearth-mouse 0 env XDG_CONFIG_HOME="$MCFG" HEARTH_MOUSE_FIXTURE="$MFX" HEARTH_MOUSE_HID_AS=usb:1532:007d:0 "$M" --pin 3 --show sleep
 [ -n "$(ls -A "$MCFG" 2>/dev/null)" ] && echo "::error title=mouse::opening Hearth Mouse wrote settings (red flag 9): $(ls -R "$MCFG" | head -c 300)"
 swaymsg output HEADLESS-1 resolution 1280x800 >/dev/null 2>&1; sleep 0.3
