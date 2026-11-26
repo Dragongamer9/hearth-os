@@ -240,6 +240,8 @@
     <keybind key="W-C-S-F10"><action name="SnapToRegion" region="wide-middle" /></keybind>
     <keybind key="W-C-S-F11"><action name="SnapToRegion" region="narrow-right" /></keybind>
     <!-- ==== end Snap layouts ==== -->
+    <!-- Hearth Passwords: fill in the window in front (hosts/hearth-ui/apps/passwords, fill.rs), while your vault is open. -->
+    <keybind key="W-A-p"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-passwords-app /usr/bin/hearth-passwords-app --fill" /></keybind>
     <!-- Hearth Remap's "run a command" macro steps (hosts/hearth-ui/apps/remap, ir.rs Step::Run): Input Remapper presses
          Super+Ctrl+Alt+F13…F24 and this runs that step's command as you (the Store's copy of Hearth Remap when it has one). -->
     <keybind key="W-C-A-F13"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 1" /></keybind>

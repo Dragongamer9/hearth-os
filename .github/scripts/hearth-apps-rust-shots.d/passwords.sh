@@ -16,6 +16,14 @@ run passwords-3-card hearth-passwords 0 env $PENV HEARTH_PASSWORDS_FIXTURE="$PFX
 run passwords-4-locked-big hearth-passwords 0 env $PENV "$PW"
 run passwords-5-edit-window hearth-passwords 0 env $PENV HEARTH_PASSWORDS_FIXTURE="$PFX/vault.json" HEARTH_ARRANGE_OPEN=passwords:window HEARTH_ARRANGE_PICK=list "$PW" --open gh
 run passwords-6-edit-item hearth-passwords 0 env $PENV HEARTH_PASSWORDS_FIXTURE="$PFX/vault.json" HEARTH_ARRANGE_OPEN=passwords:item HEARTH_ARRANGE_PICK=security "$PW" --open gh
+# Filling in (fill.rs): the vault open (the made-up one), Super + Alt + P's helper with Firefox on GitHub's sign-in
+# page in front: the open vault answers on its socket, and the helper asks which login to type (Ask before filling).
+env $PENV HEARTH_PASSWORDS_FIXTURE="$PFX/vault.json" "$PW" --open gh >/tmp/passwords-open.log 2>&1 &
+pvp=$!
+sleep 3
+[ -S "$XDG_RUNTIME_DIR/hearth/passwords.sock" ] && echo "::notice title=passwords fill::the open vault answers on its socket (0600: $(stat -c %a "$XDG_RUNTIME_DIR/hearth/passwords.sock"))" || echo "::error title=passwords fill::no socket while the vault is open"
+SHOT_WAIT=2.5 run passwords-7-fill-ask hearth-passwords-fill 0 env $PENV HEARTH_FILL_FRONT="firefox|Sign in to GitHub · GitHub — Mozilla Firefox" "$PW" --fill
+kill $pvp 2>/dev/null; wait $pvp 2>/dev/null
 grep -q '"makerLength": 24' "$PFX/config/nimbus/passwords.json" || echo "::error title=passwords settings::opening Hearth Passwords changed passwords.json"
 # nothing of the vault in the open on disk
 grep -rl "r7#Vq4mLp" "$PFX/data" "$PFX/config" 2>/dev/null && echo "::error title=passwords::a password was written to disk in the open"
