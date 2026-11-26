@@ -22,6 +22,12 @@ studio 1-board "$ST" --pick-item "Camera · round"
 studio 2-mic-filters "$ST" --show filters
 studio 3-add-to-the-scene "$ST" --show add
 studio 4-where-you-go-live "$ST" --show where
+# Twitch and YouTube at once (relay.rs): both places picked, the Where row and its dialog
+cp "$OH/.config/hearth/studio.json" /tmp/studio-one.json
+echo '{"title": "Quad Mech devlog: legs that finally walk", "vertical": true, "upload": 40, "twitch": "pretend", "places": ["Twitch", "YouTube"]}' > "$OH/.config/hearth/studio.json"
+studio 8-twitch-and-youtube "$ST" --pick-item "Camera · round"
+studio 9-where-both "$ST" --show where
+cp /tmp/studio-one.json "$OH/.config/hearth/studio.json"
 studio 5-edit-layout env HEARTH_ARRANGE_OPEN=studio:window HEARTH_STUDIO_STAGE=studio:none "$ST"
 studio 6-customize env HEARTH_ARRANGE_OPEN=studio:window HEARTH_STUDIO_STAGE=studio:customize "$ST"
 # live with a pretend OBS: its CPU said, not limited (it's drawing OBS's meters and picture, as asked)

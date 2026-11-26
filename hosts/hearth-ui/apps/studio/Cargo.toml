@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
 iced = { workspace = true, features = ["image"] }
 serde_json = { workspace = true }
 futures = { workspace = true }

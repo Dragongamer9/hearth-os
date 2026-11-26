@@ -16,6 +16,7 @@
 #[allow(dead_code)]
 mod pad;
 mod obs;
+mod relay;
 mod view;
 mod ws;
 
@@ -108,6 +109,14 @@ pub enum Msg {
     Service(&'static str),
     Key(String),
     SaveService,
+    /// Also go live here at the same time (relay.rs)
+    TogglePlace(&'static str),
+    /// the places' stream keys from the keyring, to go live to all of them
+    Keys(Vec<(String, String)>),
+    Relayed(Result<(), String>),
+    KeyKept(run::Output),
+    /// OBS put back to your first place after a stream through the relay
+    Restore(String),
     Password(String),
     SavePassword,
     Install,
@@ -244,6 +253,10 @@ impl App {
         self.prefs.get("vertical").and_then(Value::as_bool).unwrap_or(true)
     }
 
+    /// Where you go live at once (Hearth's own list; one place: OBS's own setting as before).
+    pub fn places(&self) -> Vec<String> {
+        self.prefs.get("places").and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+    }
     fn save(&mut self, f: impl FnOnce(&mut Map<String, Value>)) {
         if let Some(d) = prefs_path().parent() {
             let _ = std::fs::create_dir_all(d);
@@ -495,6 +508,13 @@ fn event(a: &mut App, d: &Value) -> Task<Msg> {
         "StreamStateChanged" => {
             a.stream.active = b(&e, "outputActive");
             obs::req("GetStreamStatus", json!({}));
+            // the stream through the relay ended: the relay stops, OBS goes back to your first place
+            if !a.stream.active && s(&e, "outputState") == "OBS_WEBSOCKET_OUTPUT_STOPPED" && relay::running() {
+                relay::stop();
+                if let Some(first) = a.places().first().cloned() {
+                    return Task::perform(hearth_oss::secret::lookup("studio", &format!("key-{first}")), Msg::Restore);
+                }
+            }
         }
         "RecordStateChanged" => {
             a.record.active = b(&e, "outputActive");
@@ -666,7 +686,67 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Vertical(on) => a.save(|m| {
             m.insert("vertical".into(), Value::Bool(on));
         }),
-        Msg::Stream => obs::req(if a.stream.active { "StopStream" } else { "StartStream" }, json!({})),
+        Msg::Stream => {
+            if a.stream.active {
+                obs::req("StopStream", json!({}));
+            } else if a.places().len() >= 2 {
+                // two places or more: Hearth's relay (relay.rs), each place's key from the keyring
+                let fs: Vec<_> = a.places().into_iter().map(|pl| {
+                    let f = hearth_oss::secret::lookup("studio", &format!("key-{pl}"));
+                    async move { (pl, f.await) }
+                }).collect();
+                return Task::perform(futures::future::join_all(fs), Msg::Keys);
+            } else {
+                obs::req("StartStream", json!({}));
+            }
+        }
+        Msg::Keys(keys) => {
+            if let Some((pl, _)) = keys.iter().find(|(_, k)| k.is_empty()) {
+                a.said = format!("Hearth Studio doesn't have your {pl} stream key yet: + › {pl}, type it once (it's kept in your keyring).");
+                return Task::none();
+            }
+            a.said = format!("Going live to {} at once…", keys.iter().map(|k| k.0.as_str()).collect::<Vec<_>>().join(" and "));
+            let (tx, rx) = futures::channel::oneshot::channel();
+            let _ = std::thread::Builder::new().name("hearth-studio-relay".into()).spawn(move || {
+                let _ = tx.send(relay::start(&keys));
+            });
+            return Task::perform(async move { rx.await.unwrap_or_else(|_| Err("it stopped".into())) }, Msg::Relayed);
+        }
+        Msg::Relayed(r) => match r {
+            Ok(()) => {
+                obs::req("SetStreamServiceSettings", json!({"streamServiceType": "rtmp_custom", "streamServiceSettings": {"server": relay::LISTEN, "key": relay::KEY}}));
+                obs::req("StartStream", json!({}));
+                a.said.clear();
+            }
+            Err(e) => a.said = format!("Couldn't go live to all of them: {e}"),
+        },
+        Msg::KeyKept(o) => {
+            if !o.ok {
+                a.said = "Your keyring didn't take the key (is it unlocked?).".into();
+            }
+        }
+        Msg::Restore(key) => {
+            if let Some(first) = a.places().first().cloned() {
+                let (service, server) = relay::service(&first);
+                let mut st = json!({"service": service, "server": server});
+                if !key.is_empty() {
+                    st["key"] = Value::String(key);
+                }
+                obs::req("SetStreamServiceSettings", json!({"streamServiceType": "rtmp_common", "streamServiceSettings": st}));
+                obs::req("GetStreamServiceSettings", json!({}));
+            }
+        }
+        Msg::TogglePlace(pl) => {
+            let mut v = a.places();
+            if let Some(i) = v.iter().position(|x| x == pl) {
+                v.remove(i);
+            } else {
+                v.push(pl.to_string());
+            }
+            a.save(|m| {
+                m.insert("places".into(), json!(v));
+            });
+        }
         Msg::Record => obs::req(if a.record.active { "StopRecord" } else { "StartRecord" }, json!({})),
         Msg::Pause => {
             if a.record.active {
@@ -707,11 +787,19 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Service(sv) => a.service_pick = sv,
         Msg::Key(k) => a.key_edit = k,
         Msg::SaveService => {
-            let (service, server) = match a.service_pick {
-                "YouTube" => ("YouTube - RTMPS", "rtmps://a.rtmps.youtube.com:443/live2"),
-                "Kick" => ("Kick", "auto"),
-                _ => ("Twitch", "auto"),
-            };
+            let pick = a.service_pick;
+            let typed = a.key_edit.trim().to_string();
+            let mut t = Task::none();
+            if !typed.is_empty() {
+                // kept in your keyring too, for going live to more than one place (relay.rs)
+                t = Task::perform(hearth_oss::secret::store("studio", &format!("key-{pick}"), &format!("Hearth Studio: {pick} stream key"), typed), Msg::KeyKept);
+            }
+            if a.places().len() >= 2 {
+                a.key_edit.clear();
+                a.dlg = None;
+                return t;
+            }
+            let (service, server) = relay::service(pick);
             let mut st = json!({"service": service, "server": server});
             if !a.key_edit.trim().is_empty() {
                 st["key"] = Value::String(a.key_edit.trim().to_string());
@@ -720,6 +808,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             obs::req("GetStreamServiceSettings", json!({}));
             a.key_edit.clear();
             a.dlg = None;
+            return t;
         }
         Msg::Password(pw) => a.pw_edit = pw,
         Msg::SavePassword => {
