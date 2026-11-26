@@ -345,6 +345,22 @@ class Http(Base):
         self.assertEqual(len(self.req('/api/jobs', headers=self.auth())[1]['jobs']), 2)
 
 
+    def test_hearth_listen_sends_its_words_with_their_times(self):
+        # Hearth Listen (whisper.cpp) › Send to Voice Studio: a finished transcript job, with text, SRT, VTT and JSON
+        segs = [{'start': 91.0, 'end': 97.5, 'text': 'This is Hearth OS one point eighteen.', 'speaker': 'VOICE 1'},
+                {'start': 105.0, 'end': 107.0, 'text': "And it's not just the desktop.", 'speaker': 'VOICE 2'}]
+        code, j, _ = self.req('/api/jobs/words', {'title': '1.18 video, voice-over take 3', 'segments': segs, 'language': 'en', 'duration': 252}, self.auth())
+        self.assertEqual((code, j['kind'], j['state']), (201, 'transcribe', 'done'))
+        self.assertEqual(sorted(o['kind'] for o in j['outputs']), ['json', 'srt', 'txt', 'vtt'])
+        self.assertEqual(j['summary']['speakers'], 2)
+        srt = open(os.path.join(self.studio.jpath(j['id']), [o['file'] for o in j['outputs'] if o['kind'] == 'srt'][0]), encoding='utf-8').read()
+        self.assertIn('00:01:31,000 --> 00:01:37,500', srt)
+        self.assertIsNone(self.studio.next_job(), 'nothing for the engines to do')
+        code, _, _ = self.req('/api/jobs/words', {'title': 'x', 'segments': []}, self.auth())
+        self.assertEqual(code, 400)
+        code, _, _ = self.req('/api/jobs/words', {'title': 'x', 'segments': segs})
+        self.assertEqual(code, 401, 'only with the API key (or the page signed in)')
+
 # ---------------------------------------------------------------------------------------------------- the queue
 
 class Queue(Base):

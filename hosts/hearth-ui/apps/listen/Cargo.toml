@@ -1,0 +1,22 @@
+# Hearth Listen (pure Rust, hearth-ui; docs/mockups/checklists/open-source-07-listen.md, the approved board
+# docs/mockups/open-source-apps/07-listen.png): speech to words on the person's own PC with whisper.cpp (MIT):
+# recordings, a transcript with its times, live captions for anything playing, and Send to Voice Studio.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-listen"
+edition = "2021"
+description = "Hearth Listen: speech to words on your own PC (built on whisper.cpp)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-listen-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
+iced = { workspace = true, features = ["canvas"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }

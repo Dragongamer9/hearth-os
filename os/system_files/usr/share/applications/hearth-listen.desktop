@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Listen
+GenericName=Speech to text
+Comment=Speech to words on your own PC: recordings, transcripts, live captions (built on whisper.cpp)
+Exec=/usr/bin/hearth-listen-app
+TryExec=/usr/bin/hearth-listen-app
+Icon=hearth-listen
+Categories=AudioVideo;Audio;Utility;
+Keywords=speech;transcribe;transcript;captions;subtitles;whisper;dictation;words;
+StartupWMClass=hearth-listen
+Actions=captions;
+
+[Desktop Action captions]
+Name=Live captions
+Exec=/usr/bin/hearth-listen-app --captions
