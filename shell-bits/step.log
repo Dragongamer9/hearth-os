@@ -1,0 +1,318 @@
+::notice title=Shell bits::unit tests pass: Ran 13 tests in 0.411s  OK 
++ pkill -f labwc/autostart
++ true
++ pkill -x labwc
++ pkill -f quickshell
++ sleep 2
++ L=/tmp/fakeleds/rgb:kbd_backlight
++ mkdir -p /tmp/fakeleds/rgb:kbd_backlight /tmp/fakebin-sb
++ echo '0 0 0'
++ echo 'red green blue'
++ echo 255
++ echo 0
++ printf '#!/bin/sh\necho "$*" >> /tmp/nimbus-mode.log\n'
++ chmod +x /tmp/fakebin-sb/nimbus-mode
++ rm -f /tmp/nimbus-mode.log
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH=/tmp/fakebin-sb:/tmp/fakebin:/usr/local/bin:/usr/bin HEARTH_LEDS_DIR=/tmp/fakeleds
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ PATH=/tmp/fakebin-sb:/tmp/fakebin:/usr/local/bin:/usr/bin
++ HEARTH_LEDS_DIR=/tmp/fakeleds
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ '[' -S /tmp/xdg/bus ']'
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\n# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds\' copies of the menu entries, with the\n# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages\' own (same ids).\nif [ -d /usr/share/hearth/app-kinds/applications ]; then\n  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac\nfi\n# Apps for hardware this PC doesn\'t have (NVIDIA Settings without an Nvidia card) are hidden from every menu: NoDisplay\n# copies in this sign-in\'s runtime folder, worked out again at every sign-in (a new card shows them at once). Never\n# holds the session up: 5 seconds at most, and nothing changes when it fails.\nhw_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-hw-apps"\nif [ -x /usr/libexec/hearth-app-kinds ] && XDG_DATA_DIRS="$data_dirs" timeout 5 python3 /usr/libexec/hearth-app-kinds hardware --out "$hw_dir" >/dev/null 2>&1 && [ -d "$hw_dir/applications" ]; then\n  case ":$data_dirs:" in *":$hw_dir:"*) ;; *) data_dirs="$hw_dir:$data_dirs" ;; esac\nfi\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d hw_dir\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ '[' -d /usr/share/hearth/app-kinds/applications ']'
+++ hw_dir=/tmp/xdg/hearth-hw-apps
+++ '[' -x /usr/libexec/hearth-app-kinds ']'
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d hw_dir
++ SH=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell
++ D=/tmp/home/.local/share/nimbus/desktop.json
+++ dirname /tmp/home/.local/share/nimbus/desktop.json
++ mkdir -p /tmp/home/.local/share/nimbus
++ '[' -s /tmp/home/.local/share/nimbus/desktop.json ']'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"kbdLights": null, "confirmLogout": null, "leaveDefault": null, "accent": "#ff7a2f"}'
++ rm -f '/tmp/xdg/wayland-*'
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-system labwc-config
++ CONF=/tmp/xdg/hearth-labwc
++ labwc -C /tmp/xdg/hearth-labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ wtype -k Shift_L
++ sleep 1
++ sleep 3
+++ leds
+++ cat /tmp/fakeleds/rgb:kbd_backlight/multi_intensity
++ '[' '0 0 0' = '0 0 0' ']'
++ say 'keyboard lights: off by default, nothing written'
++ echo '::notice title=Shell bits::keyboard lights: off by default, nothing written'
+::notice title=Shell bits::keyboard lights: off by default, nothing written
++ merge '{"kbdLights": true}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"kbdLights": true}'
++ sleep 5
+++ leds
+++ cat /tmp/fakeleds/rgb:kbd_backlight/multi_intensity
++ '[' '255 122 47' = '255 122 47' ']'
+++ leds
+++ cat /tmp/fakeleds/rgb:kbd_backlight/multi_intensity
++ say 'keyboard lights: on, the accent #ff7a2f went to the keyboard (255 122 47)'
++ echo '::notice title=Shell bits::keyboard lights: on, the accent #ff7a2f went to the keyboard (255 122 47)'
+::notice title=Shell bits::keyboard lights: on, the accent #ff7a2f went to the keyboard (255 122 47)
++ merge '{"accent": "#1a9fff"}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"accent": "#1a9fff"}'
++ sleep 5
+++ leds
+++ cat /tmp/fakeleds/rgb:kbd_backlight/multi_intensity
++ '[' '26 159 255' = '26 159 255' ']'
+++ leds
+++ cat /tmp/fakeleds/rgb:kbd_backlight/multi_intensity
++ say 'keyboard lights: a new accent follows (26 159 255)'
++ echo '::notice title=Shell bits::keyboard lights: a new accent follows (26 159 255)'
+::notice title=Shell bits::keyboard lights: a new accent follows (26 159 255)
++ merge '{"kbdLights": false}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"kbdLights": false}'
++ sleep 2
++ merge '{"accent": "#ff7a2f"}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"accent": "#ff7a2f"}'
++ sleep 5
+++ leds
+++ cat /tmp/fakeleds/rgb:kbd_backlight/multi_intensity
++ '[' '26 159 255' = '26 159 255' ']'
++ say 'keyboard lights: turned off, the next accent wrote nothing'
++ echo '::notice title=Shell bits::keyboard lights: turned off, the next accent wrote nothing'
+::notice title=Shell bits::keyboard lights: turned off, the next accent wrote nothing
++ merge '{"kbdLights": true}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"kbdLights": true}'
++ sleep 3
++ sp appearance:kbd-lights set-kbd-lights
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
++ tail -n1
+for more information.
++ sleep 1
++ ipc settings page appearance:kbd-lights
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page appearance:kbd-lights
+for more information.
++ sleep 5
++ grim shots/shell-bits/set-kbd-lights.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
++ tail -n1
+for more information.
++ merge '{"kbdLights": false}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"kbdLights": false}'
++ ipc leave logout
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call leave logout
+for more information.
++ sleep 2
++ '[' -s /tmp/nimbus-mode.log ']'
++ say 'confirm off (the default): Log out logged out at once'
++ echo '::notice title=Shell bits::confirm off (the default): Log out logged out at once'
+::notice title=Shell bits::confirm off (the default): Log out logged out at once
++ rm -f /tmp/nimbus-mode.log
++ merge '{"confirmLogout": true, "leaveDefault": "Restart"}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"confirmLogout": true, "leaveDefault": "Restart"}'
++ sleep 3
++ ipc leave logout
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call leave logout
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/shell-bits/leave-confirm.png
++ '[' -e /tmp/nimbus-mode.log ']'
++ say 'confirm on: Log out asked first'
++ echo '::notice title=Shell bits::confirm on: Log out asked first'
+::notice title=Shell bits::confirm on: Log out asked first
++ wtype -k Escape
++ sleep 1.5
++ '[' -e /tmp/nimbus-mode.log ']'
++ say 'Esc cancelled Log out?'
++ echo '::notice title=Shell bits::Esc cancelled Log out?'
+::notice title=Shell bits::Esc cancelled Log out?
++ ipc leave logout
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call leave logout
++ tail -n1
+for more information.
++ sleep 1.5
++ wtype -k Return
++ sleep 2
++ grep -q logout /tmp/nimbus-mode.log
++ say 'Log out? then Enter logged out'
++ echo '::notice title=Shell bits::Log out? then Enter logged out'
+::notice title=Shell bits::Log out? then Enter logged out
++ ipc leave powermenu
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call leave powermenu
++ tail -n1
+for more information.
++ sleep 2
++ grim shots/shell-bits/power-default.png
+++ ipc leave state
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call leave state
+++ tail -n1
++ st='{"canAsk":true,"confirm":true,"leaveDefault":"Restart","power":"Restart"}'
++ case "$st" in
++ say 'the power menu opens on the default leave option (Restart)'
++ echo '::notice title=Shell bits::the power menu opens on the default leave option (Restart)'
+::notice title=Shell bits::the power menu opens on the default leave option (Restart)
++ ipc leave powerclose
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call leave powerclose
+for more information.
++ sleep 1
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-server-mode set scheduleOn off
++ sp startup:leave set-leave
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
++ tail -n1
+for more information.
++ sleep 1
++ ipc settings page startup:leave
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page startup:leave
++ tail -n1
+for more information.
++ sleep 5
++ grim shots/shell-bits/set-leave.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
++ tail -n1
+for more information.
++ merge '{"confirmLogout": null, "leaveDefault": null}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"confirmLogout": null, "leaveDefault": null}'
++ kb open
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard open
+for more information.
++ sleep 2
++ kb touchhold e
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard touchhold e
++ tail -n1
+for more information.
++ sleep 1.2
++ grim shots/shell-bits/osk-touch-hold.png
+++ kb state
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
++ s1=$'{"open":true,"mode":"text","wtype":true,"typed":"","panel":"letters","sel":{"r":1,"c":2},"layout":"en-us","suggestions":[],"shift":false,"popup":{"alts":["\303\251","\303\250","\303\252","\303\253","\304\223","\304\231","\304\227","\304\233"],"i":0,"r":1,"c":2},"wheel":-1,"words":["en"],"height":461}'
+++ kb touchslide 2
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard touchslide 2
+++ tail -n1
++ got=2
++ sleep 0.8
++ grim shots/shell-bits/osk-touch-slide.png
+++ kb touchlift
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard touchlift
++ lifted=2
++ sleep 1
+++ kb state
+++ tail -n1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
++ s2=$'{"open":true,"mode":"text","wtype":true,"typed":"\303\252","panel":"letters","sel":{"r":1,"c":2},"layout":"en-us","suggestions":["even","everything","ever"],"shift":false,"popup":null,"wheel":-1,"words":["en"],"height":461}'
++ case "$s1" in
++ say 'a long touch on e opened its accents'
++ echo '::notice title=Shell bits::a long touch on e opened its accents'
+::notice title=Shell bits::a long touch on e opened its accents
++ '[' 2 = 2 ']'
++ '[' 2 = 2 ']'
++ say 'the finger slid onto the third accent (found by its place on screen) and lifted there'
++ echo '::notice title=Shell bits::the finger slid onto the third accent (found by its place on screen) and lifted there'
+::notice title=Shell bits::the finger slid onto the third accent (found by its place on screen) and lifted there
++ case "$s2" in
++ say $'lifting typed \303\252 and closed the accents'
++ echo $'::notice title=Shell bits::lifting typed \303\252 and closed the accents'
+::notice title=Shell bits::lifting typed ê and closed the accents
++ kb select a
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard select a
++ tail -n1
+for more information.
++ sleep 0.3
++ kb hold a 750
++ tail -n1
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard hold a 750
+for more information.
++ sleep 1.3
++ grim shots/shell-bits/osk-pad-hold.png
+++ kb state
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard state
+++ tail -n1
++ s3=$'{"open":true,"mode":"text","wtype":true,"typed":"\303\252a","panel":"letters","sel":{"r":2,"c":0},"layout":"en-us","suggestions":["each","eat","easy"],"shift":false,"popup":{"alts":["\303\240","\303\241","\303\242","\303\244","\303\246","\303\243","\303\245","\304\201","\304\205"],"i":0,"r":2,"c":0},"wheel":-1,"words":["en"],"height":461}'
++ case "$s3" in
++ say 'holding A on a opened its accents (controller)'
++ echo '::notice title=Shell bits::holding A on a opened its accents (controller)'
+::notice title=Shell bits::holding A on a opened its accents (controller)
++ kb press b
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard press b
++ tail -n1
+for more information.
++ sleep 0.5
++ kb close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call keyboard close
++ tail -n1
+for more information.
++ cp /tmp/xdg/nimbus-shell.log shots/shell-bits/nimbus-shell.log
+++ grep -E '(KbdLights|Leave|LeaveConfirm|PowerMenu|SetStartup|SetAppearance|OskBoard|OskKey|Keyboard|Launcher|WinTools|DesktopMenu)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)' /tmp/xdg/nimbus-shell.log
+++ head -8
+++ cut -c1-240
+++ tr '\n' '|'
+++ true
++ xbad=
++ '[' -z '' ']'
++ say 'no QML errors from the changed views'
++ echo '::notice title=Shell bits::no QML errors from the changed views'
+::notice title=Shell bits::no QML errors from the changed views
++ ls -la shots/shell-bits
+total 1724
+drwxr-xr-x  2 root root   4096 Nov 26 10:25 .
+drwxr-xr-x 28 root root  20480 Nov 26 10:24 ..
+-rw-r--r--  1 root root   1648 Nov 26 10:25 labwc.log
+-rw-r--r--  1 root root 230555 Nov 26 10:25 leave-confirm.png
+-rw-r--r--  1 root root   4778 Nov 26 10:25 nimbus-shell.log
+-rw-r--r--  1 root root 260618 Nov 26 10:25 osk-pad-hold.png
+-rw-r--r--  1 root root 260486 Nov 26 10:25 osk-touch-hold.png
+-rw-r--r--  1 root root 260653 Nov 26 10:25 osk-touch-slide.png
+-rw-r--r--  1 root root 223958 Nov 26 10:25 power-default.png
+-rw-r--r--  1 root root     18 Nov 26 10:25 schedule-off.txt
+-rw-r--r--  1 root root 224432 Nov 26 10:25 set-kbd-lights.png
+-rw-r--r--  1 root root 231099 Nov 26 10:25 set-leave.png
+-rw-r--r--  1 root root  16047 Nov 26 10:25 step.log
+-rw-r--r--  1 root root   1517 Nov 26 10:24 unit.log
++ pkill -x labwc
++ pkill -f quickshell
