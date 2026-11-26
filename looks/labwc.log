@@ -1,0 +1,129 @@
+00:00:00.005 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:00:00.005 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:00:00.005 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:02:43.457 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:02:43.457 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:02:43.457 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:04:06.085 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:04:06.085 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:04:06.085 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:05:29.045 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:05:29.045 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:05:29.045 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:06:51.548 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:06:51.548 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:06:51.548 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:09:12.219 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:09:12.219 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:09:12.219 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:10:20.396 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:10:20.396 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:10:20.396 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:13:17.015 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:13:17.015 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:13:17.015 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:13:41.543 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:13:41.543 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:13:41.543 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:14:06.095 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:14:06.095 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:14:06.095 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:14:39.881 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:14:39.881 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:14:39.881 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:15:04.376 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:15:04.376 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:15:04.376 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:15:28.819 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:15:28.819 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:15:28.819 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:16:36.348 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:16:36.348 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:16:36.348 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:17:17.354 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:17:17.354 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:17:17.354 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:17:58.245 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:17:58.245 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:17:58.245 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:18:39.163 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:18:39.163 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:18:39.163 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:19:20.245 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:19:20.245 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:19:20.245 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:20:01.141 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:20:01.141 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:20:01.141 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:20:42.127 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:20:42.127 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:20:42.127 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:21:23.128 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:21:23.128 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:21:23.128 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:22:04.060 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:22:04.060 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:22:04.060 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:22:45.128 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:22:45.128 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:22:45.128 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:22:57.402 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:22:57.402 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:22:57.402 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:23:09.624 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:23:09.624 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:23:09.624 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:23:34.156 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:23:34.156 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:23:34.156 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:23:46.398 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:23:46.398 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:23:46.398 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:23:58.670 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:23:58.670 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:23:58.670 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:24:10.967 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:24:10.967 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:24:10.967 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:24:23.252 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:24:23.252 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:24:23.252 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:24:35.562 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:24:35.562 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:24:35.562 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:24:47.864 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:24:47.864 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:24:47.864 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:25:07.386 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:25:07.386 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:25:07.386 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:25:17.608 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:25:17.608 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:25:17.608 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:25:28.763 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:25:28.763 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:25:28.763 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:25:33.976 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:25:33.976 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:25:33.976 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:25:41.118 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:25:41.118 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:25:41.118 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:26:18.759 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:26:18.759 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:26:18.759 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:26:24.829 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:26:24.829 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:26:24.829 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:26:33.872 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:26:33.872 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:26:33.872 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:30:18.135 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:30:18.135 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:30:18.135 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:30:33.390 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:30:33.390 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:30:33.391 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:30:48.655 [ERROR] [../src/config/rcxml.c:1258] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:30:48.655 [ERROR] [../src/config/rcxml.c:1266] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:30:48.655 [ERROR] [../src/config/rcxml.c:1282] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.

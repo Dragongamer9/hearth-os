@@ -1,0 +1,65 @@
+::notice title=Desktop editor::unit tests pass: Ran 14 tests in 1.280s  OK 
++ pkill -f labwc/autostart
++ true
++ pkill -x labwc
++ pkill -f quickshell
++ sleep 2
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ '[' -S /tmp/xdg/bus ']'
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\n# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds\' copies of the menu entries, with the\n# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages\' own (same ids).\nif [ -d /usr/share/hearth/app-kinds/applications ]; then\n  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac\nfi\n# Apps for hardware this PC doesn\'t have (NVIDIA Settings without an Nvidia card) are hidden from every menu: NoDisplay\n# copies in this sign-in\'s runtime folder, worked out again at every sign-in (a new card shows them at once). Never\n# holds the session up: 5 seconds at most, and nothing changes when it fails.\nhw_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-hw-apps"\nif [ -x /usr/libexec/hearth-app-kinds ] && XDG_DATA_DIRS="$data_dirs" timeout 5 python3 /usr/libexec/hearth-app-kinds hardware --out "$hw_dir" >/dev/null 2>&1 && [ -d "$hw_dir/applications" ]; then\n  case ":$data_dirs:" in *":$hw_dir:"*) ;; *) data_dirs="$hw_dir:$data_dirs" ;; esac\nfi\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d hw_dir\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ '[' -d /usr/share/hearth/app-kinds/applications ']'
+++ hw_dir=/tmp/xdg/hearth-hw-apps
+++ '[' -x /usr/libexec/hearth-app-kinds ']'
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d hw_dir
++ SH=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell
++ rm -f '/tmp/xdg/wayland-*'
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-system labwc-config
++ CONF=/tmp/xdg/hearth-labwc
++ labwc -C /tmp/xdg/hearth-labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ B=/tmp/home/.config/nimbus/bar.json
+++ cat /tmp/home/.config/nimbus/bar.json
+++ md5sum
++ before='d41d8cd98f00b204e9800998ecf8427e  -'
