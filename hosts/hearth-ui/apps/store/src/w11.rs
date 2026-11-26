@@ -41,7 +41,14 @@ pub fn frame<'a>(a: &'a App, body: E<'a, Msg>) -> E<'a, Msg> {
             ..container::Style::default()
         });
     // its blocks (view::BLOCKS "window"): the title bar with the search, the rail and the page; as it was when nothing is
-    let items: Vec<(&'static str, E<'a, Msg>)> = vec![("page", page.into()), ("title", title_bar(a)), ("rail", rail(a))];
+    view::studio_values(a);
+    let mut items: Vec<(&'static str, E<'a, Msg>)> = vec![("page", page.into()), ("title", hearth_ui::studio::made(&a.describe, "window", "title", || title_bar(a))), ("rail", hearth_ui::studio::made(&a.describe, "window", "rail", || rail(a)))];
+    // drag and drop: the Store's panes where they were dragged in
+    for (id, which) in [("pane:updates", "updates"), ("pane:yours", "yours"), ("pane:new", "new")] {
+        if a.describe.wants_pane(which) {
+            items.push((id, view::store_pane(a, which)));
+        }
+    }
     let body = view::page_parts_fill(a, "window", items, |ps| {
         let main = row![ps.take("rail"), ps.take("page")].height(Length::Fill);
         column![ps.take("title"), main].into()
@@ -52,7 +59,11 @@ pub fn frame<'a>(a: &'a App, body: E<'a, Msg>) -> E<'a, Msg> {
 fn title_bar<'a>(a: &'a App) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let name = row![gap(z(18.0), 1.0), look::mark(z(22.0)), gap(z(12.0), 1.0), t("Hearth Store", f(14.0), tn.text)].align_y(iced::Center);
+    let mut name = row![gap(z(18.0), 1.0), look::mark(z(22.0)), gap(z(12.0), 1.0), t("Hearth Store", f(14.0), tn.text)].align_y(iced::Center);
+    // the window being edited (drag and drop) or Describe it's box open: EDITING by its name
+    if a.describe.open || a.describe.studio_editing() {
+        name = name.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(look::pad(0.0, 0.0, 0.0, z(12.0))));
+    }
     let field = text_input("Search Hearth apps, parts and test versions", &a.search)
         .id(SEARCH_ID)
         .on_input(Msg::Search)

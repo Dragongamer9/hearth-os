@@ -501,7 +501,12 @@ fn title_row(a: &App) -> E<'_> {
             .into()
     };
     let drag = |e: E<'static>| -> E<'static> { mouse_area(e).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open)).into() };
-    let left = row![gap(14.0, 1.0), flame(), gap(8.0, 1.0), ts("Resource Monitor", 14.0, p.text).wrapping(text::Wrapping::None), gap(18.0, 1.0), t1(status.0, 13.0, status.1)].align_y(iced::Center);
+    let mut left = row![gap(14.0, 1.0), flame(), gap(8.0, 1.0), ts("Resource Monitor", 14.0, p.text).wrapping(text::Wrapping::None)].align_y(iced::Center);
+    // the window being edited (drag and drop) or Describe it's box open: EDITING by its name
+    if a.describe.open || a.describe.studio_editing() {
+        left = left.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 10.0 }));
+    }
+    let left = left.push(gap(18.0, 1.0)).push(t1(status.0, 13.0, status.1));
     let r = row![
         drag(container(left).center_y(Length::Fixed(40.0)).into()),
         drag(container(Space::new()).width(Length::Fill).height(Length::Fixed(40.0)).into()),
@@ -593,6 +598,77 @@ pub const BLOCKS: &[PageDef] = &[
     PageDef { id: "gpu", title: "Graphics", blocks: &[bls("programs", "Programs using the graphics card", 0, 0, 9, 7), bls("card", "Graphics card", 0, 7, 9, 5), bl("graphs", "The graphs", 9, 0, 3, 12)] },
 ];
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// Resource Monitor's blocks window: its buttons (its tabs and actions), its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "Resource Monitor",
+    buttons: &[
+        tile("pc", "Your PC", G::Display),
+        tile("overview", "Overview", G::Grid),
+        tile("cpu", "CPU", G::Pulse),
+        tile("memory", "Memory", G::Pulse),
+        tile("disk", "Disk", G::Drive),
+        tile("network", "Network", G::Wifi),
+        tile("gpu", "Graphics", G::Display),
+        tile("pause", "Pause or resume", G::Stop),
+        tile("task-manager", "Open Task Manager", G::Tasks),
+        tile("read-again", "Read the PC again", G::Sync),
+    ],
+    panes: &[tile("graphs", "The graphs", G::Pulse), tile("status", "Live or paused", G::Play), tile("tabs", "Every tab", G::List)],
+    info: &[tile("tab", "The tab in front", G::Grid), tile("status", "Live or paused", G::Play), tile("samples", "Readings so far", G::List)],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Resource Monitor's buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "pc" => Msg::Tab(Tab::Pc),
+        "overview" => Msg::Tab(Tab::Overview),
+        "cpu" => Msg::Tab(Tab::Cpu),
+        "memory" => Msg::Tab(Tab::Memory),
+        "disk" => Msg::Tab(Tab::Disk),
+        "network" => Msg::Tab(Tab::Network),
+        "gpu" => Msg::Tab(Tab::Gpu),
+        "pause" => Msg::Pause,
+        "task-manager" => Msg::OpenTm,
+        "read-again" => Msg::ReadPcAgain,
+        _ => return None,
+    })
+}
+
+fn live_status(a: &App) -> String {
+    if a.paused {
+        "Paused".into()
+    } else if !a.err.is_empty() {
+        format!("Paused: {}", a.err)
+    } else {
+        "Live · every second".into()
+    }
+}
+
+fn studio_values(a: &App) {
+    a.describe.values(vec![("tab", a.tab.label().to_string()), ("status", live_status(a)), ("samples", a.samples.to_string())]);
+}
+
+/// A pane of Resource Monitor's own: the graphs of the tab in front, live or paused, every tab.
+fn studio_pane<'a>(a: &'a App, which: &str) -> E<'a> {
+    let p = a.p;
+    match which {
+        "graphs" => scrollable(graphs(a)).height(Length::Fill).into(),
+        "status" => column![tm(live_status(a), 14.0, p.text), link(&p, if a.paused { "Resume ▶".into() } else { "Pause ⏸".into() }, Msg::Pause), link(&p, "Open Task Manager".into(), Msg::OpenTm)].spacing(8.0).into(),
+        _ => {
+            let mut c = Column::new().spacing(6.0);
+            for tb in Tab::ALL {
+                c = c.push(mouse_area(t(tb.label(), 13.0, if tb == a.tab { p.accent } else { p.text })).on_press(Msg::Tab(tb)).interaction(mouse::Interaction::Pointer));
+            }
+            c.into()
+        }
+    }
+}
+
 pub fn view(a: &App) -> E<'_> {
     let p = a.p;
     let page: E = match a.tab {
@@ -621,7 +697,14 @@ pub fn view(a: &App) -> E<'_> {
             )
         }
     };
-    let body = hearth_ui::arrange::parts(&a.describe, &p, "window", vec![("tabs", tabs(a)), ("page", page)], |ps| column![ps.take("tabs"), ps.take("page")].into(), Msg::Describe);
+    studio_values(a);
+    let mut items: Vec<(&'static str, E)> = vec![("tabs", hearth_ui::studio::made(&a.describe, "window", "tabs", || tabs(a))), ("page", page)];
+    for (id, which) in [("pane:graphs", "graphs"), ("pane:status", "status"), ("pane:tabs", "tabs")] {
+        if a.describe.wants_pane(which) {
+            items.push((id, studio_pane(a, which)));
+        }
+    }
+    let body = hearth_ui::arrange::parts(&a.describe, &p, "window", items, |ps| column![ps.take("tabs"), ps.take("page")].into(), Msg::Describe);
     let base: E = container(column![title_row(a), hline(Pal::a(p.line, 0.6)), body]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     let base: E = mouse_area(base).on_move(Msg::Cursor).into();
     let base = match &a.menu {

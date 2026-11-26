@@ -12,6 +12,16 @@ use crate::theme::Pal;
 thread_local! {
     static FACE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
     static SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+    // drag and drop's side panel (studio.rs, Look › Font: Light, Medium, Bold): every text made meanwhile takes it
+    static WEIGHT: std::cell::Cell<Option<font::Weight>> = const { std::cell::Cell::new(None) };
+}
+
+/// `f` made with this font family, text size and weight (None: as each text asks); what it was is put back after.
+pub fn with_style<R>(face: Option<&'static str>, scale: f32, w: Option<font::Weight>, f: impl FnOnce() -> R) -> R {
+    let before = WEIGHT.with(|x| x.replace(w));
+    let r = with_face(face, scale, f);
+    WEIGHT.with(|x| x.set(before));
+    r
 }
 
 /// `f` made with this font family (None: Inter) and text size (1.0: as asked); what it was is put back after.
@@ -27,6 +37,7 @@ fn scaled(size: f32) -> f32 {
 }
 
 pub fn weight(w: font::Weight) -> Font {
+    let w = WEIGHT.with(|x| x.get()).unwrap_or(w);
     match FACE.with(|x| x.get()) {
         Some(n) => Font { weight: w, ..Font::with_name(n) },
         None => Font { weight: w, ..INTER },

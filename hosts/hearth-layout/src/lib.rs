@@ -23,6 +23,12 @@ pub mod made;
 pub mod offline;
 pub mod screen;
 
+/// Drag and drop in every Hearth app (drag-drop board 3): what `layout.studio` may hold, checked with the apps' own
+/// rules (the same file hearth-ui reads it with).
+#[path = "../../hearth-ui/src/studio_model.rs"]
+#[allow(dead_code)]
+pub mod studio_model;
+
 #[path = "../../hearth-core/src/settings_file.rs"]
 #[allow(dead_code)]
 pub mod settings_file;

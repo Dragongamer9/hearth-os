@@ -313,16 +313,85 @@ pub fn page_parts<'a>(a: &'a App, page: &'static str, height: f32, items: Vec<(&
 
 /// [`page_parts`] for the window itself (not in the page's scroll).
 pub fn page_parts_fill<'a>(a: &'a App, page: &'static str, items: Vec<(&'static str, E<'a, Msg>)>, original: impl FnOnce(&mut hearth_ui::arrange::Parts<'a, Msg>) -> E<'a, Msg>) -> E<'a, Msg> {
-    // while it's being arranged, the title bar's own content sits under its block's bar (drawn over each block's top)
-    let arranging = a.describe.arr.as_ref().map(|x| x.page) == Some(page);
     let items = items
         .into_iter()
-        .map(|(id, el)| {
-            let el: E<'a, Msg> = if arranging && id == "title" { container(el).padding(look::pad(26.0, 0.0, 0.0, 0.0)).into() } else { el };
-            (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))
-        })
+        .map(|(id, el)| if id.starts_with("pane:") { (id, el) } else { (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id)))) })
         .collect();
     hearth_ui::arrange::parts(&a.describe, &a.p, page, items, original, Msg::Describe)
+}
+
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::Kit;
+use hearth_ui::ui::G;
+/// The Store's blocks window: its buttons (its pages and actions), its panes, its info.
+pub const KIT: Kit = Kit {
+    name: "Store",
+    buttons: &[
+        hearth_ui::studio::tile("home", "Home", G::Home),
+        hearth_ui::studio::tile("apps", "Apps", G::Grid),
+        hearth_ui::studio::tile("library", "Library", G::List),
+        hearth_ui::studio::tile("parts", "Hearth parts", G::Cog),
+        hearth_ui::studio::tile("tests", "Test versions", G::Pulse),
+        hearth_ui::studio::tile("hearth-os", "Hearth OS", G::Update),
+        hearth_ui::studio::tile("settings", "Store settings", G::Gear),
+        hearth_ui::studio::tile("update-all", "Update all", G::Update),
+        hearth_ui::studio::tile("check", "Check for updates", G::Sync),
+        hearth_ui::studio::tile("flathub", "Other apps (Flathub)", G::Store),
+        hearth_ui::studio::tile("folder", "Where apps go", G::Folder),
+        hearth_ui::studio::tile("search", "Search", G::Search),
+    ],
+    panes: &[hearth_ui::studio::tile("updates", "Updates ready", G::Update), hearth_ui::studio::tile("yours", "Your apps", G::Grid), hearth_ui::studio::tile("new", "What's new", G::Bell)],
+    info: &[hearth_ui::studio::tile("updates", "Updates ready", G::Update), hearth_ui::studio::tile("installed", "Apps installed", G::Grid), hearth_ui::studio::tile("apps", "Apps in the Store", G::Store), hearth_ui::studio::tile("hearth", "Hearth OS", G::Info)],
+    pane_page: "window",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of the Store's buttons dragged in, pressed.
+pub fn block_action(id: &str) -> Option<Msg> {
+    Some(match id {
+        "home" => Msg::Go(Page::Home),
+        "apps" => Msg::Go(Page::Apps),
+        "library" => Msg::Go(Page::Updates),
+        "parts" => Msg::Go(Page::BuiltIn),
+        "tests" => Msg::Go(Page::Tests),
+        "hearth-os" => Msg::Go(Page::System),
+        "settings" => Msg::Go(Page::Settings),
+        "update-all" => Msg::UpdateAll,
+        "check" => Msg::TryAgain,
+        "flathub" => Msg::OpenFlathub,
+        "folder" => Msg::OpenFolder,
+        "search" => Msg::SearchFocus,
+        _ => return None,
+    })
+}
+
+pub fn studio_values(a: &App) {
+    a.describe.values(vec![
+        ("updates", a.ready().len().to_string()),
+        ("installed", a.inst.len().to_string()),
+        ("apps", a.cat.apps.len().to_string()),
+        ("hearth", a.hearth.clone()),
+    ]);
+}
+
+/// A pane of the Store's own: the updates ready, your apps, or what's new (each app a press away from its page).
+pub fn store_pane<'a>(a: &'a App, which: &str) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let mut c = Column::new().spacing(z(8.0));
+    let list: Vec<(String, String, String)> = match which {
+        "updates" => a.ready().into_iter().map(|(e, i, r)| (e.id.clone(), e.name.clone(), format!("{} → {}", short_version(&i.version), short_version(&r.version)))).collect(),
+        "yours" => a.cat.apps.iter().filter_map(|e| a.inst.get(&e.id).map(|i| (e.id.clone(), e.name.clone(), short_version(&i.version)))).collect(),
+        _ => a.cat.apps.iter().filter(|e| a.shown_new.contains(&e.id) || matches!(a.state(e), State::Ready(..))).map(|e| (e.id.clone(), e.name.clone(), e.card.clone())).collect(),
+    };
+    if list.is_empty() {
+        c = c.push(t(if which == "updates" { "Everything's up to date." } else { "Nothing here yet." }, f(13.0), tn.muted));
+    }
+    for (id, name, sub) in list.into_iter().take(10) {
+        c = c.push(click(column![t1(name, f(14.0), tn.text), t1(sub, f(12.0), tn.muted)].spacing(1.0), Some(Msg::OpenApp(id))));
+    }
+    scrollable(c).height(Length::Fill).into()
 }
 
 /// The Store with Describe it's box under it while it's open.

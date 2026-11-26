@@ -97,7 +97,7 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let helper = std::env::var("HEARTH_RELIABILITY_HELPER").unwrap_or_else(|_| run::shell_helper("hearth_reliability.py"));
         let a = App {
-            describe: hearth_ui::describe::Describe::new("reliability", "Reliability history").with_pages(BLOCKS),
+            describe: hearth_ui::describe::Describe::new("reliability", "Reliability history").with_pages(BLOCKS).with_kit(&KIT),
             p: hearth_ui::theme::load(),
             helper,
             summary: None,
@@ -201,7 +201,13 @@ impl App {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Reliability history's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(|id| block_action(a, id)) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Summary(o) => {
             let d = o.json().filter(|d| d.get("rows").map(Value::is_array).unwrap_or(false));
@@ -372,6 +378,76 @@ const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
     ],
 }];
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// Reliability history's blocks window: its buttons, its panes, its info.
+const KIT: Kit = Kit {
+    name: "Reliability history",
+    buttons: &[
+        tile("days", "Day by day", G::Clock),
+        tile("weeks", "Week by week", G::Clock),
+        tile("previous", "The day before", G::Arrow),
+        tile("next", "The day after", G::Arrow),
+        tile("latest", "The latest day", G::Clock),
+        tile("details", "Details of the event", G::Info),
+        tile("send", "Send to Hearth's makers", G::Link),
+    ],
+    panes: &[tile("summary", "The day in numbers", G::List), tile("score", "Stability", G::Pulse), tile("events", "The day's events", G::List)],
+    info: &[tile("score", "Stability", G::Pulse), tile("problems", "Problems that day", G::Close), tile("day", "The day picked", G::Clock), tile("days", "Days shown", G::List)],
+    pane_page: "main",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Reliability history's buttons dragged in, pressed (some go from the day picked).
+fn block_action(a: &App, id: &str) -> Option<Msg> {
+    let last = a.rows().len().saturating_sub(1);
+    Some(match id {
+        "days" => Msg::Weeks(false),
+        "weeks" => Msg::Weeks(true),
+        "previous" => Msg::PickDay(a.sel.saturating_sub(1)),
+        "next" => Msg::PickDay((a.sel + 1).min(last)),
+        "latest" => Msg::PickDay(last),
+        "details" => Msg::Details(a.ev),
+        "send" => Msg::SendOpen,
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let cur = a.cur();
+    let score = cur.as_ref().and_then(|r| r.get("score").and_then(Value::as_f64)).map(|x| format!("{x:.1}")).unwrap_or_default();
+    a.describe.values(vec![("score", score), ("problems", a.events().len().to_string()), ("day", cur.as_ref().map(|r| s(r, "date")).unwrap_or_default()), ("days", a.rows().len().to_string())]);
+}
+
+/// A pane of Reliability history's own: the day in numbers, its stability big, or its events.
+fn studio_pane<'a>(a: &'a App, which: &str) -> Element<'a, Msg> {
+    let p = a.p;
+    let cur = a.cur();
+    match which {
+        "score" => {
+            let v = cur.as_ref().and_then(|r| r.get("score").and_then(Value::as_f64)).unwrap_or(10.0);
+            column![tb(format!("{v:.1}"), 44.0, p.accent), t(cur.as_ref().map(|r| s(r, "date")).unwrap_or_default(), 13.0, p.muted)].spacing(4.0).into()
+        }
+        "events" => {
+            let mut c = Column::new().spacing(6.0);
+            for (i, e) in a.events().into_iter().enumerate().take(12) {
+                c = c.push(mouse_area(row![mark(&p, kind_of(&s(&e, "cat")), 14.0), t1(ui::fit(&s(&e, "t"), 44), 13.0, p.text)].spacing(8.0).align_y(iced::Center)).on_press(Msg::Details(i)).interaction(mouse::Interaction::Pointer));
+            }
+            scrollable(c).height(Length::Fill).into()
+        }
+        _ => {
+            let mut c = Column::new().spacing(6.0);
+            if let Some(r) = cur.as_ref() {
+                for k in KINDS.iter() {
+                    c = c.push(row![mark(&p, k, 14.0), t1(k.label, 13.0, p.text), Space::new().width(Length::Fill), t1(App::count(r, k.id).to_string(), 13.0, p.muted)].spacing(8.0).align_y(iced::Center));
+                }
+            }
+            c.into()
+        }
+    }
+}
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let rows = a.rows();
@@ -500,7 +576,16 @@ fn view(a: &App) -> Element<'_, Msg> {
         &a.describe,
         &p,
         "main",
-        vec![("heading", head_text.into()), ("toggle", toggle), ("stability", stability.into()), ("marks", marks.into()), ("days", days.into()), ("events", events.into())],
+        {
+            studio_values(a);
+            let mut items: Vec<(&'static str, Element<'_, Msg>)> = vec![("heading", head_text.into()), ("toggle", toggle), ("stability", stability.into()), ("marks", marks.into()), ("days", days.into()), ("events", events.into())];
+            for (id, which) in [("pane:summary", "summary"), ("pane:score", "score"), ("pane:events", "events")] {
+                if a.describe.wants_pane(which) {
+                    items.push((id, studio_pane(a, which)));
+                }
+            }
+            items
+        },
         |ps| {
             let header = container(row![ps.take("heading"), ps.take("toggle")].align_y(iced::Center).spacing(16.0))
                 .padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 20.0 })

@@ -60,22 +60,22 @@ nothing made here can stop the desktop or an app from starting.
 - [x] The small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this — hosts/linux/desktop/shell/DesktopEditor.qml: "// ---- the small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this (and while the bar itself is)"
 
 ## 3. The same in every app (board 3, Hearth Files shown)
-- [ ] The app's window marked EDITING; every part of it outlined (dashed, accent)
-- [ ] A label on each part with its size ("COMMAND BAR · 48 px", "SIDEBAR · 216 px · DRAG ITS EDGE")
-- [ ] The app's own blocks window ("Files' blocks", "drag into Files"): Find a block (count), All, Buttons, Panes, Info, Your own
-- [ ] BUTTONS (Files: Sort my Downloads, Share, Open in terminal, Compress, and the rest)
-- [ ] PANES (Files: Preview, Details, Folder tree, Second folder)
-- [ ] MAKE YOUR OWN: Button · runs anything; Count · words · spacer
-- [ ] A block dragged into a bar of the app, with a lit line where it lands
-- [ ] A pane sized by dragging its edge, with a guide and a note ("Preview: 514 px · lined up with Search")
-- [ ] The sidebar sized by dragging its edge
-- [ ] The same toolbar: Undo, Redo, Snap to grid · 8 px, Guides, Layers, Start from, Menus…, Cancel, Try it, Keep this
-- [ ] Right-click any part › Customize opens board 2's side panel for it
-- [ ] "THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE …"
+- [x] The app's window marked EDITING; every part of it outlined (dashed, accent) — hosts/hearth-ui/src/studio.rs: "marks.push(Mark::Dash(inset, p.accent));"
+- [x] A label on each part with its size ("COMMAND BAR · 48 px", "SIDEBAR · 216 px · DRAG ITS EDGE") — hosts/hearth-ui/src/studio.rs: "format!(\"{name} · {} px · DRAG ITS EDGE\", r.w.round() as i64)"
+- [x] The app's own blocks window ("Files' blocks", "drag into Files"): Find a block (count), All, Buttons, Panes, Info, Your own — hosts/hearth-ui/src/studio.rs: "let kinds = [\"All\", \"Buttons\", \"Panes\", \"Info\", \"Your own\"];"
+- [x] BUTTONS (Files: Sort my Downloads, Share, Open in terminal, Compress, and the rest) — hosts/hearth-ui/apps/files/src/view.rs: "tile(\"open-in-terminal\", \"Open in terminal\", G::Keyboard),"
+- [x] PANES (Files: Preview, Details, Folder tree, Second folder) — hosts/hearth-ui/apps/files/src/view.rs: "tile(\"tree\", \"Folder tree\", G::Folder), tile(\"second\", \"Second folder\", G::Columns)"
+- [x] MAKE YOUR OWN: Button · runs anything; Count · words · spacer — hosts/hearth-ui/src/studio.rs: "[(\"own:button\", \"Button · runs anything\"), (\"own:words\", \"Count · words · spacer\")]"
+- [x] A block dragged into a bar of the app, with a lit line where it lands — hosts/hearth-ui/src/studio.rs: "marks.push(Mark::Fill(*line, p.accent));"
+- [x] A pane sized by dragging its edge, with a guide and a note ("Preview: 514 px · lined up with Search") — hosts/hearth-ui/src/studio.rs: "format!(\"{title}: {} px · lined up with {n}\", size.round() as i64)"
+- [x] The sidebar sized by dragging its edge — hosts/hearth-ui/src/studio.rs: "// where the app puts it: its width (or height) set, the parts beside it make room as they do"
+- [x] The same toolbar: Undo, Redo, Snap to grid · 8 px, Guides, Layers, Start from, Menus…, Cancel, Try it, Keep this — hosts/hearth-ui/src/studio.rs: "tbtn(&p, \"Menus…\".into(), st.pop == Pop::Menus, false, Some(s(SMsg::Pop(Pop::Menus)))),"
+- [x] Right-click any part › Customize opens board 2's side panel for it — hosts/hearth-ui/src/studio.rs: "let tabs = [\"Look\", \"Shows\", \"Does\", \"Place\", \"When\", \"Motion\"];"
+- [x] "THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE …" — hosts/hearth-ui/src/studio.rs: "ts(\"THE SAME IN EVERY HEARTH APP · SETTINGS · TASK MANAGER · CAPTURE · NOTES · STORE … · RIGHT-CLICK ANY PART › CUSTOMIZE\""
 - [ ] Files (Rust and Mantel's)
-- [ ] Settings
-- [ ] Task Manager
-- [ ] Capture
-- [ ] Notes
-- [ ] Hearth Store
-- [ ] G15, Family, Server mode, Resource monitor, System Restore, Reliability history, Ideas
+- [x] Settings — hosts/hearth-ui/apps/settings/src/main.rs: ".with_pages(STATIC_BLOCKS).with_kit(&frame::KIT)"
+- [x] Task Manager — hosts/hearth-ui/apps/task-manager/src/main.rs: ".with_pages(pages::BLOCKS).with_kit(&pages::KIT)"
+- [x] Capture — hosts/hearth-ui/apps/capture/src/main.rs: ".with_pages(pages::BLOCKS).with_kit(&pages::KIT)"
+- [x] Notes — hosts/hearth-ui/apps/notes/src/main.rs: ".with_pages(side::BLOCKS).with_kit(&side::KIT)"
+- [x] Hearth Store — hosts/hearth-ui/apps/store/src/main.rs: ".with_pages(view::BLOCKS).with_kit(&view::KIT)"
+- [x] G15, Family, Server mode, Resource monitor, System Restore, Reliability history, Ideas — hosts/hearth-ui/apps/g15/src/app/main.rs: ".with_pages(view::BLOCKS).with_kit(&view::KIT)"

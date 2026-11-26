@@ -438,7 +438,7 @@ impl Ed {
 fn boot() -> (App, Task<Msg>) {
     let prefs = settings_file::read(&prefs_path()).map().unwrap_or_default();
     let mut a = App {
-            describe: hearth_ui::describe::Describe::new("capture", "Capture").with_pages(pages::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("capture", "Capture").with_pages(pages::BLOCKS).with_kit(&pages::KIT),
         p: hearth_ui::theme::load(),
         main: None,
         screens: Vec::new(),
@@ -524,7 +524,13 @@ fn boot() -> (App, Task<Msg>) {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Capture's buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(pages::block_action) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Opened(_) | Msg::Noop => {}
         Msg::Closed(id) => {

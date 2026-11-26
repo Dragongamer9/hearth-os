@@ -133,12 +133,14 @@ impl App {
         let big = matches!(layout.as_str(), "b" | "controller" | "pad");
         let name: String = app::arg("--name").unwrap_or_else(|| "Someone".into()).chars().filter(|c| !c.is_control()).take(40).collect();
         let a = App {
-            describe: hearth_ui::describe::Describe::new("family", "Family and friends").with_pages(match mode {
-                // each window its own page (the question and the notice are windows of their own)
-                Mode::Friends => BLOCKS.get(0..1).unwrap_or(BLOCKS),
-                Mode::Ask => BLOCKS.get(1..2).unwrap_or(BLOCKS),
-                Mode::Notice => BLOCKS.get(2..3).unwrap_or(BLOCKS),
-            }),
+            describe: hearth_ui::describe::Describe::new("family", "Family and friends")
+                .with_pages(match mode {
+                    // each window its own page (the question and the notice are windows of their own)
+                    Mode::Friends => BLOCKS.get(0..1).unwrap_or(BLOCKS),
+                    Mode::Ask => BLOCKS.get(1..2).unwrap_or(BLOCKS),
+                    Mode::Notice => BLOCKS.get(2..3).unwrap_or(BLOCKS),
+                })
+                .with_kit(&KIT),
             p: hearth_ui::theme::load(),
             mode,
             big,
@@ -231,7 +233,13 @@ impl App {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Family and friends' buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(|id| block_action(a, id)) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::EditAt(page, pick) => return hearth_ui::arrange::edit_at(&mut a.describe, page, pick).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
@@ -423,6 +431,80 @@ const BLOCKS: &[PageDef] = &[
     PageDef { id: "notice", title: "Sharing this PC", blocks: &[bl("who", "Who is connected", 0, 0, 12, 4), bl("what", "What they can do", 0, 4, 12, 4), bl("stop", "Stop sharing now", 0, 8, 12, 4)] },
 ];
 
+// ------------------------------------------------------------------ drag and drop (board 3: the same in every app)
+use hearth_ui::studio::{tile, Kit};
+/// Family and friends' blocks window: its buttons, its panes, its info.
+const KIT: Kit = Kit {
+    name: "Family and friends",
+    buttons: &[
+        tile("add", "Add with the code", G::Plus),
+        tile("connect-first", "Connect to the first one online", G::Display),
+        tile("disconnect", "Disconnect", G::Close),
+        tile("stop", "Stop sharing now", G::Stop),
+        tile("allow", "Allow", G::Check),
+        tile("deny", "Deny", G::Close),
+        tile("always", "Always allow", G::Check),
+        tile("close", "Close the window", G::Close),
+    ],
+    panes: &[tile("online", "Who's online", G::Users), tile("connected", "The connection now", G::Link), tile("how", "How it works", G::Help)],
+    info: &[tile("people", "People", G::Users), tile("online", "Online now", G::Users), tile("connected", "Connected to", G::Link)],
+    pane_page: "friends",
+    bars: &[],
+    menus: &[],
+};
+
+/// One of Family and friends' buttons dragged in, pressed.
+fn block_action(a: &App, id: &str) -> Option<Msg> {
+    Some(match id {
+        "add" => Msg::Join,
+        "connect-first" => {
+            let f = a.friends().into_iter().find(|f| gb(f, "online"))?;
+            Msg::Connect(gs(&f, "id"), gs(&f, "name"))
+        }
+        "disconnect" => Msg::Disconnect,
+        "stop" => Msg::Stop,
+        "allow" => Msg::Answer("allow"),
+        "deny" => Msg::Answer("deny"),
+        "always" => Msg::Answer("always"),
+        "close" => Msg::Close,
+        _ => return None,
+    })
+}
+
+fn studio_values(a: &App) {
+    let list = a.friends();
+    let conn = a.data.get("connected").filter(|c| !c.is_null()).map(|c| gs(c, "name")).unwrap_or_default();
+    a.describe.values(vec![("people", list.len().to_string()), ("online", list.iter().filter(|f| gb(f, "online")).count().to_string()), ("connected", conn)]);
+}
+
+/// A pane of Family and friends' own: who's online, the connection now, how it works.
+fn studio_pane<'a>(a: &'a App, which: &str) -> Element<'a, Msg> {
+    let p = a.p;
+    let mut c = Column::new().spacing(6.0);
+    match which {
+        "online" => {
+            let list: Vec<Value> = a.friends().into_iter().filter(|f| gb(f, "online")).collect();
+            if list.is_empty() {
+                c = c.push(t("Nobody's online right now.", 13.0, p.muted));
+            }
+            for f in list {
+                c = c.push(mouse_area(t(gs(&f, "name"), 13.0, p.text)).on_press(Msg::Connect(gs(&f, "id"), gs(&f, "name"))).interaction(mouse::Interaction::Pointer));
+            }
+        }
+        "connected" => match a.data.get("connected").filter(|x| !x.is_null()) {
+            Some(conn) => {
+                c = c.push(tm(format!("Connected to {}", gs(conn, "name")), 14.0, p.text));
+                c = c.push(a.b("Disconnect", ui::Kind::Danger, false, Some(Msg::Disconnect)));
+            }
+            None => c = c.push(t("Not connected to anyone.", 13.0, p.muted)),
+        },
+        _ => {
+            c = c.push(t("Moonlight shows their PC on yours; they may be asked to say yes first. The picture goes through Hearth Link's own connection, encrypted end to end, and no router ports are opened.", 13.0, p.muted));
+        }
+    }
+    c.into()
+}
+
 /// A page's parts, each a right-click away from Edit layout (that part picked).
 fn parts_of<'a>(a: &'a App, page: &'static str, items: Vec<(&'static str, Element<'a, Msg>)>, original: impl FnOnce(&mut hearth_ui::arrange::Parts<'a, Msg>) -> Element<'a, Msg>) -> Element<'a, Msg> {
     let items = items.into_iter().map(|(id, el)| (id, hearth_ui::arrange::right_edit(el, Msg::EditAt(page, Some(id))))).collect();
@@ -528,7 +610,16 @@ fn view(a: &App) -> Element<'_, Msg> {
             let body = parts_of(
                 a,
                 "friends",
-                vec![("head", head), ("people", c.into()), ("add", d.into())],
+                {
+                    studio_values(a);
+                    let mut items: Vec<(&'static str, Element<'_, Msg>)> = vec![("head", head), ("people", c.into()), ("add", d.into())];
+                    for (id, which) in [("pane:online", "online"), ("pane:connected", "connected"), ("pane:how", "how")] {
+                        if a.describe.wants_pane(which) {
+                            items.push((id, studio_pane(a, which)));
+                        }
+                    }
+                    items
+                },
                 // as it was: one list that scrolls, the title, the people then adding one
                 move |ps| scrollable(column![ps.take("head"), ps.take("people"), ps.take("add")].spacing(s10)).height(Length::Fill).into(),
             );

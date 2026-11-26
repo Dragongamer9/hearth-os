@@ -604,7 +604,7 @@ impl App {
         let today = day::log_day(now, prefs.day_start);
         let cpu = hearth_ui::app::renderer("hearth-notes") == "cpu";
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("notes", "Hearth Notes").with_pages(side::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("notes", "Hearth Notes").with_pages(side::BLOCKS).with_kit(&side::KIT),
             p: themed(base, &prefs.theme),
             base,
             mode: Mode::of(&prefs.open_in),
@@ -1122,7 +1122,13 @@ fn continuation(line: &str) -> (String, bool) {
 
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
+        Msg::Describe(dm) => {
+            // one of Hearth Notes' buttons dragged in (drag and drop), pressed
+            if let Some(m) = hearth_ui::studio::act(&dm).and_then(side::block_action) {
+                return update(a, m);
+            }
+            return a.describe.update(dm).map(Msg::Describe);
+        }
         Msg::Nothing => {}
         Msg::Theme => {
             a.base = hearth_ui::theme::load();
