@@ -162,7 +162,15 @@ var BAR_ITEMS = [
     { id: "showdesktop", name: "Show desktop", icon: "desktops", zone: "end", extra: true },
     { id: "power", name: "Power (shut down, restart, sign out)", icon: "power", zone: "end", extra: true }
 ];
-function barItem(id) { for (var i = 0; i < BAR_ITEMS.length; i++) if (BAR_ITEMS[i].id === id) return BAR_ITEMS[i]; return null; }
+function barItem(id) {
+    for (var i = 0; i < BAR_ITEMS.length; i++) if (BAR_ITEMS[i].id === id) return BAR_ITEMS[i];
+    return ownItem(id);
+}
+// A block you made in the desktop editor ("own:<id>", its look in bar.json "b:<id>"; OwnBarBlock.qml): only where
+// you put it, never added by itself.
+function ownItem(id) {
+    return typeof id === "string" && /^own:[a-z0-9]{1,24}$/.test(id) ? { id: id, name: "Your block", icon: "dot", zone: "start", extra: true, own: true } : null;
+}
 // The saved order ({start: [...], end: [...], hidden: [...]}, or nothing) → the full layout: every known item exactly
 // once, new items (a newer Hearth's) in their default place, unknown ids dropped, the flame never hidden.
 function barLayout(saved) {
@@ -233,7 +241,7 @@ var PANEL_ITEMS = [
     { id: "showdesktop", name: "Show desktop", icon: "desktops" },
     { id: "power", name: "Power (shut down, restart, sign out)", icon: "power" }
 ];
-function panelItem(id) { for (var i = 0; i < PANEL_ITEMS.length; i++) if (PANEL_ITEMS[i].id === id) return PANEL_ITEMS[i]; return null; }
+function panelItem(id) { for (var i = 0; i < PANEL_ITEMS.length; i++) if (PANEL_ITEMS[i].id === id) return PANEL_ITEMS[i]; return ownItem(id); }
 var EDGES = ["top", "bottom", "left", "right"];
 // One saved panel ({screen, edge, items, size}) as the shell uses it, or null when it can't be shown.
 function panelOf(id, rec) {
@@ -244,8 +252,16 @@ function panelOf(id, rec) {
              size: typeof rec.size === "number" && rec.size >= 28 && rec.size <= 96 ? Math.round(rec.size) : 44,
              autoHide: rec.autoHide === true,
              // desktop layouts: "" full width, "floating" (off the edge, rounded), "centred" (only as long as it holds)
-             style: rec.style === "floating" || rec.style === "centred" ? rec.style : "" };
+             style: rec.style === "floating" || rec.style === "centred" ? rec.style : "",
+             // anywhere on the screen (drag and drop, the owner Nov 26: "dont want them locked to just 4 sides"):
+             // place "free", its top-left corner as a share of the screen (fx, fy), its length in px (0: as long as it
+             // holds) and which way it runs ("across" or "down"); it keeps no room from the windows
+             free: rec.place === "free",
+             fx: clamp01(rec.fx), fy: clamp01(rec.fy),
+             length: typeof rec.length === "number" && rec.length >= 40 && rec.length <= 8000 ? Math.round(rec.length) : 0,
+             orient: rec.orient === "down" ? "down" : "across" };
 }
+function clamp01(v) { return typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.1; }
 // The main bar as a panel's items (Clone the main bar).
 function cloneMain(layout) {
     var l = barLayout(layout), out = [];
@@ -261,6 +277,6 @@ function cloneMain(layout) {
 function panelClash(panels, screen, edge, mainScreen, mainEdge, dockOn) {
     if (screen === mainScreen && edge === mainEdge) return "The main bar is there";
     if (screen === mainScreen && edge === "bottom" && dockOn) return "The dock is there";
-    for (var i = 0; i < panels.length; i++) if (panels[i].screen === screen && panels[i].edge === edge) return "There's a panel there already";
+    for (var i = 0; i < panels.length; i++) if (!panels[i].free && panels[i].screen === screen && panels[i].edge === edge) return "There's a panel there already";
     return "";
 }

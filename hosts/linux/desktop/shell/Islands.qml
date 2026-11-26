@@ -490,6 +490,7 @@ PanelWindow {
         case "showdesktop": return cBlock;
         case "power": return cBlock;
         }
+        if (id.indexOf("own:") === 0) return cOwn;   // a block you made (OwnBarBlock.qml)
         return null;
     }
     component BarSlot: Loader {
@@ -497,11 +498,12 @@ PanelWindow {
         Layout.alignment: Qt.AlignCenter
         visible: status === Loader.Ready && !!item && item.wanted !== false
         sourceComponent: isl.compFor(modelData)
-        onLoaded: if (item && item.objectName === "layoutBlock") item.kind = modelData
+        onLoaded: { if (item && item.objectName === "layoutBlock") item.kind = modelData; if (item && item.objectName === "ownBlock") item.kind = modelData; }
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the bar's " + modelData + " couldn't load")
     }
 
     // Desktop layouts' own blocks (LayoutBlock.qml: the same in the extra panels)
+    Component { id: cOwn; OwnBarBlock { objectName: "ownBlock"; side: Math.max(26, isl.islandH - 12); vert: isl.vertical } }
     Component {
         id: cBlock
         LayoutBlock {

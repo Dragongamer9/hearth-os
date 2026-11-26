@@ -39,17 +39,21 @@ Scope {
                 id: pw
                 required property var modelData
                 readonly property var p: modelData
-                readonly property bool vertical: p.edge === "left" || p.edge === "right"
+                readonly property bool vertical: p.free ? p.orient === "down" : (p.edge === "left" || p.edge === "right")
                 readonly property int size: p.size
                 // desktop layouts' panel styles: "" full width, "floating" (off the edge, rounded), "centred" (only as
                 // long as what it holds, in the middle of its edge)
-                readonly property bool floats: p.style === "floating" || p.style === "centred"
-                readonly property int gap: floats ? 8 : 0
+                readonly property bool floats: p.free || p.style === "floating" || p.style === "centred"
+                readonly property int gap: p.free ? 0 : floats ? 8 : 0
+                // a free panel: as long as asked, or as what it holds
+                readonly property real freeLen: p.length > 0 ? p.length : Math.max(60, body.want)
                 screen: root.screenFor(p.screen || root.mainScreen)
-                anchors { top: p.edge !== "bottom"; bottom: p.edge !== "top"; left: p.edge !== "right"; right: p.edge !== "left" }
-                implicitHeight: vertical ? 0 : size + gap * 2
-                implicitWidth: vertical ? size + gap * 2 : 0
-                exclusiveZone: size + gap * 2
+                anchors { top: p.free || p.edge !== "bottom"; bottom: !p.free && p.edge !== "top"; left: p.free || p.edge !== "right"; right: !p.free && p.edge !== "left" }
+                margins.left: p.free && screen ? Math.round(p.fx * Math.max(0, screen.width - implicitWidth)) : 0
+                margins.top: p.free && screen ? Math.round(p.fy * Math.max(0, screen.height - implicitHeight)) : 0
+                implicitHeight: p.free ? (vertical ? freeLen : size) : vertical ? 0 : size + gap * 2
+                implicitWidth: p.free ? (vertical ? size : freeLen) : vertical ? size + gap * 2 : 0
+                exclusiveZone: p.free ? 0 : size + gap * 2
                 // only the panel itself takes clicks (a centred one's empty sides don't)
                 mask: Region { item: body }
                 color: "transparent"
@@ -61,7 +65,7 @@ Scope {
                     id: body
                     readonly property real along: pw.vertical ? pw.height : pw.width
                     readonly property real want: (pw.vertical ? row.implicitHeight : row.implicitWidth) + 24
-                    readonly property real len: pw.p.style === "centred" ? Math.min(along - pw.gap * 2, want) : along - pw.gap * 2
+                    readonly property real len: pw.p.free ? along : pw.p.style === "centred" ? Math.min(along - pw.gap * 2, want) : along - pw.gap * 2
                     x: pw.vertical ? pw.gap : (pw.width - width) / 2
                     y: pw.vertical ? (pw.height - height) / 2 : pw.gap
                     width: pw.vertical ? pw.size : len
@@ -102,7 +106,7 @@ Scope {
                             sourceComponent: modelData === "spacer" ? cSpacer : modelData === "menu" ? cMenu : modelData === "apps" ? cApps
                                 : modelData === "windows" ? cWindows : modelData === "clock" ? cClock : modelData === "tray" ? cTray
                                 : modelData === "status" ? cStatus : modelData === "notifications" ? cNotes : modelData === "layout" ? cLayout
-                                : modelData === "gamemode" ? cGame : root.blocks.indexOf(modelData) >= 0 ? cBlock : cWidget
+                                : modelData === "gamemode" ? cGame : root.blocks.indexOf(modelData) >= 0 ? cBlock : modelData.indexOf("own:") === 0 ? cOwn : cWidget
                             onLoaded: { if (item.panel !== undefined) item.panel = pw; if (item.kind !== undefined) item.kind = modelData; }
                             onStatusChanged: if (status === Loader.Error) console.warn("panels: " + modelData + " couldn't load")
                         }
@@ -114,6 +118,8 @@ Scope {
 
     // ------------------------------------------------------------------ what a panel can hold
     // Desktop layouts' own blocks: LayoutBlock.qml, the same as in the main bar
+    // a block you made in the desktop editor (OwnBarBlock.qml)
+    Component { id: cOwn; OwnBarBlock { property var panel: null; side: panel ? panel.size - 10 : 34; vert: panel ? panel.vertical : false } }
     readonly property var blocks: ["overview", "taskview", "appname", "appmenus", "quickaccess", "showdesktop", "power"]
     Component {
         id: cBlock

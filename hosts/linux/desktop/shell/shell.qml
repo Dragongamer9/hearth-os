@@ -213,6 +213,34 @@ ShellRoot {
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the overview couldn't load (Overview.qml)")
         function toggle() { if (!active) active = true; else if (item) item.toggle(); }
     }
+    // Edit desktop: drag and drop (DesktopEditor.qml, loaded the first time it's opened, so a problem there only loses
+    // the editor). Opened from the desktop's menu (Edit desktop…) and Settings › Desktop layout.
+    Loader {
+        id: deskEdit
+        active: false
+        source: "DesktopEditor.qml"
+        property string pending: ""
+        onLoaded: item.open(pending)
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the desktop editor couldn't load (DesktopEditor.qml)")
+        function openOn(n) { pending = n || ""; if (!active) active = true; else if (item) item.open(pending); }
+    }
+    IpcHandler {
+        target: "deskedit"
+        function open(screen: string): void { deskEdit.openOn(screen); }
+        function close(): void { if (deskEdit.item) deskEdit.item.cancel(); }
+        function keep(): void { if (deskEdit.item && deskEdit.item.shown) deskEdit.item.keep(); }
+        function shown(): bool { return !!deskEdit.item && deskEdit.item.shown; }
+        // for the checks' pictures: a block from Blocks held at x, y (where it would land, its note), let go, picked
+        function hold(id: string, x: real, y: real): string {
+            const e = deskEdit.item; if (!e) return "";
+            e.startDrag(id, { kind: "lib" }, Qt.point(x, y)); return JSON.stringify({ target: e.target, note: e.note });
+        }
+        function letGo(): void { if (deskEdit.item) deskEdit.item.endDrag(); }
+        function pick(what: string): void { if (deskEdit.item) deskEdit.item.picked = what; }
+        function addPanel(edge: string): void { if (deskEdit.item) deskEdit.item.addPanel(edge); }
+        function undo(): void { if (deskEdit.item) deskEdit.item.undo(); }
+        function draft(): string { return deskEdit.item ? JSON.stringify(deskEdit.item.draft) : ""; }
+    }
     // Describe it (DescribeIt.qml, loaded the first time it's asked for)
     Loader {
         id: describe
