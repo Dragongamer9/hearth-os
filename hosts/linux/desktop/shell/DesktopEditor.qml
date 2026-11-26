@@ -949,7 +949,8 @@ PanelWindow {
         Rectangle {
             id: menuCard
             visible: ed.menuBlk !== null && !ed.trying
-            x: Math.max(8, Math.min(ed.sw - width - 12, ed.menuAt.x))
+            z: 20   // above the side panel, and kept beside it so none of it is hidden
+            x: Math.max(8, Math.min((side.visible ? side.x - 8 : ed.sw - 12) - width, ed.menuAt.x))
             y: Math.max(8, Math.min(ed.sh - height - 12, ed.menuAt.y + 14))
             width: 250; height: menuCol.implicitHeight + 16
             radius: 12
