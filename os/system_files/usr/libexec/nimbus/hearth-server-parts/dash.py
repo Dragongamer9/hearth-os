@@ -560,8 +560,37 @@ def sample(prev, now, cpu, gpu, mem, ctemp, net):
     if cpu.get('pct') is not None:
         pct = cpu['pct']
     point = [int(now), round(pct or 0, 1), round((gpu or {}).get('pct') or 0, 1), round((gpu or {}).get('temp') or 0), round(ctemp or 0), net[0], net[1],
-             round(((mem['total'] - mem['avail']) / mem['total'] * 100) if mem.get('total') else 0, 1)]
+             round(((mem['total'] - mem['avail']) / mem['total'] * 100) if mem.get('total') else 0, 1), game_now()]
     return (h + [point])[-10080:]
+
+
+def game_now():
+    """The game running on this PC now, by name (a Steam game's launch line and its appmanifest), or ""."""
+    w = world()
+    if w is not None:
+        return w.get('game', '')
+    try:
+        pids = [p for p in os.listdir('/proc') if p.isdigit()]
+    except OSError:
+        return ''
+    for pid in pids:
+        try:
+            with open('/proc/%s/cmdline' % pid, 'rb') as f:
+                cmd = f.read(4096).decode('utf-8', 'replace')
+        except OSError:
+            continue
+        m = re.search(r'SteamLaunch\x00AppId=(\d+)', cmd)
+        if m:
+            for lib in (os.path.join(C.HOME, '.local/share/Steam/steamapps'), os.path.join(C.HOME, '.steam/steam/steamapps')):
+                try:
+                    with open(os.path.join(lib, 'appmanifest_%s.acf' % m.group(1)), encoding='utf-8', errors='replace') as f:
+                        n = re.search(r'"name"\s+"([^"]+)"', f.read())
+                    if n:
+                        return n.group(1)
+                except OSError:
+                    continue
+            return ''
+    return ''
 
 
 def window(h, secs, now, idx, scale=100.0, n=48):
@@ -689,7 +718,7 @@ def status(rng='24h', write_history=True):
     return {
         'ok': True, 'healthy': len(healthy), 'total': len(on), 'needsCount': len(needs), 'updated': 'updated every 2 seconds', 'tv': tv,
         'pc': os.environ.get('HEARTH_SERVER_NAME') or server_name(gpu), 'kpis': kpis, 'services': svcs, 'needs': needs, 'earlier': earlier[:4], 'fixes': fixes,
-        'temps24': temps24, 'tempNote': ('GPU peak %d° at %s' % (peak[3], C.clock(peak[0]))) if peak and peak[3] else '',
+        'temps24': temps24, 'tempNote': ('GPU peak %d° at %s%s' % (peak[3], C.clock(peak[0]), (' (%s)' % peak[8]) if len(peak) > 8 and peak[8] else '')) if peak and peak[3] else '',
         'network': {'line': 'down %s · up %s' % (gb_short(down), gb_short(up)), 'spark': net_spark},
         'power': {'line': 'now %d W · %.1f kWh · about %s' % (now_w, kwh, C.money(kwh * float(c.get('price') or 0.14))), 'bars': buckets, 'now': '%d W' % now_w, 'kwh': '%.1f kWh · about %s' % (kwh, C.money(kwh * float(c.get('price') or 0.14)))},
         'tonight': tonight[:4], 'tonightFrom': 'from %s' % ' and '.join(froms) if froms else 'nothing planned tonight',

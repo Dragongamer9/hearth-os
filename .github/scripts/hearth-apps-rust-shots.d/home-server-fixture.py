@@ -164,6 +164,8 @@ elif 'stats' in a:
     hist[-1][1], hist[-1][2], hist[-1][3] = 18, 41, 62
     peak = max(range(len(hist)), key=lambda k: hist[k][3])
     hist[peak][3] = 74
+    for k in range(max(0, peak - 60), min(len(hist), peak + 30)):
+        hist[k].append('Gravesleep')   # what was being played then (dash.py game_now)
     wj(os.path.join(st, 'dash.json'), {'hist': hist})
     world = {
         'units': {'hearth-ollama.service': u(mem=0.4e9, cpu=1, disk='9 GB'), 'hearth-colibri.service': u(mem=11e9, gpu=6.1e9, cpu=9, disk='1.25 TB'), 'hearth-jellyfin.service': u(mem=1.2e9, gpu=0.3e9, cpu=4, disk='2.6 TB'),
