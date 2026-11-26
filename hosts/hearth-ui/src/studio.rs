@@ -162,7 +162,7 @@ pub fn glyph_of(name: &str) -> Option<G> {
 /// (id its uid, `part` its bar), 3 a piece of a bar (id the piece's, `part` its bar).
 #[derive(Debug, Clone)]
 pub struct Rec {
-    pub gen: u64,
+    pub at: Instant,
     pub kind: u8,
     pub page: &'static str,
     pub part: &'static str,
@@ -171,10 +171,10 @@ pub struct Rec {
     pub rect: Rectangle,
 }
 
-/// Where the parts were drawn the last time the window being edited was drawn (only while it's edited).
+/// Where the parts were drawn the last time the window being edited was drawn (only while it's edited): what was
+/// drawn in the last frame (a part no longer drawn is passed over).
 #[derive(Debug, Default)]
 pub struct Geo {
-    pub gen: u64,
     pub recs: Vec<Rec>,
 }
 
@@ -187,21 +187,25 @@ fn rect(r: R) -> Rectangle {
 
 impl Geo {
     fn put(&mut self, kind: u8, page: &'static str, part: &'static str, id: &str, title: &str, r: Rectangle) {
-        let g = self.gen;
+        let g = Instant::now();
         match self.recs.iter_mut().find(|x| x.kind == kind && x.page == page && x.part == part && x.id == id) {
             Some(x) => {
-                x.gen = g;
+                x.at = g;
                 x.rect = r;
                 if x.title != title {
                     x.title = title.to_string();
                 }
             }
-            None => self.recs.push(Rec { gen: g, kind, page, part, id: id.to_string(), title: title.to_string(), rect: r }),
+            None => self.recs.push(Rec { at: g, kind, page, part, id: id.to_string(), title: title.to_string(), rect: r }),
         }
     }
     fn now(&self) -> impl Iterator<Item = &Rec> {
-        let g = self.gen;
-        self.recs.iter().filter(move |r| r.gen == g && r.rect.width > 0.5 && r.rect.height > 0.5)
+        let last = self.recs.iter().map(|r| r.at).max();
+        self.recs.iter().filter(move |r| last.map(|l| l.duration_since(r.at) < Duration::from_millis(60)).unwrap_or(false) && r.rect.width > 0.5 && r.rect.height > 0.5)
+    }
+    /// The outermost page drawn (the one editing sits over).
+    pub fn root(&self) -> Option<&'static str> {
+        self.now().filter(|r| r.kind == 0).max_by(|a, b| rr(a.rect).area().total_cmp(&rr(b.rect).area())).map(|r| r.page)
     }
     pub fn page(&self, page: &str) -> Option<R> {
         self.now().find(|r| r.kind == 0 && r.page == page).map(|r| rr(r.rect))
@@ -1816,6 +1820,10 @@ impl Describe {
         match m {
             SMsg::Tick => {
                 st.refresh = false;
+                // editing sits over the outermost page drawn (the whole window)
+                if let Some(r) = self.geo.try_borrow().ok().and_then(|g| g.root()).filter(|r| self.pages.iter().any(|p| p.id == *r)) {
+                    st.root = r;
+                }
                 // CI's pictures: HEARTH_STUDIO_STAGE=<app>:<drag|size|customize|menu|move> shows that moment, once,
                 // when the window has been drawn
                 if !st.staged {
@@ -2848,9 +2856,6 @@ impl<'a, M: Clone + 'a> Widget<M, Theme, Renderer> for Board<'a, M> {
         self.content.as_widget_mut().layout(&mut tree.children[0], renderer, limits)
     }
     fn draw(&self, tree: &Tree, renderer: &mut Renderer, theme: &Theme, style: &renderer::Style, layout: Layout<'_>, cursor: mouse::Cursor, viewport: &Rectangle) {
-        if let Ok(mut g) = self.geo.try_borrow_mut() {
-            g.gen += 1;
-        }
         // the app as it is, without the pointer (it isn't used while it's edited)
         self.content.as_widget().draw(&tree.children[0], renderer, theme, style, layout, mouse::Cursor::Unavailable, viewport);
         let b = layout.bounds();
@@ -3890,7 +3895,6 @@ mod tests {
         let _ = d.studio(SMsg::Start(Some("window"), None));
         // where it was drawn (as the window draws it: 1200 × 800)
         let mut g = d.geo.borrow_mut();
-        g.gen = 1;
         g.put(0, "window", "", "", "Hearth Files", Rectangle { x: 0.0, y: 0.0, width: 1200.0, height: 800.0 });
         g.put(1, "window", "", "toolbar", "The toolbar", Rectangle { x: 216.0, y: 0.0, width: 984.0, height: 48.0 });
         g.put(1, "window", "", "sidebar", "The sidebar", Rectangle { x: 0.0, y: 0.0, width: 216.0, height: 800.0 });
