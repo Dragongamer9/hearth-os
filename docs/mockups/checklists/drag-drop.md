@@ -36,28 +36,28 @@ nothing made here can stop the desktop or an app from starting.
 - [ ] Kept the safe way (merged, atomic, a .bak; nothing saved over a file that can't be read); Game Mode stays in a bar
 
 ## 2. One block picked: everything about it (board 2)
-- [ ] The picked block lit in its place, with handles
-- [ ] Right-click a block: Customize…, Copy its look, Paste a look, Duplicate, Move to › (any bar, panel, the desktop), Hide (keep it here), Take it out
-- [ ] "Right-click any block · or pick it and use the panel →"
-- [ ] The side panel: the block's name, where it is ("· in the top bar"), Reset
-- [ ] Tabs: Look, Shows, Does, Place, When, Motion
-- [ ] SIZE AND PLACE: Width (Fit, Fixed, Fill, and its px), Height, Space around it (each side), Space inside
-- [ ] BACKGROUND AND EDGE: Fill (colours and any colour), See-through, Blur behind it, Corners, Edge (None, Line, Glow; colour; width), Shadow (None, Soft, Deep)
-- [ ] ICON AND WORDS: Icon (pick any; colour; size), Words (with {count}-style values), Font (font, size, Light/Medium/Bold), Show (Icon, Words, Both)
-- [ ] WHEN IT'S POINTED AT · PRESSED: Hover look (Same, Lighter, Accent, Own…), Pressed look (Same, Darker, Own…)
-- [ ] Shows: what's in it (a count, a list, a picture, a clock…)
-- [ ] Does: press, right-click, middle-click, scroll, hover — open, run, show a panel, nothing
-- [ ] Place: which bar, panel or the desktop, which screen, which desktops, above or under windows
-- [ ] When: always, only on hover, only when there's something to show, only in some apps
-- [ ] Motion: how it appears, bounces when something new comes
-- [ ] Save as my own block…, Copy its look, Apply to every bar item
-- [ ] The bar itself picked (its empty space): Edge Top · Bottom · Left · Right · Floating anywhere
-- [ ] The bar's Length (full, fit to its blocks, any % or px) and Offset from the corner
-- [ ] The bar's Thickness, Corners, Fill, see-through, blur, Gap between blocks
-- [ ] The bar's line-up: start · centre · end · spread · Islands or one strip
-- [ ] The bar's Hide until pointed at, Above windows or keep their space, Which screen
-- [ ] More than one panel on any edge, panels inside panels
-- [ ] The small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this
+- [x] The picked block lit in its place, with handles — hosts/linux/desktop/shell/DesktopEditor.qml: "// picked: lit in its place, with handles at its ends (drag one to give it a width)"
+- [x] Right-click a block: Customize…, Copy its look, Paste a look, Duplicate, Move to › (any bar, panel, the desktop), Hide (keep it here), Take it out — hosts/linux/desktop/shell/DesktopEditor.qml: "MenuRow { label: menuCard.hid ? \"Show it again\" : \"Hide (keep it here)\"; onClicked: { ed.hideBlock(ed.menuBlk); ed.menuBlk = null; } }"
+- [x] "Right-click any block · or pick it and use the panel →" — hosts/linux/desktop/shell/DesktopEditor.qml: "text: \"Right-click any block · or pick it and use the panel →\""
+- [x] The side panel: the block's name, where it is ("· in the top bar"), Reset — hosts/linux/desktop/shell/DesktopEditor.qml: "label: \"Reset\"; onClicked: { if (side.forBlock) ed.resetLook(); else ed.resetBar(); }"
+- [x] Tabs: Look, Shows, Does, Place, When, Motion — hosts/linux/desktop/shell/DesktopEditor.qml: "model: [[\"look\", \"Look\"], [\"shows\", \"Shows\"], [\"does\", \"Does\"], [\"place\", \"Place\"], [\"when\", \"When\"], [\"motion\", \"Motion\"]]"
+- [x] SIZE AND PLACE: Width (Fit, Fixed, Fill, and its px), Height, Space around it (each side), Space inside — hosts/linux/desktop/shell/BlockLook.qml: "readonly property real innerW: look.w === \"fixed\" && look.wpx > 0 ? look.wpx : contentW + padIn * 2"
+- [x] BACKGROUND AND EDGE: Fill (colours and any colour), See-through, Blur behind it, Corners, Edge (None, Line, Glow; colour; width), Shadow (None, Soft, Deep) — hosts/linux/desktop/shell/BlockLook.qml: "model: bk.look.shadow === \"deep\" ? 3 : bk.look.shadow === \"soft\" ? 2 : 0"
+- [x] ICON AND WORDS: Icon (pick any; colour; size), Words (with {count}-style values), Font (font, size, Light/Medium/Bold), Show (Icon, Words, Both) — hosts/linux/desktop/shell/block-look.js: "function fillWords(tpl, v) {"
+- [x] WHEN IT'S POINTED AT · PRESSED: Hover look (Same, Lighter, Accent, Own…), Pressed look (Same, Darker, Own…) — hosts/linux/desktop/shell/BlockLook.qml: "readonly property string prs: bk.pressedNow ? BL.pressWash(bk.look) : \"\""
+- [x] Shows: what's in it (a count, a list, a picture, a clock…) — hosts/linux/desktop/shell/DesktopEditor.qml: "Choices { options: [[\"own\", \"Its own (what Hearth shows)\"], [\"count\", \"A count\"], [\"list\", \"A list\"], [\"picture\", \"A picture\"], [\"clock\", \"A clock\"], [\"words\", \"Words\"]]"
+- [x] Does: press, right-click, middle-click, scroll, hover — open, run, show a panel, nothing — hosts/linux/desktop/shell/BlockLook.qml: "onClicked: m => bk.run(BL.action(bk.look, bk.which(m.button)))"
+- [x] Place: which bar, panel or the desktop, which screen, which desktops, above or under windows — hosts/linux/desktop/shell/block-look.js: "if (n.desktops.length && c.desk > 0 && n.desktops.indexOf(c.desk) < 0) return false;"
+- [x] When: always, only on hover, only when there's something to show, only in some apps — hosts/linux/desktop/shell/block-look.js: "if (n.when === \"something\" && c.something === false) return false;"
+- [x] Motion: how it appears, bounces when something new comes — hosts/linux/desktop/shell/BlockLook.qml: "onCountNowChanged: { if (look.bounce && lastCount >= 0 && countNow > lastCount && !Settings.reduceMotion) bounceAnim.restart(); lastCount = countNow; }"
+- [x] Save as my own block…, Copy its look, Apply to every bar item — hosts/linux/desktop/shell/DesktopEditor.qml: "Btn { label: \"Apply to every bar item\"; onClicked: ed.applyAll() }"
+- [x] The bar itself picked (its empty space): Edge Top · Bottom · Left · Right · Floating anywhere — hosts/linux/desktop/shell/Islands.qml: "margins.left: free && screen ? Math.round(mb.fx * Math.max(0, screen.width - implicitWidth))"
+- [x] The bar's Length (full, fit to its blocks, any % or px) and Offset from the corner — hosts/linux/desktop/shell/widget-tools.js: "function lengthOf(len, lenV, along, want) {"
+- [x] The bar's Thickness, Corners, Fill, see-through, blur, Gap between blocks — hosts/linux/desktop/shell/Islands.qml: "rowSpacing: isl.mb.gap >= 0 ? isl.mb.gap : isl.floating ? 10 : 6"
+- [x] The bar's line-up: start · centre · end · spread · Islands or one strip — hosts/linux/desktop/shell/ExtraPanels.qml: "model: T.lineup(pw.p.items, pw.p.lineup)"
+- [x] The bar's Hide until pointed at, Above windows or keep their space, Which screen — hosts/linux/desktop/shell/ExtraPanels.qml: "exclusiveZone: p.free || p.over || p.autoHide ? 0 : size + gap * 2"
+- [x] More than one panel on any edge, panels inside panels — hosts/linux/desktop/shell/NestedPanel.qml: "readonly property bool wanted: !!p && depth <= 3 && pid !== \"\""
+- [x] The small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this — hosts/linux/desktop/shell/DesktopEditor.qml: "// ---- the small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this (and while the bar itself is)"
 
 ## 3. The same in every app (board 3, Hearth Files shown)
 - [ ] The app's window marked EDITING; every part of it outlined (dashed, accent)

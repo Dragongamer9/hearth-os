@@ -188,6 +188,8 @@ PanelWindow {
     readonly property int mainWant: (draft.main.start.length + draft.main.centre.length + draft.main.end.length) * 110 + 60
     readonly property var mainB: E.mainBox(mbl, mainEdge, sw, sh, mainSize, mainWant)
     readonly property rect mainBox: Qt.rect(mainB.x, mainB.y, mainB.w, mainB.h)
+    // more blocks than its length shows by name: they show by their icon
+    readonly property bool mainCrowded: !mainDown && mainWant > mainBox.width
 
     function inBox(p, r, pad) { pad = pad || 0; return p.x >= r.x - pad && p.x <= r.x + r.width + pad && p.y >= r.y - pad && p.y <= r.y + r.height + pad; }
     function panelRect(id) { const p = T.panelOf(id, draft.panels[id]); if (!p) return Qt.rect(0, 0, 0, 0); const b = E.panelBox(p, sw, sh, (p.items.length || 1) * 48 + 24); return Qt.rect(b.x, b.y, b.w, b.h); }
@@ -617,20 +619,20 @@ PanelWindow {
                 anchors { left: parent.left; top: parent.top; margins: 6 }
                 flow: ed.mainDown ? Flow.TopToBottom : Flow.LeftToRight
                 spacing: 6
-                Repeater { id: mainStart; model: ed.draft.main.start; delegate: Chip { required property string modelData; bid: modelData; from: ({ kind: "main", zone: "start" }) } }
+                Repeater { id: mainStart; model: ed.draft.main.start; delegate: Chip { required property string modelData; bid: modelData; compact: ed.mainCrowded; from: ({ kind: "main", zone: "start" }) } }
             }
             Flow {
                 anchors { horizontalCenter: ed.mainDown ? undefined : parent.horizontalCenter; verticalCenter: ed.mainDown ? parent.verticalCenter : undefined; top: ed.mainDown ? undefined : parent.top; topMargin: 6; left: ed.mainDown ? parent.left : undefined; leftMargin: 6 }
                 flow: ed.mainDown ? Flow.TopToBottom : Flow.LeftToRight
                 spacing: 6
-                Repeater { id: mainCentre; model: ed.draft.main.centre; delegate: Chip { required property string modelData; bid: modelData; from: ({ kind: "main", zone: "centre" }) } }
+                Repeater { id: mainCentre; model: ed.draft.main.centre; delegate: Chip { required property string modelData; bid: modelData; compact: ed.mainCrowded; from: ({ kind: "main", zone: "centre" }) } }
             }
             Flow {
                 anchors { right: parent.right; bottom: parent.bottom; margins: 6 }
                 flow: ed.mainDown ? Flow.TopToBottom : Flow.LeftToRight
                 layoutDirection: Qt.LeftToRight
                 spacing: 6
-                Repeater { id: mainEnd; model: ed.draft.main.end; delegate: Chip { required property string modelData; bid: modelData; from: ({ kind: "main", zone: "end" }) } }
+                Repeater { id: mainEnd; model: ed.draft.main.end; delegate: Chip { required property string modelData; bid: modelData; compact: ed.mainCrowded; from: ({ kind: "main", zone: "end" }) } }
             }
         }
         Tag { text: E.mainLabel(ed.mainEdge, ed.mainSize); x: ed.mainEdge === "right" ? ed.mainBox.x - width - 10 : ed.mainEdge === "left" ? ed.mainBox.width + 10 : 12; y: ed.mainEdge === "bottom" ? ed.mainBox.y - height - 10 : ed.mainEdge === "top" ? ed.mainBox.height + 10 : 12 }
@@ -877,7 +879,7 @@ PanelWindow {
 
         // ---- the toolbar
         Text {
-            visible: !side.forBlock
+            visible: !side.visible
             anchors { horizontalCenter: tool.horizontalCenter; bottom: tool.top; bottomMargin: 12 }
             text: "EDITING YOUR DESKTOP · NOTHING IS KEPT UNTIL KEEP THIS · ESC CANCELS"
             color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.2
@@ -885,7 +887,7 @@ PanelWindow {
         }
         Rectangle {
             id: tool
-            visible: !side.forBlock
+            visible: !side.visible
             // beside the side panel while the bar itself is picked
             x: side.visible ? Math.max(8, (side.x - width) / 2) : (ed.sw - width) / 2
             anchors { bottom: parent.bottom; bottomMargin: 28 }
@@ -1430,10 +1432,10 @@ PanelWindow {
             }
         }
 
-        // ---- the small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this
+        // ---- the small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this (and while the bar itself is)
         Rectangle {
             id: smallTool
-            visible: side.forBlock && !ed.trying
+            visible: side.visible && !ed.trying
             x: Math.max(12, (side.x - width) / 2); anchors { bottom: parent.bottom; bottomMargin: 28 }
             width: smallRow.implicitWidth + 20; height: 56; radius: 16
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.97); border.color: Theme.line
@@ -1489,6 +1491,9 @@ PanelWindow {
         property string bid: ""
         property var from: null
         property bool square: false
+        // a crowded main bar: only the icon (the picked one and one with a look of its own show whole)
+        property bool compact: false
+        readonly property bool small: compact && !lit && !styled
         readonly property bool own: E.isOwn(bid)
         readonly property var lk: ed.draft.looks ? ed.draft.looks[bid] : undefined
         readonly property bool styled: lk !== undefined && lk !== null
@@ -1516,7 +1521,7 @@ PanelWindow {
             lookOverride: c.styled ? c.lk : null
             ownOverride: c.own ? (ed.draft.own[c.bid.slice(4)] || null) : undefined
             Item {
-                implicitWidth: c.square ? 40 : c.inner ? innerRow.implicitWidth + 12 : chipRow.implicitWidth + 18
+                implicitWidth: c.square ? 40 : c.small ? 34 : c.inner ? innerRow.implicitWidth + 12 : chipRow.implicitWidth + 18
                 implicitHeight: c.square ? 40 : 30
                 Row {
                     id: chipRow
@@ -1524,7 +1529,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     spacing: 6
                     Icon { id: ci; name: ed.iconOf(c.bid); size: 15; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
-                    Text { id: ct; visible: !c.square; text: T.baseId(c.bid) === "spacer" ? "space" : ed.nameOf(c.bid); color: T.baseId(c.bid) === "spacer" ? Theme.muted : Theme.text; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; width: Math.min(implicitWidth, 160) }
+                    Text { id: ct; visible: !c.square && !c.small; text: T.baseId(c.bid) === "spacer" ? "space" : ed.nameOf(c.bid); color: T.baseId(c.bid) === "spacer" ? Theme.muted : Theme.text; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; width: Math.min(implicitWidth, 160) }
                 }
                 // a panel inside: its own blocks, small (pick one, or right-click it)
                 Row {

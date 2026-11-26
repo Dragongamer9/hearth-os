@@ -2900,7 +2900,7 @@ jobs:
           grim $o/deskedit-10-looks-kept-on-the-real-desktop.png || true
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
           grep -q "using the classic taskbar" "$LOG" && bad "the main bar didn't load (the classic taskbar came up): $(grep -i 'classic taskbar' "$LOG" | tail -2 | tr '\n' ' ' | cut -c1-300)" || say "the main bar came up with the looks"
-          xbad=$(grep -E "(DesktopEditor|desktop-edit|block-look|BlockLook|NestedPanel|PanelBlocks|DeskNow|OwnBarBlock|ExtraPanels|Islands|widget-tools)\.(qml|js)" "$LOG" | grep -i -E "error|warning|unavailable|not a type|cannot|undefined|loop" | head -8)
+          xbad=$(grep -E "(DesktopEditor|desktop-edit|block-look|BlockLook|NestedPanel|PanelBlocks|DeskNow|OwnBarBlock|ExtraPanels|Islands|widget-tools)\.(qml|js)" "$LOG" | grep -i -E "error|warning|unavailable|not a type|cannot|undefined|loop" | head -8) || true
           [ -z "$xbad" ] && say "no QML errors from the editor, the bars or the panels" || bad "$(echo "$xbad" | cut -c1-300 | tr '\n' ' ')"
           pkill -x labwc || true; pkill -f quickshell || true
 
