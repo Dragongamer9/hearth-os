@@ -209,6 +209,11 @@ class Choices(Base):
         self.assertIn('WantedBy=timers.target', t)
         self.assertNotIn('[Install]', hub.timer_texts()['hearth-server-hub.service'])
 
+    def test_most_memory_for_all_servers_is_one_slice(self):
+        sl, dropin = hub.games_slice_texts(12)
+        self.assertIn('MemoryMax=12G', sl)
+        self.assertIn('Slice=hearth-games.slice', dropin)
+
     def test_media_only_from_what_you_own_or_free(self):
         self.patch(hub, 'timer_sync', lambda: None)
         with self.assertRaises(hub.Fail):

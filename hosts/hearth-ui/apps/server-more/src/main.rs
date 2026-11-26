@@ -136,7 +136,7 @@ fn side(a: &App) -> E<'_, Msg> {
             c = c.push(item("Backups", String::new(), None));
             seen_backups = true;
         }
-        c = c.push(item(label, a.hub.count(*part), Some(*part)));
+        c = c.push(item(*label, a.hub.count(*part), Some(*part)));
     }
     c = c
         .push(container(kit::caps(&p, "This server")).padding(pad(22.0, 0.0, 6.0, 0.0)))

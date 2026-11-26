@@ -222,6 +222,11 @@ def set_choice(part, key, value):
         d[part] = sec
     sio.update_json(SETTINGS, change)
     timer_sync()
+    if part == 'games' and key == 'maxMemGB' and not faking() and have('systemctl'):
+        slice_text, _ = games_slice_texts(int(value))
+        sio.write_text(os.path.join(UNIT_DIR, 'hearth-games.slice'), slice_text) if os.path.isdir(UNIT_DIR) else None
+        cmd(['systemctl', '--user', 'daemon-reload'], 30)
+        cmd(['systemctl', '--user', 'set-property', '--runtime', 'hearth-games.slice', 'MemoryMax=%dG' % int(value)], 15)
     return {'ok': True}
 
 
@@ -718,6 +723,33 @@ def week_bars(hist, t):
     return bars, most
 
 
+def games_slice_texts(gb_):
+    """Most memory for all servers: every game server in one slice of yours with that memory limit."""
+    return ('# The Home server helper: every game server together gets at most this much memory. Made by hearth-server-hub.\n'
+            '[Unit]\nDescription=Hearth game servers\n\n[Slice]\nMemoryMax=%dG\nMemoryHigh=%dG\n' % (gb_, max(1, gb_ - 1)),
+            '# The Home server helper: this game server runs in hearth-games.slice (Most memory for all servers).\n[Service]\nSlice=hearth-games.slice\n')
+
+
+def games_slice_sync(gid):
+    if faking() or not have('systemctl'):
+        return
+    slice_text, dropin = games_slice_texts(int(settings()['games'].get('maxMemGB') or 12))
+    changed = False
+    for path, text in ((os.path.join(UNIT_DIR, 'hearth-games.slice'), slice_text),
+                       (os.path.join(UNIT_DIR, 'hearth-app@%s.service.d' % gid, '50-hearth-games.conf'), dropin)):
+        try:
+            with open(path) as f:
+                if f.read() == text:
+                    continue
+        except OSError:
+            pass
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        sio.write_text(path, text)
+        changed = True
+    if changed:
+        cmd(['systemctl', '--user', 'daemon-reload'], 30)
+
+
 def game_act(action, gid):
     catalog()
     if gid not in sa().CATALOG:
@@ -730,6 +762,7 @@ def game_act(action, gid):
     if action == 'start':
         if not m.installed(gid):
             return m.install(gid)
+        games_slice_sync(gid)
         return m.switch(gid, True)
     if action == 'stop':
         res = m.switch(gid, False)
@@ -739,6 +772,7 @@ def game_act(action, gid):
             pass
         return res
     if action == 'restart':
+        games_slice_sync(gid)
         code, o, e = cmd(['systemctl', '--user', 'restart', '--no-block', m.unit(gid)], 30)
         return {'ok': code == 0}
     raise Fail('start, stop, restart or install')

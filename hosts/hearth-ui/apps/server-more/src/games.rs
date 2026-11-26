@@ -101,7 +101,7 @@ fn detail<'a>(h: &'a Hub, p: Pal, d: &'a Value) -> E<'a, Msg> {
         .center_y(Length::Fixed(44.0))
         .style(kit::gradient(135.0, colour(arts.first().unwrap_or(&Value::Null), p.panel2), colour(arts.get(1).unwrap_or(&Value::Null), p.bg), 10.0, None));
     let tabs = ["Players", "Mods", "Worlds", "Settings"];
-    let seg = kit::seg(&p, tabs.iter().map(|x| (x.to_string(), h.gtab == *x, Some(Msg::GTab(x)))).collect());
+    let seg = kit::seg(&p, tabs.iter().map(|x| (x.to_string(), h.gtab == *x, Some(Msg::GTab(*x)))).collect());
     let top = row![mark, column![ts(s(d, "title"), 18.0, p.text), t(s(d, "sub"), 12.0, p.muted)].spacing(2.0).width(Length::Fill), seg].spacing(10.0).align_y(iced::Center);
     let mut c = Column::new().spacing(6.0).push(top);
     match h.gtab {
