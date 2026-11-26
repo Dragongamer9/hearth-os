@@ -42,7 +42,7 @@ pub fn read_own(name: &str) -> Value {
 
 pub fn write_own(name: &str, v: &Value) -> Result<(), String> {
     let _ = std::fs::create_dir_all(own_dir());
-    hearth_ui::settings_file::write_json(&own_dir().join(name), v).map_err(|e| e.to_string())
+    hearth_ui::settings_file::write_json(&own_dir().join(name), v).map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// One of your games: a library game, an organizer instance, or both.

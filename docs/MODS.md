@@ -1,5 +1,29 @@
 # Hearth Mods: Nexus Mods and Wabbajack
 
+## The Mod Manager (the new window, pure Rust)
+
+Our Mod Manager (the owner, Nov 26, 2026: "We need to update our Mod manager as well to make it way better"; the approved
+boards docs/mockups/mod-manager, checklist docs/mockups/checklists/mod-manager.md) is the new `hearth-mods`:
+`hosts/hearth-ui/apps/mods`, an iced app made of blocks like Hearth's other apps. It keeps the program's name and every
+command line below (the nxm handler, `--play-modded`, `--organizer …`, `--serve` for Game Mode), because those now live
+in the library (`hosts/hearth-gaming/src/mods_app.rs`, shared by both windows); the Tauri page stays until the image
+moves over. It ships as the Hearth Store's `hearth-mods` part (quick-update.yml builds it with Hearth's pure-Rust apps).
+
+- `src/back.rs`: every call goes through `mods_app::route` off the window's thread; the game list (the library and the
+  organizer's instances) and a game's page (the organizer's summary, snapshots, crash logs, saves).
+- `src/logic.rs` (tested): Sort with LOOT's masterlist (used only at its pinned commit and SHA-256; until pinned, the
+  plugins' own masters) and the reason for each move; snapshots of a whole setup in `<instance>/.hearth/snapshots/`
+  (the profile's lists and INIs and each mod's version, never mod files) with what going back changes and going back
+  (tonight's setup becomes a snapshot first); Skyrim SE saves read for their plugins (LZ4); Crash Logger SSE / F4SE and
+  .NET Script Framework logs read in plain words.
+- `src/sources.rs`: Find mods across Nexus Mods (your own key, as before), Thunderstore (no account), mod.io and
+  CurseForge (keys typed in Accounts, kept in the keyring with `secret-tool`; CurseForge's needs Hearth's own key, which
+  the owner applies for); update checks with each mod's changelog (nothing installs by itself); Describe it with Hearth
+  AI (Colibri from `~/.config/nimbus/ai-engines.json`, Ollama the fallback); the home server's Mods folder for downloads.
+- `src/pages.rs`: the boards' pages; `--fullscreen` (Game Mode) or `--tv` is the controller view (board 7).
+- Its own notes: `~/.local/share/nimbus/mods/manager/` (updates found, Describe it's last answer, an open installer);
+  its settings `~/.config/nimbus/mods.json` through the safe writers (red flag 9).
+
 Hearth Mods (`hearth-mods`, `hosts/hearth-gaming`) came in 0.6.1 with Controller Lab and Saves. For 0.6.5 it gets
 Nexus Mods downloads, a choice of how mods go into a game, and Wabbajack modlists. After 1.0 the page was laid out
 again, game first (below).
