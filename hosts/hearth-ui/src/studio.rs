@@ -2948,7 +2948,7 @@ impl<'a, M: Clone + 'a> Widget<M, Theme, Renderer> for Board<'a, M> {
 
 /// A dashed outline (6 on, 4 off, 1.5 px).
 fn dashes(r: &mut Renderer, rc: Rectangle, c: Color) {
-    let (on, off, w) = (6.0, 4.0, 1.5);
+    let (on, off, w): (f32, f32, f32) = (6.0, 4.0, 1.5);
     let q = |r: &mut Renderer, x: f32, y: f32, ww: f32, hh: f32| r.fill_quad(renderer::Quad { bounds: Rectangle { x, y, width: ww, height: hh }, ..renderer::Quad::default() }, Background::Color(c));
     let mut x = rc.x;
     while x < rc.x + rc.width {
@@ -3591,7 +3591,7 @@ fn side_panel<'a, M: Clone + 'a>(d: &'a Describe, st: &'a Studio, p: &Pal, sel: 
             c = c.push(row_("Space around it", around.into()));
             let st4 = set.clone();
             let inside = sty.inside.unwrap_or(0) as f32;
-            c = c.push(row_("Space inside", row![slider(0.0..=48.0, inside, move |v| st4(F::Inside(v))).step(1.0).width(Length::Fixed(170.0)), t(format!("{} px", inside as i64), 12.0, p.muted)].spacing(10.0).align_y(iced::Center).into()));
+            c = c.push(row_("Space inside", row![slider(0.0..=48.0, inside, move |v| st4(F::Inside(v))).step(1.0_f32).width(Length::Fixed(170.0)), t(format!("{} px", inside as i64), 12.0, p.muted)].spacing(10.0).align_y(iced::Center).into()));
             c = c.push(head("BACKGROUND AND EDGE"));
             let mut fills = Row::new().spacing(6.0).align_y(iced::Center);
             for col in [Color::TRANSPARENT, p.panel2, p.accent, Color::from_rgb8(0x3a, 0x5b, 0xa8), Color::from_rgb8(0xe0, 0x6a, 0x8c)] {
@@ -3604,12 +3604,12 @@ fn side_panel<'a, M: Clone + 'a>(d: &'a Describe, st: &'a Studio, p: &Pal, sel: 
             fills = fills.push(field(&p, if sty.fill.is_empty() { String::new() } else { sty.fill.to_uppercase() }, "", 84.0, move |v| st5(F::Fill(v))));
             c = c.push(row_("Fill", fills.into()));
             let st6 = set.clone();
-            c = c.push(row_("See-through", row![slider(0.0..=100.0, sty.see as f32, move |v| st6(F::See(v))).step(1.0).width(Length::Fixed(170.0)), t(format!("{} %", sty.see), 12.0, p.muted)].spacing(10.0).align_y(iced::Center).into()));
+            c = c.push(row_("See-through", row![slider(0.0..=100.0, sty.see as f32, move |v| st6(F::See(v))).step(1.0_f32).width(Length::Fixed(170.0)), t(format!("{} %", sty.see), 12.0, p.muted)].spacing(10.0).align_y(iced::Center).into()));
             let st7 = set.clone();
             c = c.push(row_("Blur behind it", iced::widget::toggler(sty.blur).on_toggle(move |b| st7(F::Blur(b))).size(18.0).into()));
             let st8 = set.clone();
             let corners = sty.corners.unwrap_or(0) as f32;
-            c = c.push(row_("Corners", row![slider(0.0..=48.0, corners, move |v| st8(F::Corners(v))).step(1.0).width(Length::Fixed(170.0)), t(if corners >= 24.0 { "Round".to_string() } else { format!("{} px", corners as i64) }, 12.0, p.muted)].spacing(10.0).align_y(iced::Center).into()));
+            c = c.push(row_("Corners", row![slider(0.0..=48.0, corners, move |v| st8(F::Corners(v))).step(1.0_f32).width(Length::Fixed(170.0)), t(if corners >= 24.0 { "Round".to_string() } else { format!("{} px", corners as i64) }, 12.0, p.muted)].spacing(10.0).align_y(iced::Center).into()));
             let st9 = set.clone();
             let st10 = set.clone();
             let st11 = set.clone();

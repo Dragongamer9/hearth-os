@@ -657,7 +657,7 @@ impl App {
         };
         let mut s = App {
             p: hearth_ui::theme::load(),
-            describe: hearth_ui::describe::Describe::new("files", "Hearth Files").with_pages(crate::view::BLOCKS),
+            describe: hearth_ui::describe::Describe::new("files", "Hearth Files").with_pages(crate::view::BLOCKS).with_kit(&crate::view::KIT),
             home: home.clone(),
             user,
             pick_name: pick.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
@@ -3224,7 +3224,13 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Bc(m) => return crate::briefcase::update(app, m),
         Msg::Pad(m) => return crate::pad::update(app, m),
         Msg::Sort(m) => return crate::sortdl::update(app, m),
-        Msg::Describe(m) => return app.describe.update(m).map(Msg::Describe),
+        Msg::Describe(m) => {
+            // one of Files' buttons dragged in (drag and drop), pressed: Files does it
+            if let Some(m2) = hearth_ui::studio::act(&m).and_then(crate::view::block_action) {
+                return update(app, m2);
+            }
+            return app.describe.update(m).map(Msg::Describe);
+        }
         Msg::EditAt(page, pick) => {
             app.overlay = None;
             return hearth_ui::arrange::edit_at(&mut app.describe, page, pick).map(Msg::Describe);
