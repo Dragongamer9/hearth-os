@@ -478,13 +478,18 @@ fn b64(b: &[u8]) -> String {
 pub fn first_object(t: &str) -> Option<Value> {
     let t = match t.rfind("</think>") { Some(i) => &t[i + 8..], None => t };
     let mut from = 0;
+    let mut first = None;
     while let Some(i) = t[from..].find('{') {
         if let Some(v) = object_at(&t[from + i..]) {
-            return Some(v);
+            // an example or a piece of the screen it quotes can come first: the answer is the one with a kind
+            if ["kind", "type", "layout", "feature", "needs", "screen"].iter().any(|k| v.get(k).is_some()) {
+                return Some(v);
+            }
+            first.get_or_insert(v);
         }
         from += i + 1;
     }
-    None
+    first
 }
 
 fn object_at(t: &str) -> Option<Value> {
@@ -519,6 +524,7 @@ fn object_at(t: &str) -> Option<Value> {
 
 /// What came back, checked: ready to show as NEW, or what's needed and the idea to send.
 pub fn check_answer(v: &Value, part: &str, asked: &str, sketch: bool) -> Result<Value, Vec<String>> {
+    let v = &normalize(v);
     let changes: Vec<String> = v.get("changes").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.chars().take(200).collect())).take(12).collect()).unwrap_or_default();
     // the app asking and its version ("Mantel in Rust 1.17.1"), given by the app that runs Describe it
     let versions = (hearth_version(), std::env::var("HEARTH_DESCRIBE_APP").unwrap_or_default().chars().take(40).collect::<String>());
@@ -550,8 +556,46 @@ pub fn check_answer(v: &Value, part: &str, asked: &str, sketch: bool) -> Result<
             let i = idea::Idea::new(part, asked, needs.clone(), closest.clone(), sketch, &versions.0, &versions.1);
             Ok(json!({ "ok": true, "kind": "needs", "needs": needs, "why": why, "closest": closest, "closestDescribed": closest.as_ref().map(feature::describe), "idea": i, "preview": i.preview(), "changes": changes }))
         }
-        _ => Err(vec!["The answer wasn't a layout, a feature or what's needed.".into()]),
+        _ => Err(vec![format!("The answer wasn't a layout, a feature or what's needed (it said: {}).", glimpse(v))]),
     }
+}
+
+/// Smaller AIs answer the right thing in a slightly different shape: "type" for "kind", "Layout", the layout's fields
+/// at the top instead of under "layout", or no kind at all. Those are put in the shape asked for; nothing is guessed
+/// beyond which of the three it is.
+pub fn normalize(v: &Value) -> Value {
+    let Some(o) = v.as_object() else { return v.clone() };
+    let mut o = o.clone();
+    let named = o.get("kind").or_else(|| o.get("type")).and_then(Value::as_str).map(|k| k.trim().to_lowercase());
+    let kind = match named.as_deref() {
+        Some(k @ ("layout" | "feature" | "needs")) => Some(k.to_string()),
+        Some("need" | "missing" | "idea") => Some("needs".into()),
+        _ if o.get("layout").is_some_and(Value::is_object) => Some("layout".into()),
+        _ if o.get("feature").is_some_and(Value::is_object) => Some("feature".into()),
+        _ if o.get("needs").is_some_and(Value::is_array) => Some("needs".into()),
+        _ => None,
+    };
+    let Some(kind) = kind else { return Value::Object(o) };
+    // its fields at the top: put them under their name, leaving what goes beside them
+    if (kind == "layout" || kind == "feature") && !o.get(&kind).is_some_and(Value::is_object) {
+        let inner: serde_json::Map<String, Value> =
+            o.iter().filter(|(k, _)| !matches!(k.as_str(), "kind" | "type" | "changes" | "layout" | "feature")).map(|(k, v)| (k.clone(), v.clone())).collect();
+        if !inner.is_empty() {
+            o.insert(kind.clone(), Value::Object(inner));
+        }
+    }
+    o.insert("kind".into(), json!(kind));
+    Value::Object(o)
+}
+
+/// A few words of what the AI sent, so a wrong answer can be told apart from a broken one.
+fn glimpse(v: &Value) -> String {
+    let t = v.to_string();
+    let mut g: String = t.chars().take(120).collect();
+    if t.chars().count() > 120 {
+        g.push('…');
+    }
+    g
 }
 
 /// Describe it for a whole screen (build-anything boards 4-6): your words (and a sketch) and the screen as it is now, to
@@ -719,6 +763,25 @@ mod tests {
         assert_eq!(pick_model(&have), "huihui_ai/qwen3-abliterated:8b-v2");
         assert_eq!(pick_model(&["nomic-embed-text:latest".to_string()]), "");
         assert_eq!(pick_model(&["phi4".to_string()]), "phi4");
+    }
+
+    #[test]
+    fn answers_in_a_slightly_different_shape_are_read() {
+        let n = normalize(&json!({"type": "Layout", "layout": {"a": 1}}));
+        assert_eq!(n["kind"], "layout");
+        let n = normalize(&json!({"layout": {"a": 1}, "changes": ["x"]}));
+        assert_eq!(n["kind"], "layout");
+        let n = normalize(&json!({"kind": "feature", "name": "Moon", "shows": "moon"}));
+        assert_eq!(n["feature"]["name"], "Moon");
+        assert!(n["feature"].get("kind").is_none());
+        let n = normalize(&json!({"needs": ["a moon"], "why": "no moon"}));
+        assert_eq!(n["kind"], "needs");
+        let n = normalize(&json!({"hello": 1}));
+        assert!(n.get("kind").is_none());
+        let e = check_answer(&json!({"hello": 1}), "bar", "x", false).unwrap_err();
+        assert!(e[0].contains("hello"), "{e:?}");
+        let v = first_object("Like {\"a\": 1}, so: {\"kind\": \"needs\", \"needs\": [\"x\"]}").unwrap();
+        assert_eq!(v["kind"], "needs");
     }
 
     #[test]
