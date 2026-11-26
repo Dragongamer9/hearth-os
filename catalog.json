@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 34,
+  "serial": 35,
   "apps": [
     {
       "id": "command-center",
@@ -1209,6 +1209,27 @@
       },
       "group": "apps",
       "open": "hearth-game-fixer"
+    },
+    {
+      "id": "part-hearth-proton-manager",
+      "name": "Proton Manager",
+      "kind": "builtin",
+      "part": {
+        "id": "hearth-proton-manager",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-proton-manager",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-proton-manager-1.18.1/hearth-proton-manager-1.18.1.tar.gz",
+        "sha256": "3953f24d9364d6531b1a1733d2ccf7ab6d45f63ce4d419f17f657bb31b22b02d",
+        "size": 7352533,
+        "notes": [
+          "New: every Proton and Wine in one place, get new ones, pick one per game",
+          "Built on ProtonUp-Qt (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-proton-manager"
     }
   ],
   "tests": [
