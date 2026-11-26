@@ -11,6 +11,11 @@ apps or desktops, in your home folder, used instead of the one built into Hearth
     hearth-part retry <id>                           try a copy that failed again (its failures forgotten)
     hearth-part remove <id>                          back to the built-in one for good (the copy goes to the Trash)
     hearth-part status [<id>]                        what's installed, as JSON
+    hearth-part trial <id> <built-in program> [--up children|session|file:PATH] [--up-secs N] [--good-secs N]
+                      [--path-first] -- [args]
+                                                     a part that starts Game Mode or Desktop Mode (gamescope, the
+                                                     session start): tried, and the built-in one at once when it
+                                                     doesn't come up (see "parts that start Game Mode" below)
 
 A copy is used only when all of these hold (red flag 2: an update never leaves a device unable to start):
   * it was installed by the Store, which checked its SHA-256 against the list of apps signed with the owner's key;
@@ -215,6 +220,350 @@ def run(pid, builtin, args):
     sys.exit(code if code >= 0 else 128 - code)
 
 
+# ------------------------------------------------------------------ parts that start Game Mode and Desktop Mode
+# The owner, Nov 26: gamescope and the session start (what opens Game Mode or Desktop Mode after you sign in) as Hearth
+# Store parts, each with the built-in copy to fall back to (docs/STORE-SYSTEM-PARTS.md "Starting up"). Red flag 2 is
+# stricter for these than for an app: a copy that doesn't come up even once is never used again (until the Store
+# installs another version, or you press Try it again), and the built-in one starts at once, in the same sign-in.
+#
+#   hearth-part trial <id> <built-in program> [--up children|session|file:PATH] [--up-secs N] [--good-secs N]
+#                     [--path-first] -- [args]
+#
+# A copy is tried only when chosen() allows it (installed by the Store from the signed list, made for this Hearth OS,
+# no failure counted) and, for a program, every library it needs is on this Hearth OS (ldd). Then:
+#   * it ends with an error, or crashes, before it came up: failed; the built-in one starts with the same request;
+#   * it doesn't come up within --up-secs: failed; it's stopped (its whole process group) and the built-in one starts;
+#   * the start before with this copy never got as far as "good" (the PC was switched off on a black screen, it froze,
+#     the session was killed): failed, the built-in one;
+#   * it came up and kept running --good-secs: good (its "pending" mark is cleared);
+#   * it crashes after coming up but before it's good: failed (the next start uses the built-in one).
+# An end that was asked for (signed out, shut down, a switch of modes) is never a failure. "Came up": children (the
+# program started something: gamescope's Xwayland and the game or Steam), session (one of Hearth's screens, gamescope,
+# labwc, KWin or cage, started by this account after the copy did, the same signs the boot guard watches), or a file.
+# Whatever goes wrong in here, the built-in program is started: this never stops a session from starting.
+START_PARTS = {"gamescope": "gamescope (Game Mode's screen)", "hearth-session": "the session start",
+               "hearth-greeter": "the login screen"}
+UP_NAMES = ("gamescope", "gamescope-wl", "labwc", "kwin_wayland", "cage", "quickshell")
+CRASH = (signal.SIGSEGV, signal.SIGABRT, signal.SIGBUS, signal.SIGILL, signal.SIGFPE, signal.SIGTRAP)
+ASKED = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGKILL)
+SESSION_LOG = os.environ.get("HEARTH_SESSION_LOG", os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local/share"), "nimbus/session.log"))
+
+
+def _log(text):
+    try:
+        os.makedirs(os.path.dirname(SESSION_LOG), exist_ok=True)
+        with open(SESSION_LOG, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S") + " hearth-part: " + text + "\n")
+    except OSError:
+        pass
+
+
+def _notify_later(text):
+    """A start-up part fails before anything can show a notice: keep asking for up to half an hour (the desktop's
+    notifications may come up later). The Store's Hearth parts page shows it too ("back to the one before")."""
+    try:
+        subprocess.Popen(["sh", "-c", 'i=0; while [ "$i" -lt 120 ]; do notify-send -a "Hearth Store" "Hearth Store" "$0" '
+                          '>/dev/null 2>&1 && exit 0; i=$((i + 1)); sleep 15; done', text],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def _save_state(pid, st):
+    try:
+        _write_json(os.path.join(STATE, pid + ".json"), st)
+    except OSError:
+        pass
+
+
+def failed_start(pid, version, why):
+    """A start-up part that didn't come up: never used again until another version is installed or you press Try it
+    again (fails 2: the Store shows "back to the one before"), and you're told why."""
+    if not (_safe_id(pid) and _safe_id(version or "")):
+        return
+    st = state(pid)
+    st.pop("pending", None)
+    st.update(version=version, fails=max(2, int(st.get("fails", 0) or 0) + 1) if st.get("version") == version else 2,
+              at=int(time.time()), why=why)
+    _save_state(pid, st)
+    try:
+        os.makedirs(RUN, exist_ok=True)
+        open(os.path.join(RUN, f"hearth-part-{pid}.failed"), "w").close()
+    except OSError:
+        pass
+    name = START_PARTS.get(pid, pid)
+    text = (f"The Hearth Store's update to {name} ({version}) didn't start properly ({why}), so the one built into "
+            f"Hearth OS is used from now on. Hearth Store › Hearth parts › Try it again uses the update again.")
+    _log(text)
+    _notify_later(text)
+
+
+def _pending(pid, version, me):
+    st = state(pid)
+    st["pending"] = {"version": version, "pid": me, "at": int(time.time())}
+    st.setdefault("version", version)
+    if st.get("version") != version:
+        st.update(version=version, fails=0)
+    _save_state(pid, st)
+
+
+def _clear_pending(pid, good=False):
+    st = state(pid)
+    if st.pop("pending", None) is not None or (good and st.get("fails")):
+        if good:
+            st["fails"] = 0
+            st.pop("why", None)
+        st["at"] = int(time.time())
+        _save_state(pid, st)
+
+
+def _is_trial(pid_):
+    """Whether that process is still a hearth-part trial (another start of the same part, e.g. Game Mode beside the
+    desktop): then its pending mark isn't stale."""
+    try:
+        with open(f"/proc/{int(pid_)}/cmdline", "rb") as f:
+            words = f.read().split(b"\0")
+        return any(w.endswith(b"hearth-part") for w in words[:2]) and b"trial" in words
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def _libs_missing(p):
+    """The libraries an ELF program needs that this Hearth OS hasn't got (ldd's "not found"); '' when all are there or
+    it isn't a program ldd can read (a script)."""
+    try:
+        with open(p, "rb") as f:
+            if f.read(4) != b"\x7fELF":
+                return ""
+        env = dict(os.environ)
+        d = os.path.join(os.path.dirname(p), "lib")
+        if os.path.isdir(d):
+            env["LD_LIBRARY_PATH"] = d + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
+        r = subprocess.run(["ldd", p], capture_output=True, text=True, timeout=20, env=env)
+        gone = [ln.split("=>")[0].strip() for ln in r.stdout.splitlines() if "not found" in ln]
+        if gone:
+            return ", ".join(gone[:6])
+        if r.returncode != 0 and "not a dynamic executable" not in (r.stdout + r.stderr):
+            return "ldd couldn't read it"
+        return ""
+    except (OSError, subprocess.TimeoutExpired):
+        return "ldd couldn't read it"
+
+
+def trial_pick(pid, builtin):
+    """The path a trial starts: the Store's copy, or the built-in one (after noting why not). Never raises."""
+    try:
+        p = chosen(pid, builtin)
+        if p == builtin:
+            return builtin
+        v = (info(pid) or {}).get("version", "")
+        pend = state(pid).get("pending")
+        if isinstance(pend, dict) and pend.get("version") == v:
+            if pend.get("pid") and pend.get("pid") != os.getpid() and _is_trial(pend.get("pid")):
+                return builtin          # another start of it is still being tried: leave that one alone
+            failed_start(pid, v, "the start before with it never came up")
+            return builtin
+        missing = _libs_missing(p) if os.path.isfile(p) else ""
+        if missing:
+            failed_start(pid, v, "this Hearth OS hasn't got what it needs: " + missing)
+            return builtin
+        return p
+    except Exception:  # noqa: BLE001 - anything at all: the built-in one
+        return builtin
+
+
+def _ticks(pid_):
+    """When a process started (clock ticks since boot), or None."""
+    try:
+        with open(f"/proc/{pid_}/stat", "rb") as f:
+            rest = f.read().rsplit(b")", 1)[1].split()
+        return int(rest[19])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _procs():
+    """{pid: (ppid, comm, uid, start ticks)} of every process we can see."""
+    out = {}
+    for n in os.listdir("/proc"):
+        if not n.isdigit():
+            continue
+        try:
+            with open(f"/proc/{n}/stat", "rb") as f:
+                raw = f.read()
+            comm = raw[raw.index(b"(") + 1:raw.rindex(b")")].decode(errors="replace")
+            rest = raw.rsplit(b")", 1)[1].split()
+            out[int(n)] = (int(rest[1]), comm, os.stat(f"/proc/{n}").st_uid, int(rest[19]))
+        except (OSError, ValueError, IndexError):
+            continue
+    return out
+
+
+def _descendants(root, procs):
+    kids, todo = set(), [root]
+    while todo:
+        cur = todo.pop()
+        for p_, (pp, _c, _u, _t) in procs.items():
+            if pp == cur and p_ not in kids:
+                kids.add(p_)
+                todo.append(p_)
+    return kids
+
+
+def is_up(how, child_pid, since):
+    try:
+        if how.startswith("file:"):
+            return os.path.exists(how[5:])
+        procs = _procs()
+        if how == "children":
+            return bool(_descendants(child_pid, procs))
+        uid = os.getuid()
+        names = UP_NAMES
+        return any(c in names and u == uid and since is not None and t >= since and p_ != child_pid
+                   for p_, (_pp, c, u, t) in procs.items()) or \
+            any(procs.get(k, (0, ""))[1] in names for k in _descendants(child_pid, procs))
+    except Exception:  # noqa: BLE001 - can't tell: not up yet
+        return False
+
+
+def _stop_all(child):
+    """The copy and everything it started: asked to end, then made to after 5 s."""
+    try:
+        kids = _descendants(child.pid, _procs())
+    except Exception:  # noqa: BLE001
+        kids = set()
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for target in [child.pid] + sorted(kids):
+            try:
+                if target == child.pid:
+                    os.killpg(child.pid, sig)
+                else:
+                    os.kill(target, sig)
+            except OSError:
+                pass
+        try:
+            child.wait(timeout=5)
+            if sig == signal.SIGTERM:
+                time.sleep(0.5)
+        except subprocess.TimeoutExpired:
+            continue
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def trial(pid, builtin, args, up="children", up_secs=30.0, good_secs=20.0, path_first=False):
+    p = trial_pick(pid, builtin)
+    if p == builtin:
+        os.execv(builtin, [builtin] + args)
+    v = (info(pid) or {}).get("version", "")
+    try:
+        _pending(pid, v, os.getpid())
+        env = dict(os.environ)
+        if path_first:
+            env["PATH"] = os.path.dirname(p) + ":" + env.get("PATH", "/usr/bin:/bin")
+        d = os.path.join(os.path.dirname(p), "lib")
+        if os.path.isdir(d):
+            env["LD_LIBRARY_PATH"] = d + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
+        _log(f"{pid} {v}: the Hearth Store's copy, on trial ({p})")
+        started = time.monotonic()
+        child = subprocess.Popen([p] + args, env=env, process_group=0)
+    except Exception as e:  # noqa: BLE001
+        failed_start(pid, v, f"it couldn't be started ({e})")
+        os.execv(builtin, [builtin] + args)
+    since = _ticks(child.pid)
+    asked = [False]
+
+    def forward(n, _f):
+        asked[0] = True
+        try:
+            child.send_signal(n)
+        except OSError:
+            pass
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(s, forward)
+    up_at, good = None, False
+    while True:
+        try:
+            code = child.wait(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            pass
+        now = time.monotonic()
+        if up_at is None:
+            if is_up(up, child.pid, since):
+                up_at = now
+                _log(f"{pid} {v}: came up after {int(now - started)} s")
+            elif now - started > up_secs and not asked[0]:
+                failed_start(pid, v, f"it didn't come up within {int(up_secs)} s")
+                _stop_all(child)
+                for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    signal.signal(s, signal.SIG_DFL)
+                os.execv(builtin, [builtin] + args)
+        elif now - up_at >= good_secs:
+            good = True
+            _clear_pending(pid, good=True)
+            _log(f"{pid} {v}: working")
+            code = child.wait()          # from here on nothing is watched: no wake-ups while you play
+            break
+    sig = -code if code < 0 else (code - 128 if code > 128 else 0)
+    if good:
+        pass
+    elif asked[0] or sig in ASKED:
+        _clear_pending(pid)              # an end that was asked for (signed out, shut down, a switch): not a failure
+    elif up_at is None and code != 0:
+        failed_start(pid, v, f"it ended right away (code {code})")
+        for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(s, signal.SIG_DFL)
+        os.execv(builtin, [builtin] + args)  # the built-in one, at once, with the same request
+    elif sig in CRASH:
+        failed_start(pid, v, f"it crashed ({signal.Signals(sig).name}) soon after it came up")
+    else:
+        _clear_pending(pid)
+    sys.exit(code if code >= 0 else 128 - code)
+
+
+def trial_main(argv):
+    """`hearth-part trial ...` (argv after "trial"); a request it can't read still starts the built-in program."""
+    pid = argv[0] if argv else ""
+    builtin = argv[1] if len(argv) > 1 else ""
+    rest = argv[2:]
+    args = []
+    if "--" in rest:
+        i = rest.index("--")
+        opts, args = rest[:i], rest[i + 1:]
+    else:
+        opts = rest
+    up, up_secs, good_secs, path_first = "children", 30.0, 20.0, False
+    try:
+        it = iter(opts)
+        for o in it:
+            if o == "--up":
+                up = next(it)
+            elif o == "--up-secs":
+                up_secs = float(next(it))
+            elif o == "--good-secs":
+                good_secs = float(next(it))
+            elif o == "--path-first":
+                path_first = True
+            else:
+                raise ValueError(o)
+        up_secs = float(os.environ.get("HEARTH_PART_UP_SECS", up_secs))
+        good_secs = float(os.environ.get("HEARTH_PART_GOOD_SECS", good_secs))
+    except (StopIteration, ValueError):
+        up = ""
+    if not builtin.startswith("/"):
+        builtin = shutil.which(builtin) or ""
+        if not builtin:
+            print("hearth-part: trial: the built-in program isn't there", file=sys.stderr)
+            return 127
+    if not up or not _safe_id(pid):
+        os.execv(builtin, [builtin] + args)
+    trial(pid, builtin, args, up, up_secs, good_secs, path_first)
+    return 0
+
+
 def install(pid, version, url, sha256, made_for, inner):
     """Download, check the SHA-256 (from the signed list), unpack beside the old copy, then switch with one rename."""
     if not (_safe_id(pid) and _safe_id(version)):
@@ -303,6 +652,8 @@ def main(argv):
     if cmd == "run" and len(argv) >= 4:
         run(argv[2], argv[3], argv[4:])
         return 0
+    if cmd == "trial" and len(argv) >= 4:
+        return trial_main(argv[2:])
     if cmd == "failed" and len(argv) == 3:
         failed(argv[2])
         return 0

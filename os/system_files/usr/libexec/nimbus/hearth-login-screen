@@ -74,6 +74,9 @@ GREETD_CONF = RUN + '/greetd.toml'
 FELL_BACK = RUN + '/login-fell-back'
 FALLING = RUN + '/login-falling-back'      # a fallback under way (greetd's ExecStopPost then leaves it to that one)
 LOCK = RUN + '/.login-screen.lock'
+# The Hearth Store's copy of the greeter in use at this start (its version), when there is one (docs/STORE-SYSTEM-PARTS.md
+# "Starting up"): a failure at this start is then the copy's, never Hearth's login screen's.
+GREETER_PART_RUN = RUN + '/login-greeter-part'
 SDDM_CONF_DIRS = [P('/usr/lib/sddm/sddm.conf.d'), P('/etc/sddm.conf.d')]
 SDDM_MAIN = P('/etc/sddm.conf')
 SESSION_DIRS = [P('/usr/share/wayland-sessions'), P('/usr/local/share/wayland-sessions')]
@@ -82,6 +85,11 @@ GREETER_USER = '_greetd'
 GREETER = '/usr/libexec/nimbus/hearth-greeter'
 SESSION_START = '/usr/libexec/nimbus/hearth-session-start'
 GREETER_DIR = '/usr/share/hearth/greeter'
+# The greeter as a Hearth Store system part (the owner, Nov 26: "Yep add it. That will allow us to push updates to it"):
+# root-owned, installed only from the signed list by hearth-system-part, used only when it says so, on trial here.
+SYSTEM_PART = os.environ.get('HEARTH_LOGIN_SYSTEM_PART', '/usr/libexec/hearth/hearth-system-part')
+SYSTEM_PARTS_DIR = os.environ.get('HEARTH_SYSTEM_PARTS', '/var/lib/hearth/system-parts')
+GREETER_PART = 'hearth-greeter'
 GREETD_BINS = ['/usr/sbin/greetd', '/usr/bin/greetd']
 CAGE_BINS = ['/usr/bin/cage']
 QUICKSHELL_BINS = ['/usr/bin/quickshell', '/usr/local/bin/quickshell']
@@ -273,10 +281,52 @@ class Problem(Exception):
     pass
 
 
-def greetd_config(auto):
+def greeter_part():
+    """(folder, version) of the Hearth Store's greeter when hearth-system-part allows it at this start (root's, made for
+    this Hearth OS, not marked bad, every file the greeter needs there), else (the built-in folder, ''). Never raises:
+    anything odd is the built-in greeter."""
+    try:
+        if not os.path.isfile(SYSTEM_PART) or not os.access(SYSTEM_PART, os.X_OK):
+            return GREETER_DIR, ''
+        r = subprocess.run([SYSTEM_PART, 'path', GREETER_PART, GREETER_DIR], capture_output=True, text=True, timeout=15)
+        p = (r.stdout or '').strip()
+        base = os.path.join(SYSTEM_PARTS_DIR, GREETER_PART) + os.sep
+        if r.returncode != 0 or p == GREETER_DIR or not p.startswith(base) or '..' in p.split('/'):
+            return GREETER_DIR, ''
+        if not all(os.path.isfile(os.path.join(p, f)) for f in ('shell.qml', 'Login.qml')):
+            return GREETER_DIR, ''
+        return p, os.path.relpath(p, base).split(os.sep)[0]
+    except Exception as e:            # noqa: BLE001
+        log('the Hearth Store\'s greeter: %s; the built-in one' % e)
+        return GREETER_DIR, ''
+
+
+def part_bad(version):
+    """That copy of the greeter is left out from now on (hearth-system-part bad, root): the built-in one is used."""
+    if not version:
+        return
+    try:
+        r = subprocess.run([SYSTEM_PART, 'bad', GREETER_PART, version], capture_output=True, text=True, timeout=20)
+        if r.returncode != 0:
+            log('could not mark the Store\'s greeter %s as not working: %s' % (version, (r.stderr or r.stdout).strip()[-200:]))
+    except (OSError, subprocess.SubprocessError) as e:
+        log('could not mark the Store\'s greeter %s as not working: %s' % (version, e))
+
+
+def part_failure(st, why, boot, version):
+    """A start with the Store's greeter that didn't work: the copy's failure, not Hearth's login screen's (the count
+    that pauses it isn't touched), so the next start tries the built-in greeter. You're told (notice)."""
+    st['last'] = {'at': now(), 'boot': boot, 'why': why, 'part': version}
+    st['partFailed'] = {'version': version, 'at': now(), 'why': why}
+    st.pop('pending', None)
+    return st
+
+
+def greetd_config(auto, greeter_dir=None):
+    greeter = GREETER if not greeter_dir or greeter_dir == GREETER_DIR else shlex.join([GREETER, greeter_dir])
     out = ['# Hearth: written by hearth-login-screen at every start (not a setting; /run is empty at the next one).',
            '[terminal]', 'vt = %d' % VT, '',
-           '[default_session]', 'command = ' + toml_str(GREETER), 'user = ' + toml_str(GREETER_USER), '']
+           '[default_session]', 'command = ' + toml_str(greeter), 'user = ' + toml_str(GREETER_USER), '']
     if auto:
         user, session, relogin = auto
         try:
@@ -345,9 +395,10 @@ def count_failure(st, why, boot):
 
 
 def cmd_select():
-    for p in (FLAG, GREETD_CONF, FELL_BACK, FALLING):
+    for p in (FLAG, GREETD_CONF, FELL_BACK, FALLING, GREETER_PART_RUN):
         rm(p)
     boot = boot_id()
+    gone = []
     if not setting_on():
         # Off: nothing to count, nothing pending.
         if os.path.exists(STATE):
@@ -361,9 +412,15 @@ def cmd_select():
             why = ('the session ended right after signing in at the last start with Hearth\'s login screen' if p.get('early')
                    else 'the last start with Hearth\'s login screen ended before anyone signed in' if p.get('shown')
                    else 'Hearth\'s login screen didn\'t show at the last start')
-            count_failure(st, why, p.get('boot'))
+            if p.get('part'):
+                part_failure(st, why, p.get('boot'), p['part'])
+                gone.append(p['part'])
+            else:
+                count_failure(st, why, p.get('boot'))
         return st
     st = update_state(previous)
+    for v in gone:
+        part_bad(v)
     if st.get('tripped'):
         write_mode('sddm', 'paused: Hearth\'s login screen didn\'t work twice in a row', tripped=True)
         return 0
@@ -371,15 +428,21 @@ def cmd_select():
     if problem:
         write_mode('sddm', problem)
         return 0
+    gdir, gver = greeter_part()
     try:
-        conf = greetd_config(sddm_autologin())
+        conf = greetd_config(sddm_autologin(), gdir)
     except Problem as e:
         write_mode('sddm', str(e))
         return 0
     write_run(GREETD_CONF, conf + '\n')
     label_for_greetd(GREETD_CONF)
-    update_state(lambda st: st.__setitem__('pending', {'boot': boot, 'at': now(), 'shown': False}))
-    write_mode('greetd', 'turned on in Settings')
+    pending = {'boot': boot, 'at': now(), 'shown': False}
+    if gver:
+        pending['part'] = gver
+        write_run(GREETER_PART_RUN, gver + '\n')
+        log('the Hearth Store\'s greeter %s, on trial' % gver)
+    update_state(lambda st: st.__setitem__('pending', pending))
+    write_mode('greetd', 'turned on in Settings', **({'part': gver} if gver else {}))
     write_run(FLAG, now() + '\n')       # last: until here, SDDM
     return 0
 
@@ -529,6 +592,18 @@ def cmd_fallback(why):
                 return
             write_run(FELL_BACK, why + '\n')
             boot = boot_id()
+            part = ''
+            try:
+                with open(GREETER_PART_RUN) as f:
+                    part = f.read().strip()
+            except OSError:
+                pass
+            if part:
+                # The Store's greeter didn't work: left out from now on; the built-in one at the next start.
+                st = update_state(lambda s: part_failure(s, why, boot, part))
+                part_bad(part)
+                write_mode('sddm', 'fell back: ' + why, fellBack=True, tripped=bool(st.get('tripped')), part=part, partFailed=True)
+                return
             st = update_state(lambda s: count_failure(s, why, boot))
             write_mode('sddm', 'fell back: ' + why, fellBack=True, tripped=bool(st.get('tripped')))
             if st.get('tripped'):
@@ -675,6 +750,7 @@ def cmd_status():
         'thisStart': mode.get('mode') or 'sddm', 'why': mode.get('why') or '', 'fellBack': bool(mode.get('fellBack')),
         'tripped': bool(st.get('tripped')), 'failures': int(st.get('failures') or 0), 'last': st.get('last'),
         'canStart': problem == '', 'cannot': problem, 'autologin': auto,
+        'part': mode.get('part') or '', 'partFailed': st.get('partFailed'),
     }))
     return 0
 
@@ -711,6 +787,11 @@ def cmd_preview():
 
 
 def notice_text(st):
+    last = st.get('last') or {}
+    if last.get('part') and not st.get('tripped'):
+        return ('The Hearth Store\'s update to the login screen (%s) didn\'t work (%s), so the login screen built into '
+                'Hearth OS is used from now on. Hearth Store › Hearth parts › Login screen › Try it again uses the update '
+                'again.' % (last['part'], last.get('why') or 'no reason given'))
     if st.get('tripped'):
         return ('Hearth\'s login screen didn\'t work twice in a row (%s), so the usual login screen is back at every '
                 'start. Settings › Accounts › Sign-in options › Turn on again tries it again.' % ((st.get('last') or {}).get('why') or 'no reason given'))
@@ -724,7 +805,7 @@ def cmd_notice(tries=40, wait=15):
     if not last.get('at'):
         return 0
     mode = read_json(MODE)
-    if not (st.get('tripped') or mode.get('fellBack')):
+    if not (st.get('tripped') or mode.get('fellBack') or last.get('part')):
         return 0
     seen_dir = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state'), 'nimbus')
     seen = os.path.join(seen_dir, 'login-screen-notice-seen')

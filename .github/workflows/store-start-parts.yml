@@ -1,0 +1,103 @@
+# gamescope, the session start and Hearth's own login screen as Hearth Store parts (the owner, Nov 26: "Yep add it.
+# That will allow us to push updates to it"; docs/STORE-SYSTEM-PARTS.md "Starting up"). Red flag 2: each starts on
+# trial with the built-in copy to fall back to. This checks it for real: the fallback logic's tests; gamescope built as
+# the Store part is built and started headless in Debian trixie (a good copy, then copies broken on purpose); the
+# login screen drawn by cage + Quickshell from a root-owned Store copy, then from a broken one (SDDM, then the built-in
+# greeter); and the Store app's own tests (the restart notice). The session start broken on purpose in a virtual PC is
+# in base-peppermint.yml's desktop test (debian-desktop-vm.sh).
+name: Store start-up parts
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/store-session-parts']
+    paths: ['os/system_files/usr/libexec/hearth/**', 'os/system_files/usr/libexec/nimbus/hearth-greeter',
+            'os/system_files/usr/libexec/nimbus/hearth-login-screen', 'os/system_files/usr/share/hearth/store/**',
+            'hosts/linux/session/nimbus-session', 'hosts/linux/test/test_store_start_parts.py',
+            'hosts/hearth-ui/apps/store/**', '.github/scripts/gamescope-part-build.sh', '.github/scripts/store-*',
+            '.github/workflows/store-start-parts.yml', '.github/workflows/quick-update.yml']
+permissions:
+  contents: read
+concurrency:
+  group: store-start-parts-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: The fallback logic's tests
+        run: |
+          set -o pipefail
+          for t in test_store_start_parts test_hearth_part test_hearth_system_part test_hearth_login_screen test_hearth_display_modes test_store_parts; do
+            if python3 -m unittest "hosts/linux/test/$t.py" > /tmp/$t.log 2>&1; then
+              echo "::notice title=$t::$(tail -3 /tmp/$t.log | tr '\n' ' ')"
+            else
+              echo "::error title=$t::$(grep -E '^(FAIL|ERROR)|Error|assert' /tmp/$t.log | head -12 | tr '\n' '|' | cut -c1-3500)"; fail=1
+            fi
+          done
+          sh -n hosts/linux/session/nimbus-session && bash -n .github/scripts/gamescope-part-build.sh .github/scripts/store-gamescope-check.sh
+          exit ${fail:-0}
+
+  gamescope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the part, then start it, a good copy and broken ones
+        run: |
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+          mkdir -p /tmp/out
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/store-gamescope-check.sh 2>&1 | tee /tmp/check.log | grep -E '^::|^run ' | tail -40
+
+  login-screen:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 30
+    steps:
+      - name: Install cage and Quickshell
+        run: |
+          dnf -y install dnf5-plugins git cage python3 procps-ng dbus-daemon qt6-qtsvg google-noto-sans-fonts >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - name: A good Store copy, then one broken on purpose, then the built-in greeter
+        run: |
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          F=/tmp/fixture; mkdir -p $F/sessions
+          printf 'root:x:0:0:root:/root:/bin/bash\n_greetd:x:990:990::/var/lib/greetd:/usr/sbin/nologin\nalex:x:1000:1000:Alex Fire,,,:/home/alex:/bin/bash\n' > $F/passwd
+          for f in nimbus.desktop hearth-classic.desktop; do sed 's#/usr/local/bin/nimbus-session#/bin/sh#g' hosts/linux/session/$f > $F/sessions/$f; done
+          printf 'XKBLAYOUT="us"\n' > $F/keyboard
+          export HEARTH_GREETER_PASSWD=$F/passwd HEARTH_GREETER_SESSIONS=$F/sessions HEARTH_GREETER_KEYBOARD=$F/keyboard \
+            HEARTH_GREETER_STATE=$F/state.json HEARTH_GREETER_TEST=1 HEARTH_GREETER_ASSETS="$PWD/os/system_files/usr/share/sddm/themes/hearth" \
+            HEARTH_GREETER_STATUS='{"battery":{"present":false},"wifi":{"present":false}}'
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software LANG=C.UTF-8 LC_ALL=C.UTF-8
+          python3 .github/scripts/store-greeter-check.py
+
+  store-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: The Hearth Store's tests (Debian trixie, the image's base)
+        run: |
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+          docker run --rm -v "$PWD:/src:ro" "$base" bash -c '
+            set -eu
+            . /src/.github/scripts/part-build-tools.sh
+            part_tools
+            mkdir -p /tmp/w/hosts/linux/desktop/theme /tmp/w/hosts/linux/desktop/shell
+            export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo
+            cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /src/hosts/hearth-layout /tmp/w/hosts/
+            cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
+            cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
+            cp -a /src/hosts/linux/desktop/shell/screens /tmp/w/hosts/linux/desktop/shell/
+            cd /tmp/w/hosts/hearth-ui
+            if cargo test -p hearth-store > /tmp/w/t.log 2>&1; then
+              echo "::notice title=Hearth Store tests::$(grep -E "^test result" /tmp/w/t.log | tr "\n" " ")"
+            else
+              echo "::error title=Hearth Store tests::$(grep -E "^error|^test .* FAILED|panicked" -A6 /tmp/w/t.log | head -40 | tr "\n" "|" | cut -c1-3500)"
+              exit 1
+            fi'

@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 5,
+  "serial": 6,
   "apps": [
     {
       "id": "command-center",
@@ -548,6 +548,48 @@
       "about": "Settings that never change by themselves. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
     },
     {
+      "id": "gamescope",
+      "name": "gamescope",
+      "card": "Game Mode's screen, for Steam and Hearth's Game Mode",
+      "icon": "GS",
+      "from": "#ff9a4d",
+      "to": "#e8590c",
+      "partId": "gamescope",
+      "group": "gamemode",
+      "kind": "builtin",
+      "short": "gamescope",
+      "tagline": "Game Mode's screen, for Steam and Hearth's Game Mode",
+      "about": "Game Mode's screen (Valve's gamescope, rebuilt from Debian's own source). It's part of Hearth OS and gets its own updates in the Hearth Store; one that doesn't bring Game Mode up is left out and the gamescope built into Hearth OS starts instead, at once."
+    },
+    {
+      "id": "session-start",
+      "name": "Session start",
+      "card": "Opens Game Mode or Desktop Mode after you sign in",
+      "icon": "SS",
+      "from": "#ff9a4d",
+      "to": "#e8590c",
+      "partId": "hearth-session",
+      "group": "gamemode",
+      "kind": "builtin",
+      "short": "Session start",
+      "tagline": "Opens Game Mode or Desktop Mode after you sign in",
+      "about": "What opens Game Mode or Desktop Mode after you sign in, and switches between them. It's part of Hearth OS and gets its own updates in the Hearth Store; one that doesn't bring a screen up within a minute is left out and the one built into Hearth OS starts instead, at once."
+    },
+    {
+      "id": "login-screen",
+      "name": "Login screen",
+      "card": "Hearth's own login screen (Settings › Accounts › Sign-in options)",
+      "icon": "LS",
+      "from": "#a3acb9",
+      "to": "#5b6472",
+      "partId": "hearth-greeter",
+      "group": "services",
+      "kind": "builtin",
+      "short": "Login screen",
+      "tagline": "Hearth's own login screen (Settings › Accounts › Sign-in options)",
+      "about": "Hearth's own login screen. It's part of Hearth OS and gets its own updates in the Hearth Store, installed with the admin password; one that doesn't show or doesn't sign anyone in is left out: the usual login screen for that start, then the one built into Hearth OS."
+    },
+    {
       "id": "recovery",
       "name": "Recovery and Safe start",
       "card": "the boot menu's fallback",
@@ -559,7 +601,7 @@
       "kind": "builtin",
       "short": "Recovery and Safe start",
       "tagline": "the boot menu's fallback",
-      "about": "The boot menu's fallback. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "The boot menu's fallback. It comes only with Hearth OS updates, never from the Store, so the version before always stays startable."
     },
     {
       "id": "ideas",

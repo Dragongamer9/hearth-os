@@ -848,6 +848,9 @@ pub fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         l = l.push(stats.push(stat(&tn, pt.os.clone(), "For Hearth OS"))).push(gap(1.0, z(14.0)));
     }
     l = l.push(note_line(&tn, G::Shield, "Signed and checked before it starts"));
+    if let Some(later) = pt.as_ref().map(|p| p.takes_effect()).filter(|w| !w.is_empty()) {
+        l = l.push(gap(1.0, z(6.0))).push(note_line(&tn, G::Info, later.to_string()));
+    }
     if let Some(h) = have.filter(|h| h.gave_up() || h.failed_now) {
         l = l.push(gap(1.0, z(6.0))).push(note_line(&tn, G::Info, format!("{} didn't start, so the usual one is used", h.version)));
     }
@@ -956,6 +959,21 @@ fn store_version(a: &App) -> String {
 
 /// What the Store just said ("Updating Mantel to 1.17.4…", what went wrong), over a page that has no place of its own.
 fn with_note<'a>(a: &'a App, page: E<'a, Msg>) -> E<'a, Msg> {
+    let page = if a.restart_ask.is_empty() {
+        page
+    } else {
+        // An update that takes effect after signing out or a restart: asked, never done by itself.
+        let p = a.p;
+        let pc = a.restart_ask == "pc";
+        let ask = row![
+            t(if pc { "Restart to finish the update? The one you have keeps working until then." } else { "Sign out to finish the update? The one you have keeps working until then." }, f(14.0), look::ORANGE2).width(Length::Fill),
+            btn(&p, if pc { "Restart now" } else { "Sign out now" }, B::Primary, false, false, Some(Msg::RestartNow)),
+            gap(z(10.0), 1.0),
+            btn(&p, "Later", B::Normal, false, false, Some(Msg::RestartLater))
+        ]
+        .align_y(iced::Center);
+        column![container(ask).padding(look::pad(0.0, 0.0, z(12.0), 0.0)), page].into()
+    };
     if a.note.is_empty() {
         return page;
     }
@@ -1019,6 +1037,9 @@ fn part_row<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     if let Some(o) = a.part_offer(e) {
         if e.group_of() == "services" {
             fix = o.notes.first().cloned().unwrap_or_default();
+        }
+        if fix.is_empty() {
+            fix = o.takes_effect().to_string();
         }
         end = end.push(chip(&p, o.version.clone(), Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then(|| Msg::PartUpdate(e.id.clone()))));
     } else if let Some(v) = (!e.decky.is_empty()).then(|| a.decky_offer(e)).flatten() {

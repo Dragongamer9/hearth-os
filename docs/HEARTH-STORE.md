@@ -116,6 +116,17 @@ branch `ci/releases` (not merged, never run): a version tag the owner pushes (hi
 and tests her and makes a **draft** release with the AppImage, the .deb, `latest-linux.yml` and `SHA256SUMS.txt`;
 nothing is public until he presses Publish. Until Hearth AI has a published release, the Store shows her as "Coming".
 
+## Hearth's own parts, and what never is one
+
+Every Hearth part (apps, Mantel, Game Mode, Decky plugins, Hearth Link, helpers) updates from the Store with a main
+and a test version (docs/STORE-SYSTEM-PARTS.md). From the Hearth OS after 1.18 (the hooks are in the image), so are
+**gamescope**, the **session start** and **Hearth's own login screen** (the owner, Nov 26: "Yep add it"), each on trial
+with the built-in copy to fall back to at once ("Starting up" there). The **boot menu, Safe start and Recovery** are
+never Store parts: they change only with Hearth OS updates, which keep the version before startable. A part whose
+update takes effect only after signing out or a restart says so ("restart": "signout" or "pc" in its list entry):
+"Takes effect after you sign out / restart" on its page and before installing, then **Sign out now / Restart now** or
+**Later**, never by itself and never while a game runs.
+
 ## Safety
 
 - Never touches boot files, the boot menu, sessions or services (the daily timer only reads release pages and writes

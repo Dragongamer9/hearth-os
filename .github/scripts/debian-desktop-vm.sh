@@ -76,6 +76,32 @@ while [ $((SECONDS - start)) -lt "$REST" ]; do
   [ $(( (SECONDS - start) % 600 )) -lt 60 ] && echo "HEARTH-CI-SHOT rest-$(( (SECONDS - start) / 60 ))"
   sleep 60
 done
+# The Hearth Store's start-up parts broken on purpose (docs/STORE-SYSTEM-PARTS.md "Starting up"; red flag 2): a session
+# start that never brings a screen up and a gamescope that ends at once, installed as the Store would. Signed in again
+# (the automatic sign-in does it, as after signing out), the PC must still reach a screen through the built-in ones,
+# with both copies marked as not working.
+ver=$(cat /usr/share/nimbus/version 2>/dev/null)
+P=$home/.local/share/hearth/parts
+mkdir -p "$P/hearth-session/9.9.9" "$P/gamescope/9.9.9/gamescope"
+printf '#!/bin/sh\nexec sleep 600\n' > "$P/hearth-session/9.9.9/nimbus-session"
+printf '#!/bin/sh\nexit 1\n' > "$P/gamescope/9.9.9/gamescope/gamescope"
+chmod 755 "$P/hearth-session/9.9.9/nimbus-session" "$P/gamescope/9.9.9/gamescope/gamescope"
+printf '{"id": "hearth-session", "version": "9.9.9", "os": "%s", "path": "nimbus-session"}\n' "$ver" > "$P/hearth-session/part.json"
+printf '{"id": "gamescope", "version": "9.9.9", "os": "%s", "path": "gamescope/gamescope"}\n' "$ver" > "$P/gamescope/part.json"
+chown -R $u: "$home/.local/share/hearth"
+old_sid=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u=$u '$3 == u {print $1; exit}')
+[ -n "$old_sid" ] && loginctl terminate-session "$old_sid"
+for i in $(seq 30); do pgrep -u $u -x labwc >/dev/null || break; sleep 1; done
+new_sid=""; up=no
+for i in $(seq 120); do
+  sleep 2
+  new_sid=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u=$u -v o="$old_sid" '$3 == u && $1 != o {print $1; exit}')
+  if [ -n "$new_sid" ] && { pgrep -u $u -x labwc >/dev/null || pgrep -u $u -x gamescope >/dev/null; }; then up=yes; break; fi
+done
+sleep 20
+echo "HEARTH-CI-broken session=${new_sid:-none} up=$up · session part: $(tr -d '\n' < $home/.local/state/hearth/parts/hearth-session.json 2>/dev/null) · $(pgrep -a -u $u 'labwc|gamescope|nimbus-session|sleep 600' 2>/dev/null | cut -c1-80 | head -6 | tr '\n' ';')"
+grep -a 'hearth-part' "$home/.local/share/nimbus/session.log" 2>/dev/null | tail -4 | sed 's/^/HEARTH-CI-partlog /'
+echo "HEARTH-CI-SHOT broken-parts"; sleep 10
 echo "HEARTH-CI-SHOT end"; sleep 10
 tail -25 "$home/.local/share/nimbus/session.log" 2>/dev/null | sed 's/^/HEARTH-CI-log /'
 echo HEARTH-CI-desktop-END
@@ -134,6 +160,13 @@ ann notice "Desktop Mode: $(v HEARTH-CI-desktop)"
 v HEARTH-CI-session | grep -q ' tester ' || fail "nobody was signed in: no session for the account (the PC would stay at the sign-in). $(v HEARTH-CI-login)"
 v HEARTH-CI-login | grep -qiE 'unable to exec|panicked|Permission denied' && fail "the sign-in failed: $(v HEARTH-CI-login)"
 v HEARTH-CI-desktop | grep -q 'up=yes' || fail "Mantel didn't come up after Desktop Mode was asked for: $(v HEARTH-CI-desktop) · $(grep -a '^HEARTH-CI-log' "$OUT/job.txt" | tail -8 | cut -c15-)"
+ann notice "Store start-up parts broken on purpose: $(v HEARTH-CI-broken) $(grep -a '^HEARTH-CI-partlog' "$OUT/job.txt" | cut -c18- | tr '\n' ' ')"
+if v HEARTH-CI-broken | grep -q 'session=none'; then
+  ann warning "the broken-on-purpose Store parts weren't tried: the virtual PC didn't sign in again after its session was ended"
+else
+  v HEARTH-CI-broken | grep -q 'up=yes' || fail "with the Store's session start and gamescope broken on purpose, no screen came up: $(v HEARTH-CI-broken)"
+  v HEARTH-CI-broken | grep -q '"fails": [2-9]' || fail "the broken Store session start wasn't marked as not working: $(v HEARTH-CI-broken)"
+fi
 v HEARTH-CI-desktop | grep -q 'labwc' || fail "Desktop Mode isn't on labwc (1.13's, the smooth one): $(v HEARTH-CI-desktop)"
 REST="$REST" python3 - "$OUT" <<'PY' || FAILED=1
 import os, sys

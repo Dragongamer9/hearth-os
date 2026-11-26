@@ -1167,6 +1167,15 @@ fi
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
 install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
+# The Hearth Store's start-up parts (docs/STORE-SYSTEM-PARTS.md "Starting up"): gamescope and the session start go
+# through hearth-part's trial, the login screen's greeter through hearth-system-part, each falling back to the built-in
+# copy. The hooks must be whole, or the image isn't built (red flag 2): the session parses, and a trial with no Store
+# copy (and as root, which never uses one) starts the built-in program.
+sh -n /usr/bin/nimbus-session
+grep -q '^# >>> session part' /usr/bin/nimbus-session && grep -q '^# >>> gamescope part' /usr/bin/nimbus-session
+/usr/libexec/hearth/hearth-part trial gamescope /bin/true --up children --up-secs 30 -- \
+  || { echo "build: hearth-part trial doesn't start the built-in program"; exit 1; }
+python3 -c 'import json; json.load(open("/usr/share/hearth/store/system-parts.json"))["parts"]["hearth-greeter"]'
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
 # "Hearth Classic" on the login screen too (Mantel). 1.13's "KDE Plasma (Hearth)" / "GNOME (Hearth)" entries are

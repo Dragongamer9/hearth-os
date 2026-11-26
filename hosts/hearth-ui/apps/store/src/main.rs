@@ -123,6 +123,10 @@ pub enum Msg {
     /// this part picked
     EditAt(&'static str, Option<&'static str>),
     Theme,
+    /// An update that takes effect after signing out or a restart is in: do that now (never while a game runs)…
+    RestartNow,
+    /// …or later (the one you have keeps working until then)
+    RestartLater,
     Key(KEvent),
     Pad(pad::Button),
     Drag,
@@ -254,6 +258,11 @@ pub struct App {
     pub pad_fixed: bool,
     pub note: String,
     pub note_bad: bool,
+    /// An update just put in that takes effect after signing out ("signout") or a restart ("pc"): the note asks
+    /// Restart now / Later. Nothing ever restarts or signs out by itself.
+    pub restart_ask: String,
+    /// The parts being updated that will need that, by entry id.
+    pub restart_after: std::collections::HashMap<String, String>,
     pub hearth: String,
     pub edition: String,
     pub now: i64,
@@ -357,6 +366,8 @@ impl App {
             pad_fixed: app::flag("--controller") || app::flag("--mouse"),
             note: String::new(),
             note_bad: false,
+            restart_ask: String::new(),
+            restart_after: Default::default(),
             hearth,
             edition,
             now: files::now(),
@@ -882,8 +893,14 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.offline() || !a.part_busy.insert(id.clone()) {
                 return Task::none();
             }
-            a.say(format!("Updating {} to {}…", e.name, pt.version), false);
-            let done = if pt.id == "mantel" {
+            let later = pt.takes_effect();
+            a.say(format!("Updating {} to {}…{}", e.name, pt.version, if later.is_empty() { String::new() } else { format!(" {later}.") }), false);
+            if !pt.restart.is_empty() {
+                a.restart_after.insert(id.clone(), pt.restart.clone());
+            }
+            let done = if !later.is_empty() {
+                format!("{} {} is in. {}: the one you have keeps working until then.", e.name, pt.version, later)
+            } else if pt.id == "mantel" {
                 format!("{} is on {}: your desktop restarts with it in a moment.", e.name, pt.version)
             } else if pt.id == "hearth-store-app" {
                 format!("The Hearth Store is on {}: close it and open it again to use it.", pt.version)
@@ -1092,10 +1109,41 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::PartDone(id, r) => {
             a.part_busy.remove(&id);
             a.read_installed();
+            let after = a.restart_after.remove(&id);
             match r {
-                Ok(s) => a.say(s, false),
+                Ok(s) => {
+                    a.say(s, false);
+                    if let Some(k) = after {
+                        // "pc" wins over "signout" when several updates went in together
+                        if a.restart_ask != "pc" {
+                            a.restart_ask = k;
+                        }
+                    }
+                }
                 Err(s) => a.say(s, true),
             }
+        }
+        Msg::RestartNow => {
+            if net::game_running() {
+                a.say("A game is running, so nothing was restarted. Do it when you've finished playing: the one you have keeps working until then.", true);
+                return Task::none();
+            }
+            let pc = a.restart_ask == "pc";
+            a.restart_ask.clear();
+            let ok = if pc {
+                std::process::Command::new("systemctl").arg("reboot").spawn().is_ok()
+            } else {
+                std::process::Command::new("nimbus-mode").arg("logout").spawn().is_ok()
+                    || std::env::var("XDG_SESSION_ID").ok().map(|sid| std::process::Command::new("loginctl").args(["terminate-session", &sid]).spawn().is_ok()).unwrap_or(false)
+            };
+            if !ok {
+                a.say(if pc { "Couldn't restart from here: restart from the power menu when you're ready." } else { "Couldn't sign out from here: sign out from the power menu when you're ready." }, true);
+            }
+        }
+        Msg::RestartLater => {
+            let pc = a.restart_ask == "pc";
+            a.restart_ask.clear();
+            a.say(if pc { "It takes effect the next time you restart. The one you have keeps working until then." } else { "It takes effect the next time you sign out. The one you have keeps working until then." }, false);
         }
         Msg::Start(id, kind) => {
             if a.moving {

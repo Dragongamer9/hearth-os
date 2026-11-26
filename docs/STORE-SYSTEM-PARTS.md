@@ -13,7 +13,8 @@ bumped to 1.18.0". Approved mockups: docs/mockups/checklists/store-everything.md
 | Hearth's own Game Mode (hearth-rs and ui/), Hearth Sync, the Decky plugins | system update only | **user parts** (they run as you): like the apps |
 | Hearth Link, Hearth's gaming pieces, looks and sounds | system update only | **user parts** |
 | Helpers that run as root (home server, storage, AI engines, sharing… /usr/libexec/nimbus) and Hearth's services and timers | system update only | **system parts** (below) |
-| Boot menu, Safe start, Recovery, the login screen | system update only | **stays with system updates** (red flag 2: the one before always stays startable) |
+| Boot menu, Safe start, Recovery | system update only | **stays with system updates** (red flag 2: the one before always stays startable); a way to push a fix when it's needed is planned below ("The boot menu and Recovery") |
+| gamescope, the session start, Hearth's own login screen | system update only | **Store parts on trial** (the owner, Nov 26: "Yep add it. That will allow us to push updates to it"): "Starting up" below |
 | Fedora underneath | Hearth OS image updates | **Fedora updates, by date** (Library › Hearth OS), applied at the next restart; nothing by itself |
 
 ## System parts: safe for programs that run as root
@@ -32,8 +33,8 @@ kind:
   wrong means the built-in one.
 - **Services:** a part with services restarts them after installing (no restart of the PC). One that fails to start
   twice goes back to the version before by itself and says so (the Store's Hearth parts page).
-- **Never:** anything that starts the PC (units in the boot chain, the boot menu, the login screen, Recovery) is a
-  system part. Those come only with system updates.
+- **Never:** the units in the boot chain, the boot menu, Safe start and Recovery are system parts. Those come only
+  with system updates. The login screen's own screens are, on trial (below).
 
 ## Versions
 
@@ -78,3 +79,99 @@ its own updates (1.18.1, 1.18.2…), and each keeps a main and a test version (r
 - **Waiting:** the `store` branch's live list needs the new entries (groups, system parts) before 1.18.0 parts are
   published; the release workflow should fill the list's `system` block (date, packages, what they fix, size, the
   package changes) for each dated image.
+
+## Starting up: gamescope, the session start and the login screen (Nov 26, feature/store-session-parts)
+
+The owner, Nov 26: "Need to add this to the store as well", then "Yep add it. That will allow us to push updates to
+it". Three pieces of the start are Store parts, each with a main and a test channel (quick-update.yml), each with the
+copy built into Hearth OS kept as it is and used whenever the Store's copy can't be:
+
+| Part | quick-update.yml | Kind | Store group | Takes effect | Its hook (in the image) |
+|---|---|---|---|---|---|
+| gamescope (Game Mode's screen) | `gamescope` | user part, `~/.local/share/hearth/parts/gamescope` | Game Mode | after you sign out | nimbus-session's `# >>> gamescope part`: Game Mode's gamescope (Steam's and Hearth's) starts through `hearth-part trial` only when a Store copy may be used |
+| Session start (nimbus-session: opens Game Mode or Desktop Mode after you sign in) | `hearth-session` | user part | Game Mode | after you sign out | nimbus-session's first lines (`# >>> session part`): the built-in one starts the Store's through `hearth-part trial` |
+| Login screen (Hearth's own greeter: its QML and greeter-info) | `hearth-greeter` | system part, root-owned in `/var/lib/hearth/system-parts/hearth-greeter`, admin password | Services | after a restart | hearth-login-screen asks `hearth-system-part path` at each start and gives greetd `hearth-greeter <folder>`; hearth-greeter takes only a system part's folder |
+
+**How each falls back (red flag 2):**
+
+- **gamescope and the session start** (`hearth-part trial`): tried only when the copy was installed by the Store from
+  the signed list, is made for this Hearth OS, hasn't failed, and (a program) every library it needs is on this
+  system (ldd). It ends with an error before it came up → the built-in one starts at once with the same request. It
+  doesn't come up in time (gamescope: starts nothing, Xwayland or the game, within 30 s; the session: no gamescope,
+  labwc, KWin or cage of yours within 60 s) → it's stopped (its whole process group) and the built-in one starts. The
+  start before with that copy never got as far as "good" (switched off on a black screen, a freeze) → the built-in one.
+  It crashes soon after coming up → the built-in one from the next start. Each of these marks the copy as not working
+  (`fails` 2 in `~/.local/state/hearth/parts/<id>.json`, so the Store shows "back to the one before"): it's never
+  started again until the Store installs another version or you press **Try it again**. You're told: the session log
+  (Send logs) and a notice that waits for the desktop's notifications (up to half an hour). An end that was asked for
+  (signing out, shutting down, a switch of modes) never counts. After coming up and running a while (gamescope 20 s,
+  the session 45 s) nothing is watched any more: no wake-ups while you play. Never for root, an extra multi-seat
+  player or Game Mode beside the desktop.
+- **Login screen** (hearth-login-screen): the Store's greeter is chosen only when hearth-system-part allows it
+  (root's, writable by nobody else, made for this Hearth OS, not marked bad, its files there). A start with it that
+  doesn't show, crashes, never gets anyone signed in, or never finishes (power button held) is the copy's failure:
+  SDDM for that start as always, the copy marked `bad` (`hearth-system-part bad`), the built-in greeter from the next
+  start, and it **never counts towards pausing** Hearth's login screen (that count is only for the built-in one, which
+  works exactly as before: two failures in a row and SDDM until you turn it on again). You're told after you sign in
+  (hearth-login-notice), with Try it again in the Store. SDDM itself, the display manager, isn't a part.
+- Nothing here changes a setting: the only things written are the copy's own failure marks, each with a way back.
+
+**Tests and CI:** `hosts/linux/test/test_store_start_parts.py` (the trial for real in child processes, the session's
+and gamescope's hooks, the login screen with the real hearth-system-part); `store-start-parts.yml` (gamescope built as
+the part is built, then started headless in Debian trixie: no copy, the CI-built copy, copies broken on purpose; the
+login screen drawn by cage and Quickshell from a good Store copy, a broken one, then the built-in one; the Store app's
+tests); base-peppermint.yml's virtual PC (`debian-desktop-vm.sh`): after the desktop test, a session start that never
+brings a screen up and a gamescope that ends at once are installed in the account's home, the session is ended, the
+automatic sign-in comes back, and a screen must come up through the built-in ones with the copies marked.
+
+**Devices already on 1.18 can't use these three until the Hearth OS version that has the hooks.** 1.18's
+`/usr/bin/nimbus-session`, its gamescope start and its hearth-login-screen never look for a Store copy, and the only
+way to change them on a running 1.18 PC is `hearth-admin deb-install` into the writable system: that would replace the
+image's own session start in place (the very copy this design promises never to replace), be put back by hearth-unlock
+over every newer Hearth OS after an update, and put a new step in front of signing in on every device at once. That
+isn't safe enough for the start-up chain, so the hooks are image-only: they come with the next Hearth OS version
+(publish these parts with that version in "os"; 1.18's Store doesn't offer a part that isn't made for it). From then
+on, every update to the three is a Store update.
+
+**When it takes effect** (the owner, Nov 26: "if somthing needs a PC restart it will tell the user"): a part's entry in
+the Store list can say `"restart": "signout"` or `"pc"` (quick-update.yml sets it per part: gamescope and the session
+start sign out, the login screen restart). The Store shows "Takes effect after you sign out / restart" on the part's
+page and its row, says it when it starts installing, and afterwards asks **Sign out now / Restart now** or **Later**;
+it never signs out or restarts by itself, and not while a game runs. The copy you have keeps working until then.
+
+## The boot menu and Recovery (a plan, not built)
+
+The owner, Nov 26: "Yeah boot menu and recovery are part of Major updates but, should have it to were if we need to
+push an update we can". Not built in this branch, because it couldn't be proven safe here; the plan:
+
+- **Use what's there, not a new mechanism.** The boot menu (GRUB's entries, written by `hearth-bls-grub` from
+  ostree's deployments) and Recovery (`hearth-recovery`, in each deployment's `/usr`) already update **beside** the
+  current ones: a new Hearth OS image is staged by bootc as a new deployment, the running one stays as the previous
+  entry, and `hearth-boot-guard` counts starts in GRUB's environment and starts the previous version by itself after
+  two that never reached Hearth (45 s of Game Mode, Desktop Mode or the login screen), then makes it the default and
+  pauses updates. Rewriting GRUB's files or Recovery in place from the Store would skip all of that.
+- **So a pushed fix is a small dated Hearth OS image** (the same version, a new date: Library › Hearth OS already
+  lists updates by date) that the Store offers as its own row ("Boot menu and Recovery fix"), installed with the
+  admin password through `hearth-admin update`, with the restart notice (Restart now / Later, never by itself, not
+  while a game runs). If the PC doesn't reach Hearth after that restart, the boot guard starts the version before by
+  itself; it already says so after signing in.
+- **To prove before building:** boot-guard.yml and base-peppermint.yml's boot-look VM with the new image's GRUB
+  snippet and Recovery broken on purpose, still reaching the login prompt on the previous entry; the owner's go-ahead
+  for each such image, as for a release (red flag 1 and the release rules).
+
+## System packages: Debian's own updates (a plan, not built)
+
+The owner said yes to a "System packages" part: Debian's security fixes through the Store. The plan:
+
+- **Through the writable system, with the admin password, never by itself:** `hearth-admin system-packages-check`
+  (as you: `apt-get -s upgrade` against apt's lists, read only) and `system-packages-install` (pkexec, admin password:
+  `hearth-unlock --install-package` for each one, so they're recorded and come back after a Hearth OS update, and the
+  version before stays startable: a start with the layer that doesn't reach Hearth leaves the layer off, Safe start).
+- **What it can't change:** the boot chain stays pinned out of apt (GRUB, shim, kernels, ostree, bootc, dracut, DKMS,
+  microcode, fwupd: `/etc/apt/preferences.d/hearth-boot-chain`) and systemd, glibc, D-Bus and Mesa are held at the
+  image's versions (`hearth-image-core`). So the **kernel and graphics drivers can't come this way**: they come with
+  Hearth OS images (and the dated image above). What's left is Debian's other packages (security fixes in libraries
+  and programs), which take effect when the program starts again; when one of them is a service or a library the
+  session uses, the Store's restart notice ("Restart now / Later") says so.
+- **To prove before building:** hearth-unlock-check.sh's real overlay + apt run with a package upgraded this way,
+  then an update with the reapply, then a broken one (Safe start).

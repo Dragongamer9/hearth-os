@@ -183,7 +183,7 @@ class SessionPrecheck(unittest.TestCase):
         self.assertIn('[ ! -s "$NEXT" ]', steam)          # a Switch you asked for is never retried
         game = re.search(r'^run_game\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)
         self.assertIn('mode_not_listed "$NIMBUS_GAMESCOPE_ARGS"', game)
-        self.assertLess(game.index('mode_not_listed'), game.index('gamescope $full'))
+        self.assertLess(game.index('mode_not_listed'), game.index('$GS $full'))
 
 
 if __name__ == '__main__':

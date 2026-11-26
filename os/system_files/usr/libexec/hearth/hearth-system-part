@@ -25,8 +25,11 @@ since anything running as you can change those. So a system part:
   * is used only when every folder from /var/lib/hearth down to the program is root's and not group- or
     world-writable, it was made for this Hearth OS, and it hasn't failed twice (then the version before, else the
     built-in one, and Hearth says so);
-  * never touches starting the PC: the boot menu, Recovery, the login screen and the units in the boot chain are
-    never system parts (system-parts.json only names helpers), they come only with system updates.
+  * never touches starting the PC: the boot menu, Safe start, Recovery and the units in the boot chain are never
+    system parts, they come only with system updates. The one piece of the start that is (the owner, Nov 26: "Yep add
+    it"): the login screen's own screens (hearth-greeter, Hearth's greeter's QML, "start": "login" in
+    system-parts.json), used by hearth-login-screen only through `path`, on trial: a copy that doesn't show, crashes or
+    never gets anyone signed in is marked `bad` by it, and SDDM, then the built-in greeter, take over.
 
 Anything wrong or missing means the built-in one: this never stops a helper from working.
 """
@@ -409,6 +412,11 @@ def install(pid, extra=None, opener=None, test=False):
         if not prog or not os.path.exists(prog):
             shutil.rmtree(dest, ignore_errors=True)
             raise SystemExit("hearth-system-part: the download doesn't have the program it should, so nothing changed")
+        needs = allowed()[pid].get("needs") or []
+        if needs and not (os.path.isdir(prog) and all(isinstance(n, str) and ".." not in n.split("/") and
+                                                       os.path.isfile(os.path.join(prog, n)) for n in needs)):
+            shutil.rmtree(dest, ignore_errors=True)
+            raise SystemExit("hearth-system-part: the download is missing files it must have, so nothing changed")
         if allowed()[pid].get("decky") and not decky_plugin_ok(prog, version):
             shutil.rmtree(dest, ignore_errors=True)
             raise SystemExit("hearth-system-part: the download isn't a whole Decky plugin of that version, so nothing changed")

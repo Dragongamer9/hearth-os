@@ -92,9 +92,14 @@ class SystemPart(unittest.TestCase):
         self.put(pid="other")
         self.assertEqual(self.m.chosen("other", "/bin/true"), "/bin/true")
         names = json.loads(ALLOWED_FILE.read_text())["parts"]
-        for bad in ("boot", "grub", "recovery", "greet", "login", "session"):
-            self.assertFalse(any(bad in k for k in names), f"{bad}: what starts the PC is never a system part")
-        self.assertEqual(sorted(k for k, v in names.items() if not v.get("decky")), sorted(HELPERS))
+        for bad in ("boot", "grub", "recovery", "safe", "session", "unlock"):
+            self.assertFalse(any(bad in k for k in names), f"{bad}: the boot menu, Recovery and the boot chain are never system parts")
+        # The one piece of starting up that is (the owner, Nov 26): the login screen's own screens, on trial
+        # (hearth-login-screen, test_store_start_parts.py).
+        self.assertEqual(sorted(k for k, v in names.items() if v.get("start")), ["hearth-greeter"])
+        self.assertEqual(names["hearth-greeter"]["builtin"], "/usr/share/hearth/greeter")
+        self.assertEqual(names["hearth-greeter"]["services"], [])
+        self.assertEqual(sorted(k for k, v in names.items() if not v.get("decky") and not v.get("start")), sorted(HELPERS))
         # Decky plugins only for their test versions, put in Decky's folder by hearth-decky (test_plugin_updates.py).
         self.assertEqual(sorted(k for k, v in names.items() if v.get("decky")), ["decky-hearth-link", "decky-hearth-music", "decky-hearth-sync"])
 

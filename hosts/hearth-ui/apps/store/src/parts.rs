@@ -299,7 +299,7 @@ mod tests {
     use super::*;
 
     fn part(v: &str, os: &str) -> Part {
-        Part { id: "hearth-files-app".into(), version: v.into(), os: os.into(), path: "hearth-files-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 1, notes: vec![], missing: vec![], system: false }
+        Part { id: "hearth-files-app".into(), version: v.into(), os: os.into(), path: "hearth-files-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 1, notes: vec![], missing: vec![], system: false, restart: String::new() }
     }
 
     #[test]

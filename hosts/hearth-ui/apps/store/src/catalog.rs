@@ -113,6 +113,21 @@ pub struct Part {
     /// A system part (one of Hearth's helpers that run as root): installed root-owned by hearth-system-part, with the
     /// admin password, never into your home folder (docs/STORE-SYSTEM-PARTS.md).
     pub system: bool,
+    /// When an update to it takes effect (the owner, Nov 26: "if somthing needs a PC restart it will tell the user"):
+    /// "" at once or the next time it opens, "signout" after you sign out (gamescope, the session start), "pc" after
+    /// a restart (the login screen). Set per part by quick-update.yml; the one you have keeps working until then.
+    pub restart: String,
+}
+
+impl Part {
+    /// The words the Store shows on its page and before installing, or "" when it needs nothing.
+    pub fn takes_effect(&self) -> &'static str {
+        match self.restart.as_str() {
+            "signout" => "Takes effect after you sign out",
+            "pc" => "Takes effect after you restart",
+            _ => "",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -169,7 +184,8 @@ impl Entry {
             let ok_name = |x: &str| !x.is_empty() && x.len() <= 64 && x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') && !x.starts_with('.');
             (sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()) && url.starts_with("https://") && ok_name(&pid) && ok_name(&version) && !os.is_empty()
                 && !path.is_empty() && !path.split('/').any(|x| x == ".." || x.is_empty()))
-            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes"), missing: list(p, "missing"), system: p.get("system").and_then(Value::as_bool).unwrap_or(false) })
+            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes"), missing: list(p, "missing"), system: p.get("system").and_then(Value::as_bool).unwrap_or(false),
+                restart: match s(p, "restart").as_str() { "signout" => "signout".to_string(), "pc" => "pc".to_string(), _ => String::new() } })
         });
         let short = s(v, "short");
         Some(Entry {

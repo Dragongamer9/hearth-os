@@ -6,6 +6,14 @@
 # Why cage and not KWin: one small package with nothing to set up, made for exactly this (a single full-screen app,
 # the greetd project's own suggestion), and the same wlroots Desktop Mode already runs on Nvidia; KWin as a greeter
 # brings much of Plasma's stack and its own settings into the greeter's account.
+# Which greeter (docs/STORE-SYSTEM-PARTS.md "Starting up"): the built-in one, or the Hearth Store's copy when
+# hearth-login-screen named one (it asked hearth-system-part, root, at this start): only a root-owned system part's
+# folder that has the greeter's files; anything else is the built-in one.
+GREETER_DIR="${HEARTH_GREETER_DIR:-/usr/share/hearth/greeter}"
+case "${1:-}" in
+  /var/lib/hearth/system-parts/hearth-greeter/*/*)
+    case "$1" in *..*) ;; *) [ -f "$1/shell.qml" ] && [ -f "$1/Login.qml" ] && GREETER_DIR="$1" ;; esac ;;
+esac
 RUNDIR="${XDG_RUNTIME_DIR:-/tmp/hearth-greeter-$(id -u)}"
 mkdir -p "$RUNDIR" 2>/dev/null
 export XDG_RUNTIME_DIR="$RUNDIR"
@@ -26,7 +34,7 @@ v=$(kb XKBMODEL); [ -n "$v" ] && export XKB_DEFAULT_MODEL="$v"
 i=0
 while [ "$i" -lt 20 ] && ! ls /dev/dri/card* >/dev/null 2>&1; do sleep 0.5; i=$((i + 1)); done
 QS=$(command -v quickshell) || { echo "hearth-greeter: Quickshell isn't installed" >&2; exit 1; }
-set -- "${HEARTH_GREETER_COMPOSITOR:-cage}" -s -d -- "$QS" -p "${HEARTH_GREETER_DIR:-/usr/share/hearth/greeter}"
+set -- "${HEARTH_GREETER_COMPOSITOR:-cage}" -s -d -- "$QS" -p "$GREETER_DIR"
 # A bus of its own for the greeter (the screen reader, if there is one, needs it).
 if command -v dbus-run-session >/dev/null 2>&1; then set -- dbus-run-session -- "$@"; fi
 exec "$@"

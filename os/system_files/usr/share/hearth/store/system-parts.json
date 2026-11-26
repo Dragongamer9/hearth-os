@@ -1,5 +1,5 @@
 {
-  "_comment": "Hearth's helpers that run as root and may be updated from the Hearth Store as system parts (hearth-system-part, docs/STORE-SYSTEM-PARTS.md). Only these ids are ever installed as root-owned parts; nothing that starts the PC (boot menu, Recovery, the login screen, units in the boot chain) is ever listed here: those come only with system updates. Decky plugins (decky: true) are here only for their test versions (red flag 13): hearth-decky puts the root-owned copy into Decky's plugins folder at Decky's next start, on trial, and a copy that doesn't load goes back to the one before by itself.",
+  "_comment": "Hearth's pieces that run as root, or that the system starts before you sign in, and may be updated from the Hearth Store as system parts (hearth-system-part, docs/STORE-SYSTEM-PARTS.md). Only these ids are ever installed as root-owned parts. The login screen's own screens (hearth-greeter: Hearth's greeter, its QML; the owner, Nov 26: \"Yep add it\") are one, on trial: hearth-login-screen uses the Store's copy only when hearth-system-part allows it, and one that doesn't show, crashes or never gets anyone signed in is left out from then on (SDDM for that start, the built-in greeter from the next). Never listed here: the boot menu, Safe start, Recovery and the units in the boot chain (they come only with Hearth OS updates, red flag 2). Decky plugins (decky: true) are here only for their test versions (red flag 13): hearth-decky puts the root-owned copy into Decky's plugins folder at Decky's next start, on trial, and a copy that doesn't load goes back to the one before by itself.",
   "parts": {
     "hearth-home-server-helper": {
       "name": "Home server helper",
@@ -36,6 +36,18 @@
       "builtin": "/usr/share/hearth/decky-hearth-music",
       "decky": true,
       "services": []
+    },
+    "hearth-greeter": {
+      "name": "Login screen",
+      "builtin": "/usr/share/hearth/greeter",
+      "services": [],
+      "start": "login",
+      "needs": [
+        "shell.qml",
+        "Login.qml",
+        "Theme.qml",
+        "greeter-info"
+      ]
     }
   }
 }

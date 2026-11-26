@@ -39,6 +39,28 @@
 # entries) is treated the same way.
 # Which Nimbus to run: ~/.config/nimbus/app-path (written by Nimbus › Settings › Shell), or NIMBUS_APP.
 
+# >>> session part
+# The Hearth Store's copy of this session start (the owner, Nov 26: "That will allow us to push updates to it";
+# docs/STORE-SYSTEM-PARTS.md "Starting up"). Only looked at when the Store has installed one; never for an extra
+# multi-seat player, Game Mode beside the desktop, or root. hearth-part's trial starts it and starts this built-in one
+# instead, at once and from then on (until another version or Try it again), when it ends with an error before Game
+# Mode or Desktop Mode is up, doesn't bring one up (gamescope, labwc, KWin, cage) within a minute, or the start before
+# with it never got that far; you're told. Anything missing or odd here: this file runs, exactly as before (red flag 2).
+if [ -z "${HEARTH_SESSION_PART:-}" ] && [ -z "${HEARTH_SEAT:-}" ] && [ -z "${HEARTH_SIDE:-}" ] && [ "$(id -u)" != 0 ] \
+   && [ -d "${HEARTH_PARTS:-${HOME:-/nonexistent}/.local/share/hearth/parts}/hearth-session" ] \
+   && [ -x "${HEARTH_PART_TOOL:-/usr/libexec/hearth/hearth-part}" ]; then
+  HEARTH_SESSION_PART=1; export HEARTH_SESSION_PART
+  hs_tool="${HEARTH_PART_TOOL:-/usr/libexec/hearth/hearth-part}"
+  case "$0" in /*) hs_self="$0" ;; *) hs_self="$(command -v "$0" 2>/dev/null)" ;; esac
+  hs_pick=""
+  [ -n "$hs_self" ] && [ -x "$hs_self" ] && hs_pick="$(timeout 10 "$hs_tool" path hearth-session "$hs_self" 2>/dev/null)"
+  if [ -n "$hs_pick" ] && [ "$hs_pick" != "$hs_self" ] && [ -x "$hs_pick" ]; then
+    exec "$hs_tool" trial hearth-session "$hs_self" --up session --up-secs 60 --good-secs 45 -- "$@"
+  fi
+  unset hs_tool hs_self hs_pick
+fi
+# <<< session part
+
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus"
 # Installed as part of Nimbus OS, everything lives under /usr; installed from the app, under /usr/local.
 if [ -d /usr/share/nimbus/desktop ]; then DEFAULT_SHARE=/usr/share/nimbus; else DEFAULT_SHARE=/usr/local/share/nimbus; fi
@@ -199,6 +221,26 @@ fi
 # The old choice (~/.config/nimbus/game-mode) is removed so nothing reads it again.
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
 
+# >>> gamescope part
+# The Hearth Store's gamescope (docs/STORE-SYSTEM-PARTS.md "Starting up"): Game Mode's gamescope starts through
+# hearth-part's trial only when the Store has installed one that may be used (signed list, made for this Hearth OS,
+# its libraries on this system, never failed). One that ends with an error or doesn't start anything (Xwayland, Steam,
+# Hearth's app) within 30 s is stopped and the built-in gamescope starts at once, and from then on; you're told.
+# Never for an extra multi-seat player or Game Mode beside the desktop. Without a Store copy: plain `gamescope`.
+GS=gamescope
+if [ -z "${HEARTH_SEAT:-}" ] && [ -z "${HEARTH_SIDE:-}" ] && [ -d "${HEARTH_PARTS:-$HOME/.local/share/hearth/parts}/gamescope" ] \
+   && [ -x "${HEARTH_PART_TOOL:-/usr/libexec/hearth/hearth-part}" ]; then
+  gs_builtin="$(command -v gamescope 2>/dev/null)"
+  case "$gs_builtin" in
+    /*) gs_pick="$(timeout 10 "${HEARTH_PART_TOOL:-/usr/libexec/hearth/hearth-part}" path gamescope "$gs_builtin" 2>/dev/null)"
+        if [ -n "$gs_pick" ] && [ "$gs_pick" != "$gs_builtin" ]; then
+          GS="${HEARTH_PART_TOOL:-/usr/libexec/hearth/hearth-part} trial gamescope $gs_builtin --up children --up-secs 30 --good-secs 20 --path-first --"
+          log "gamescope: the Hearth Store's copy, on trial"
+        fi ;;
+  esac
+  unset gs_builtin gs_pick
+fi
+# <<< gamescope part
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() {   # Mantel: on KWin (1.14), labwc the fallback (run_classic); or the 2.0 preview, when it's turned on
   { plasma_image && have startplasma-wayland; } || have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
@@ -376,7 +418,7 @@ run_game() {
   while :; do
     gs_started=$(date +%s)
     # shellcheck disable=SC2086
-    gamescope $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
+    $GS $full $extra $NIMBUS_GAMESCOPE_ARGS $seatargs -- "$WATCHDOG" "$NIMBUS_APP"
     gs_rc=$?
     [ "$gs_rc" -ne 0 ] && [ $(( $(date +%s) - gs_started )) -lt 20 ] && [ -z "$HEARTH_SEAT" ] && [ ! -s "$NEXT" ] && has_mode_args "$NIMBUS_GAMESCOPE_ARGS" || break
     gs_fails=$((gs_fails + 1))
@@ -1583,7 +1625,7 @@ SHIM
       [ "$hrc" -ne 3 ] && exit "$hrc"
       log "steam game mode: multi-seat host couldn't start; Steam Game Mode without it"
     fi
-    exec gamescope -e -f --xwayland-count 2 $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal $sgarg
+    exec $GS -e -f --xwayland-count 2 $sextra $NIMBUS_GAMESCOPE_ARGS $sseat -- "$@" -gamepadui -steamos3 -steampal $sgarg
   )
   rc=$?
   [ "$rc" -ne 0 ] && [ "$s_retry" = 1 ] && [ $(( $(date +%s) - started )) -lt "$STEAM_MODE_MIN_SECS" ] && [ ! -s "$NEXT" ] \
