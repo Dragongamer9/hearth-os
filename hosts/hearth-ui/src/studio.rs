@@ -752,12 +752,15 @@ type Mp<'a, M> = Rc<dyn Fn(DMsg) -> M + 'a>;
 
 #[allow(clippy::too_many_arguments)]
 fn dress<'a, M: Clone + 'a>(p: &Pal, s: &Style, base: Base, content: Element<'a, M>, press: Option<M>, mp: &Mp<'a, M>, editing: bool, stamp: u64, showing: bool) -> Element<'a, M> {
+    // a part keeps the size the app gives it (a bar stays its own height) until it's given one
+    let own = content.as_widget().size();
     let width = match s.wmode {
         "fixed" if s.w > 0 => Length::Fixed(s.w as f32 + s.around[1] as f32 + s.around[3] as f32),
         "fill" => Length::Fill,
         "fit" => Length::Shrink,
         _ => match base {
-            Base::Part | Base::Pane => Length::Fill,
+            Base::Part => own.width,
+            Base::Pane => Length::Fill,
             _ => Length::Shrink,
         },
     };
@@ -765,7 +768,8 @@ fn dress<'a, M: Clone + 'a>(p: &Pal, s: &Style, base: Base, content: Element<'a,
         Length::Fixed(s.h as f32 + s.around[0] as f32 + s.around[2] as f32)
     } else {
         match base {
-            Base::Part | Base::Pane => Length::Fill,
+            Base::Part => own.height,
+            Base::Pane => Length::Fill,
             _ => Length::Shrink,
         }
     };
@@ -2538,7 +2542,8 @@ pub(crate) fn part_el<'a, M: Clone + 'a>(d: &'a Describe, pal: &Pal, page: &'sta
     let shows_more = !s.icon.is_empty() || !s.words.is_empty() || matches!(s.shows, "count" | "clock" | "list" | "picture" | "words");
     if shows_more {
         let head = shows_el(d, &p, s, None, String::new(), true);
-        body = column![container(head).padding(Padding { top: 6.0, right: 10.0, bottom: 4.0, left: 10.0 }), body].into();
+        let own = body.as_widget().size();
+        body = column![container(head).padding(Padding { top: 6.0, right: 10.0, bottom: 4.0, left: 10.0 }), body].width(own.width).height(own.height).into();
     }
     // blocks dragged into it, at its end (a bar whose pieces aren't handed over one by one)
     let strip_bar = !d.kit.map(|k| k.bars.contains(&(page, id))).unwrap_or(false);
@@ -2547,10 +2552,11 @@ pub(crate) fn part_el<'a, M: Clone + 'a>(d: &'a Describe, pal: &Pal, page: &'sta
         let adds: Vec<&Add> = d.studio_page(page).map(|x| x.in_bar(id, &own)).unwrap_or_default();
         if !adds.is_empty() {
             let els: Vec<Element<'a, M>> = adds.into_iter().map(|a| add_el(d, &p, page, a, None, map.clone())).collect();
+            let own = body.as_widget().size();
             body = if across {
-                row![container(body).width(Length::Fill).height(Length::Fill), Row::with_children(els).spacing(6.0).align_y(iced::Center).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 6.0 })].align_y(iced::Center).into()
+                row![container(body).width(Length::Fill), Row::with_children(els).spacing(6.0).align_y(iced::Center).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 6.0 })].align_y(iced::Center).width(Length::Fill).height(own.height).into()
             } else {
-                column![container(body).width(Length::Fill).height(Length::Fill), Column::with_children(els).spacing(6.0).padding(Padding { top: 6.0, right: 0.0, bottom: 8.0, left: 0.0 })].into()
+                column![container(body).height(Length::Fill), Column::with_children(els).spacing(6.0).padding(Padding { top: 6.0, right: 0.0, bottom: 8.0, left: 0.0 })].width(own.width).height(Length::Fill).into()
             };
         }
     }
