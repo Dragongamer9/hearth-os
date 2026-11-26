@@ -1,0 +1,17 @@
+# Vaultwarden (Hearth Passwords' vault) on this PC (hearth-oss-server, next to Hearth's shell helpers): the project's own container image in your
+# rootless Podman, as you, on 127.0.0.1 and this PC's Tailscale address only. Installed only when you press Install in
+# its app; until then this unit doesn't start at all (ConditionPathExists). No install section: started only by its timer
+# (a minute after you sign in, enabled only while it's on) or by its app. Never part of starting the PC, the session or
+# Game Mode; if it fails, nothing else waits for it.
+[Unit]
+Description=Hearth home server: Vaultwarden (Hearth Passwords' vault)
+ConditionPathExists=%h/.local/state/nimbus/oss-server/vaultwarden.ready
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-oss-server run vaultwarden
+ExecStop=-/usr/bin/podman stop -t 20 hearth-vaultwarden
+Restart=on-failure
+RestartSec=30
+Nice=5
+TimeoutStopSec=40

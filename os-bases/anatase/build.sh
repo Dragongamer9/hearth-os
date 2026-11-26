@@ -1524,7 +1524,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-listen-app hearth-imagine-app hearth-layout; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # 1.17, quick updates through the Hearth Store (docs/HEARTH-STORE.md): the program itself in /usr/libexec/hearth/apps,
   # and /usr/bin/$b a two-line start that uses the Store's newer copy only when one is installed (hearth-part checks
@@ -1663,10 +1663,10 @@ fi
 # <<< Hearth Notes
 # The open-source apps (docs/mockups/open-source-apps; each built on the project its board credits): their menu
 # entries only when the app was built.
-for oss in listen imagine; do
+for oss in listen imagine passwords cloud home; do
   [ -x "/usr/bin/hearth-$oss-app" ] || rm -f "/usr/share/applications/hearth-$oss.desktop"
 done
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-listen-app hearth-imagine-app hearth-layout; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-listen-app hearth-imagine-app hearth-passwords-app hearth-cloud-app hearth-home-app hearth-layout; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
@@ -2057,7 +2057,8 @@ for u in smb.service nmb.service samba.service tailscaled.service smartd.service
 done
 systemctl disable nut.target nut-driver.target nut-driver-enumerator.path hearth-remote-desktop-firewall.service lactd.service 2>/dev/null || true
 systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service \
-  hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer hearth-vnc.service sunshine.service 2>/dev/null || true
+  hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer hearth-vnc.service sunshine.service \
+  hearth-vaultwarden.timer hearth-nextcloud.timer hearth-home-assistant.timer 2>/dev/null || true
 for u in smb.service nmb.service tailscaled.service smartd.service nftables.service nut-server.service nut-monitor.service \
          hearth-remote-desktop-firewall.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: it stays off until the owner turns it on"; exit 1; fi

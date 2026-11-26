@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Home
+GenericName=Smart home
+Comment=Your home on the big screen: lights, thermostat, cameras, plugs, scenes (built on Home Assistant)
+Exec=/usr/bin/hearth-home-app
+TryExec=/usr/bin/hearth-home-app
+Icon=hearth-home
+Categories=Utility;
+Keywords=home;smart;lights;thermostat;cameras;home assistant;energy;
+StartupWMClass=hearth-home

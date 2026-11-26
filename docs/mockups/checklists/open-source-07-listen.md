@@ -29,7 +29,7 @@ this app's. Pictures: hearth-apps-rust.yml, listen.sh (listen-1-board … listen
 ### The recording
 - [x] Its name as the title (1.18 video, voice-over take 3) — hosts/hearth-ui/apps/listen/src/main.rs: "w::h1(&p, r.title.clone())"
 - [x] "Recorded in Voice Studio · 4:12 · English · 2 voices · made into words in 21 s" — hosts/hearth-ui/apps/listen/src/main.rs: "format!(\"made into words in {} s\", r.took.round())"
-- [x] Copy: the words to the clipboard — hosts/hearth-ui/apps/listen/src/main.rs: "iced::clipboard::write(whisper::to_txt(&r.segs))"
+- [x] Copy: the words to the clipboard — hosts/hearth-ui/apps/listen/src/main.rs: "return iced::clipboard::write(text);"
 - [x] Export ▾ .txt .srt .vtt: the menu, then a save window (kdialog) or ~/Documents — hosts/hearth-ui/apps/listen/src/main.rs: "\"Export ▾ .txt .srt .vtt\""
 - [x] Send to Voice Studio (in the accent): really sent to Voice Studio on port 8890 with its API key; it lands as a finished transcript with text, SRT, VTT and JSON — hosts/linux/desktop/shell/hearth-voice-studio: "if path == '/api/jobs/words':"
 - [x] The player's ▶ (❚❚ while playing): plays from the playhead (pw-play) — hosts/hearth-ui/apps/listen/src/main.rs: "if a.playing() { \"❚❚\" } else { \"▶\" }"
