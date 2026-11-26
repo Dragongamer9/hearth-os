@@ -31,6 +31,12 @@ PAGES = {
     'remap': ['main'],
     'mouse': ['main'],
     'shield': ['window', 'today', 'panel', 'devices', 'device', 'log', 'lists', 'allow', 'block', 'family', 'settings'],
+    # the open-source apps (docs/mockups/open-source-apps)
+    'listen': ['window', 'side', 'recording', 'how'],
+    'imagine': ['window', 'type', 'graph', 'results'],
+    'passwords': ['window', 'side', 'list', 'item'],
+    'cloud': ['window', 'side', 'home'],
+    'home': ['window', 'board'],
 }
 
 BLOCK = re.compile(r'\bbls?\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)')

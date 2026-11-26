@@ -1,0 +1,21 @@
+# Hearth Cloud (pure Rust, hearth-ui; docs/mockups/checklists/open-source-13-cloud.md, the approved board
+# docs/mockups/open-source-apps/13-cloud.png): your own cloud on your Nvidia PC, Nextcloud (AGPL-3) through WebDAV,
+# CalDAV, CardDAV and its OCS API. No version line: the owner picks every version number.
+[package]
+name = "hearth-cloud"
+edition = "2021"
+description = "Hearth Cloud: your own cloud on your Nvidia PC (built on Nextcloud)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-cloud-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+roxmltree = "0.20"

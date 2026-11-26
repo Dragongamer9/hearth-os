@@ -1,0 +1,21 @@
+# What Hearth's open-source apps share (docs/mockups/open-source-apps; Listen, Imagine, Passwords, Cloud, Home): the
+# boards' small parts (switches, choices side by side, fields, chips, tags, letter marks, bars), a small HTTP client
+# for the services on the person's own PC or reached over Tailscale, a program run with its input on stdin (never on
+# the command line), the person's choices through settings_file (red flag 9) and tokens kept in the desktop's own
+# keyring (Secret Service, `secret-tool`), never in a file. No version line: the owner picks every version number.
+[package]
+name = "hearth-oss-kit"
+edition = "2021"
+description = "What Hearth's open-source apps share"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "hearth_oss"
+path = "src/lib.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

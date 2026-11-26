@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Cloud
+GenericName=Your own cloud
+Comment=Your own cloud on your Nvidia PC: files, calendar and contacts on every device (built on Nextcloud)
+Exec=/usr/bin/hearth-cloud-app
+TryExec=/usr/bin/hearth-cloud-app
+Icon=hearth-cloud
+Categories=Network;FileTransfer;Office;
+Keywords=cloud;files;calendar;contacts;nextcloud;sync;share;
+StartupWMClass=hearth-cloud

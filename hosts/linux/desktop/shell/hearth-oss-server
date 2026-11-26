@@ -1,0 +1,239 @@
+#!/usr/bin/python3
+"""hearth-oss-server: the servers Hearth's open-source apps use, on the owner's Nvidia PC like the other home-server
+pieces (docs/HOME-SERVER.md): Vaultwarden (AGPL-3, Hearth Passwords), Nextcloud (AGPL-3, Hearth Cloud) and Home
+Assistant (Apache-2.0, Hearth Home). Each is the project's own container image in your rootless Podman, as you:
+
+  * installed only when you press Install in its app (never at build or boot): the image pulled by its tag, and the
+    digest it got written down; from then on only that digest runs (a changed image is refused until you install again);
+  * your own user service (hearth-vaultwarden / hearth-nextcloud / hearth-home-assistant .service) with no [Install],
+    started by its timer a minute after you sign in, the timer enabled only while it's on. Never part of starting the PC,
+    the session or Game Mode: before it's installed its unit doesn't start at all (ConditionPathExists);
+  * listening on 127.0.0.1 and this PC's Tailscale address only (never the whole network or the internet), with no
+    capabilities beyond what the image needs;
+  * its data in ~/.local/share/hearth/<name> (your vault, your files, your home's setup), never removed by Off.
+
+  hearth-oss-server status                    JSON: Podman, and each one's installed, on, running, address, image
+  hearth-oss-server install NAME              vaultwarden | nextcloud | homeassistant (pulls its image, notes its digest)
+  hearth-oss-server on NAME | off NAME        its timer and service on (now and a minute after sign-in) or off
+  hearth-oss-server run NAME                  what its service runs (exec podman run …)
+  hearth-oss-server backup vaultwarden        a consistent copy of the vault's database (sqlite's own backup)
+  hearth-oss-server nextcloud-links           Nextcloud's own sharing rules: links ask for a password and end by themselves
+Output: one JSON line; failures print "error: ..." and exit 1. State: ~/.local/state/nimbus/oss-server/ (never settings).
+"""
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser('~')
+STATE = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.join(HOME, '.local', 'state'), 'nimbus', 'oss-server')
+DATA = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(HOME, '.local', 'share'), 'hearth')
+TS_IP_RE = re.compile(r'^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+
+# name: (image, tag (Hearth moves these with its updates), host port, container port, data dir inside, extra args)
+SERVERS = {
+    'vaultwarden': {'image': 'docker.io/vaultwarden/server', 'tag': '1.34.3', 'port': 8222, 'inner': 80, 'mount': '/data',
+                    'env': {'ROCKET_PORT': '80', 'WEBSOCKET_ENABLED': 'true', 'SIGNUPS_ALLOWED': 'true', 'SHOW_PASSWORD_HINT': 'false'},
+                    'unit': 'hearth-vaultwarden', 'what': 'Vaultwarden (AGPL-3)'},
+    'nextcloud': {'image': 'docker.io/library/nextcloud', 'tag': '31-apache', 'port': 8090, 'inner': 80, 'mount': '/var/www/html',
+                  'env': {'SQLITE_DATABASE': 'nextcloud'}, 'unit': 'hearth-nextcloud', 'what': 'Nextcloud (AGPL-3)'},
+    'homeassistant': {'image': 'ghcr.io/home-assistant/home-assistant', 'tag': '2025.10', 'port': 8123, 'inner': 8123, 'mount': '/config',
+                      'env': {'TZ': os.environ.get('TZ', 'UTC')}, 'unit': 'hearth-home-assistant', 'what': 'Home Assistant (Apache-2.0)'},
+}
+
+
+class Fail(Exception):
+    pass
+
+
+def cmd(args, timeout=60):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, str(e)
+
+
+def have(name):
+    return bool(shutil.which(name))
+
+
+def state_file(name):
+    return os.path.join(STATE, name + '.json')
+
+
+def read_state(name):
+    try:
+        with open(state_file(name), encoding='utf-8') as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(name, v):
+    os.makedirs(STATE, mode=0o700, exist_ok=True)
+    tmp = state_file(name) + '.part'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(v, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, state_file(name))
+
+
+def ts_ip():
+    if not have('tailscale'):
+        return ''
+    code, out = cmd(['tailscale', 'ip', '-4'], 8)
+    ip = out.strip().splitlines()[0].strip() if code == 0 and out.strip() else ''
+    return ip if TS_IP_RE.fullmatch(ip) else ''
+
+
+def listen():
+    ip = ts_ip()
+    return ['127.0.0.1'] + ([ip] if ip else [])
+
+
+def unit_active(unit):
+    return cmd(['systemctl', '--user', 'is-active', '--quiet', unit + '.service'], 10)[0] == 0
+
+
+def timer_enabled(unit):
+    return cmd(['systemctl', '--user', 'is-enabled', '--quiet', unit + '.timer'], 10)[0] == 0
+
+
+def check(name):
+    if name not in SERVERS:
+        raise Fail('vaultwarden, nextcloud or homeassistant')
+    return SERVERS[name]
+
+
+def status():
+    out = {'podman': have('podman'), 'listen': listen()}
+    for name, s in SERVERS.items():
+        st = read_state(name)
+        installed = bool(st.get('digest')) and os.path.exists(os.path.join(STATE, name + '.ready'))
+        out[name] = {'installed': installed, 'installing': bool(st.get('installing')), 'error': st.get('error', ''),
+                     'on': timer_enabled(s['unit']), 'active': unit_active(s['unit']), 'port': s['port'],
+                     'local': 'http://127.0.0.1:%d' % s['port'], 'image': '%s:%s' % (s['image'], s['tag']),
+                     'digest': st.get('digest', ''), 'data': os.path.join(DATA, name), 'what': s['what']}
+    return out
+
+
+def install(name):
+    s = check(name)
+    if not have('podman'):
+        raise Fail('Podman isn\'t on this PC (Hearth OS has it; the Hearth Store › Developer tools can put it back)')
+    st = read_state(name)
+    write_state(name, dict(st, installing=True, error='', started=int(time.time())))
+    ref = '%s:%s' % (s['image'], s['tag'])
+    code, out = cmd(['podman', 'pull', '--quiet', ref], 3600)
+    if code != 0:
+        write_state(name, dict(st, installing=False, error='the image couldn\'t be got: ' + out.strip()[-200:]))
+        raise Fail('%s couldn\'t be got: %s' % (s['what'], out.strip()[-200:]))
+    code, dig = cmd(['podman', 'image', 'inspect', '--format', '{{.Digest}}', ref], 30)
+    dig = dig.strip()
+    if code != 0 or not re.fullmatch(r'sha256:[0-9a-f]{64}', dig):
+        write_state(name, dict(st, installing=False, error='the image has no digest'))
+        raise Fail('the image has no digest')
+    os.makedirs(os.path.join(DATA, name), mode=0o700, exist_ok=True)
+    write_state(name, {'digest': dig, 'ref': ref, 'installed': int(time.time()), 'installing': False, 'error': ''})
+    with open(os.path.join(STATE, name + '.ready'), 'w') as f:
+        f.write(dig + '\n')
+    return {'installed': True, 'digest': dig}
+
+
+def switch(name, on):
+    s = check(name)
+    if on:
+        if not os.path.exists(os.path.join(STATE, name + '.ready')):
+            raise Fail('Install %s first' % s['what'])
+        cmd(['systemctl', '--user', 'enable', s['unit'] + '.timer'], 30)
+        cmd(['systemctl', '--user', 'restart', s['unit'] + '.service'], 60)
+    else:
+        cmd(['systemctl', '--user', 'disable', s['unit'] + '.timer'], 30)
+        cmd(['systemctl', '--user', 'stop', s['unit'] + '.service'], 90)
+    return {'on': on}
+
+
+def run_args(name, addrs, digest):
+    s = check(name)
+    ref = '%s@%s' % (s['image'], digest)
+    a = ['podman', 'run', '--rm', '--replace', '--name', s['unit'], '--pull=never', '--security-opt', 'no-new-privileges']
+    for ip in addrs:
+        a += ['-p', '%s:%d:%d' % (ip, s['port'], s['inner'])]
+    a += ['-v', '%s:%s:Z' % (os.path.join(DATA, name), s['mount'])]
+    env = dict(s['env'])
+    if name == 'nextcloud':
+        env['NEXTCLOUD_TRUSTED_DOMAINS'] = ' '.join(['localhost', '127.0.0.1'] + addrs[1:])
+    for k, v in sorted(env.items()):
+        a += ['-e', '%s=%s' % (k, v)]
+    a.append(ref)
+    return a
+
+
+def run(name):
+    st = read_state(name)
+    if not st.get('digest'):
+        raise Fail('not installed')
+    os.execvp('podman', run_args(name, listen(), st['digest']))
+
+
+def backup(name):
+    if name != 'vaultwarden':
+        raise Fail('only vaultwarden')
+    src = os.path.join(DATA, 'vaultwarden', 'db.sqlite3')
+    if not os.path.exists(src):
+        raise Fail('There\'s no vault on this PC yet')
+    d = os.path.join(DATA, 'vaultwarden', 'backups')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    dst = os.path.join(d, 'db-%s.sqlite3' % time.strftime('%Y-%m-%d-%H%M'))
+    a = sqlite3.connect(src)
+    b = sqlite3.connect(dst)
+    with b:
+        a.backup(b)
+    a.close()
+    b.close()
+    os.chmod(dst, 0o600)
+    return {'backup': dst}
+
+
+def nextcloud_links():
+    """Nextcloud's own sharing rules (its occ, in its container): every link asks for a password and ends by itself."""
+    if not unit_active(SERVERS['nextcloud']['unit']):
+        raise Fail('Nextcloud isn\'t running')
+    done = []
+    for k, v in (('shareapi_enforce_links_password', 'yes'), ('shareapi_default_expire_date', 'yes'), ('shareapi_enforce_expire_date', 'yes'), ('shareapi_expire_after_n_days', '7')):
+        code, out = cmd(['podman', 'exec', '-u', 'www-data', SERVERS['nextcloud']['unit'], 'php', 'occ', 'config:app:set', 'core', k, '--value=' + v], 60)
+        if code != 0:
+            raise Fail('Nextcloud didn\'t take its sharing rules: ' + out.strip()[-160:])
+        done.append(k)
+    return {'set': done}
+
+
+def main(a):
+    if a == ['status']:
+        return status()
+    if len(a) == 2 and a[0] == 'install':
+        return install(a[1])
+    if len(a) == 2 and a[0] in ('on', 'off'):
+        return switch(a[1], a[0] == 'on')
+    if len(a) == 2 and a[0] == 'run':
+        return run(a[1])
+    if len(a) == 2 and a[0] == 'backup':
+        return backup(a[1])
+    if a == ['nextcloud-links']:
+        return nextcloud_links()
+    raise Fail('usage: status | install NAME | on NAME | off NAME | run NAME | backup vaultwarden')
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv[1:])))
+    except Fail as e:
+        print('error: %s' % e)
+        sys.exit(1)
