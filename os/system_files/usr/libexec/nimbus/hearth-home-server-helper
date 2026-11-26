@@ -40,6 +40,10 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
   backup-restore        JSON on stdin {"id","snapshot","path"}: into a NEW folder in Home › Restored from backups, never over
   receive-add NAME      a backup code for one of your other Hearth devices (shown once; only its hash is kept)
   receive-remove USER
+  receive-lock on|off   backups from your devices can't be changed or deleted from the devices (rclone --append-only)
+  server-part NAME ARGS the server's parts (docs/HOME-SERVER-PARTS.md): NAME's engine, hearth-server-parts/NAME.py next to
+                        this file (so they come with this helper's Store system part); as you, or as root through pkexec
+                        for the few commands that need the system (each engine checks)
   alerts run|test       the alert timer: drive health, a drive filling up, a failed backup, a mirror missing a drive
   power run             the power timer: spin down idle data drives, stay awake while used, sleep when nobody needs it
   ups-status            the UPS's charge (upsc)
@@ -84,6 +88,19 @@ if _hsp_os.environ.get("HEARTH_SYSTEM_PART") != "1" and _hsp_os.path.isfile("/va
         _hsp_os.execv("/usr/libexec/hearth/hearth-system-part", ["hearth-system-part", "run", "hearth-home-server-helper", _hsp_os.path.realpath(__file__)] + _hsp_sys.argv[1:])
     except OSError:
         pass
+# The server's parts (docs/HOME-SERVER-PARTS.md): `server-part NAME ARGS` runs NAME's engine from the folder next to
+# this file (hearth-server-parts/NAME.py), so the Store's copy of this helper brings its parts' engines with it. Run as
+# you (their timers, the Home server helper) or through pkexec for what needs the system: the engine checks that itself.
+if len(_hsp_sys.argv) >= 3 and _hsp_sys.argv[1] == 'server-part':
+    import re as _hsp_re
+    if not _hsp_re.fullmatch(r'[a-z][a-z0-9\-]{0,30}', _hsp_sys.argv[2]):
+        print('{"ok": false, "error": "not one of the server\'s parts"}')
+        _hsp_sys.exit(1)
+    _eng = _hsp_os.path.join(_hsp_os.path.dirname(_hsp_os.path.realpath(__file__)), 'hearth-server-parts', _hsp_sys.argv[2] + '.py')
+    if not _hsp_os.path.isfile(_eng):
+        print('{"ok": false, "error": "that part isn\'t in this version of the Home server helper"}')
+        _hsp_sys.exit(1)
+    _hsp_os.execv('/usr/bin/python3', ['python3', '-I', _eng] + _hsp_sys.argv[3:])
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -2031,6 +2048,29 @@ def receive_remove(u):
     return {'ok': True, 'removed': u, 'filesKept': True}
 
 
+def receive_lock(on):
+    """Backups for every device (docs/HOME-SERVER-PARTS.md): "Locked so it can't be changed or deleted from the device":
+    the restic server takes new backups but never lets a device change or delete one (rclone's --append-only); only
+    this PC, which keeps the keys, forgets old ones by your keep rules. Kept in RECEIVE_DIR/lock and used whenever the
+    receiver's settings are applied."""
+    caller()
+    ensure_dir(RECEIVE_DIR, 0o750)
+    mark = os.path.join(RECEIVE_DIR, 'lock')
+    if on:
+        write(mark, 'append-only\n', 0o644)
+    else:
+        remove(mark)
+    if os.path.exists(RECEIVE_DROPIN):
+        text = read(RECEIVE_DROPIN)
+        text = text.replace(' --append-only', '')
+        if on:
+            text = text.replace('/usr/bin/rclone serve restic ', '/usr/bin/rclone serve restic --append-only ', 1)
+        write(RECEIVE_DROPIN, text)
+        run(['systemctl', 'daemon-reload'])
+        run(['systemctl', 'try-restart', RECEIVE_UNIT])
+    return {'ok': True, 'locked': on}
+
+
 def receive_apply(rc, user, home):
     """Backups from your other Hearth devices: rclone's restic server on this PC's Tailscale address only, into a folder
     you picked (each device in its own folder), as you. Off unless you turn it on; started by its timer a minute
@@ -2061,8 +2101,8 @@ def receive_apply(rc, user, home):
     except (KeyError, OSError):
         pass
     write(RECEIVE_DROPIN, '# Hearth home server: backups from your other Hearth devices (hearth-home-server-helper).\n'
-                          '[Service]\nUser=%s\nExecStart=\nExecStart=/usr/bin/rclone serve restic --addr %s:%d --htpasswd %s --private-repos "%s"\n'
-          % (user, ip, RECEIVE_PORT, ht, real))
+                          '[Service]\nUser=%s\nExecStart=\nExecStart=/usr/bin/rclone serve restic %s--addr %s:%d --htpasswd %s --private-repos "%s"\n'
+          % (user, '--append-only ' if os.path.exists(os.path.join(RECEIVE_DIR, 'lock')) else '', ip, RECEIVE_PORT, ht, real))
     run(['systemctl', 'daemon-reload'])
     unit_switch(RECEIVE_TIMER, True)
     run(['systemctl', 'restart', RECEIVE_UNIT])
@@ -3699,6 +3739,8 @@ def main(argv):
             res = receive_add(a[1])
         elif len(a) == 2 and a[0] == 'receive-remove':
             res = receive_remove(a[1])
+        elif len(a) == 2 and a[0] == 'receive-lock' and a[1] in ('on', 'off'):
+            res = receive_lock(a[1] == 'on')
         elif a == ['alerts', 'run']:
             res = alerts_run()
         elif a == ['alerts', 'test']:

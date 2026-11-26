@@ -250,6 +250,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::Did(x, o) => {
             let why = engine::problem(&o);
+            // what a command answered stays for its page (a night's files, a join code): ui "last.<engine>.<command>"
+            if let (false, Some(first), Some(v)) = (x.engine.is_empty(), x.args.first(), o.json()) {
+                a.ui.insert(format!("last.{}.{}", x.engine, first), v);
+            }
             if why.is_empty() {
                 a.bad = false;
                 let said = o.json().and_then(|v| v.get("said").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
