@@ -1,0 +1,25 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Retro
+GenericName=Emulator games
+Comment=Your emulator games as shelves, every emulator set up in one go, the BIOS check and your controllers (built on RetroDECK and EmuDeck)
+Exec=/usr/bin/hearth-retro-app
+TryExec=/usr/bin/hearth-retro-app
+Icon=hearth-retro
+Categories=Game;Emulator;
+Keywords=retro;emulator;emulation;roms;retrodeck;emudeck;retroarch;bios;snes;playstation;n64;
+StartupWMClass=hearth-retro
+X-Hearth-Controller=true
+Actions=gamemode;setup;bios;
+
+[Desktop Action gamemode]
+Name=Full screen (Game Mode)
+Exec=/usr/bin/hearth-retro-app --game-mode
+
+[Desktop Action setup]
+Name=Set up in one go
+Exec=/usr/bin/hearth-retro-app --page setup
+
+[Desktop Action bios]
+Name=BIOS check
+Exec=/usr/bin/hearth-retro-app --page bios

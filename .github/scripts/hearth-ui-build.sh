@@ -31,7 +31,7 @@ if ! cargo build --release --manifest-path /tmp/w/hosts/hearth-layout/Cargo.toml
 fi
 mkdir -p /tmp/w/out
 cp /tmp/w/hosts/hearth-layout/target/release/hearth-layout /tmp/w/out/ || { echo "::error title=hearth-layout build::hearth-layout didn't build"; exit 1; }
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-retro-app; do
   test -x "target/release/$b" || { echo "::error title=Hearth's pure-Rust apps build::$b didn't build"; exit 1; }
   cp "target/release/$b" /tmp/w/out/
 done

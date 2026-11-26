@@ -22,7 +22,7 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-link,
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-retro-app, hearth-link,
                   hearth-layout, hearth-game-mode, hearth-home-server-helper, hearth-storage-helper, hearth-ai-share-helper,
                   hearth-controller-lab, hearth-saves, hearth-mods, hearth-gamestore, hearth-gamma, hearth-steam,
                   decky-hearth-sync, decky-hearth-link, decky-hearth-music]
@@ -208,7 +208,7 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust",
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "hearth-retro-app": "Hearth Retro", "mantel-rust": "Mantel in Rust",
               "hearth-layout": "Desktop layouts", "hearth-game-mode": "Game Mode host", "hearth-home-server-helper": "Home server helper",
               "hearth-storage-helper": "Hearth Storage helper", "hearth-ai-share-helper": "AI sharing helper",
               "hearth-controller-lab": "Controller Lab", "hearth-saves": "Saves", "hearth-mods": "Mods", "hearth-gamestore": "Hearth Games",

@@ -577,6 +577,23 @@
       "about": "Your ideas, kept and sorted. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
     },
     {
+      "id": "retro",
+      "name": "Hearth Retro",
+      "short": "Retro",
+      "card": "Your emulator games as shelves, set up in one go",
+      "icon": "R",
+      "from": "#ff9be8",
+      "to": "#b04fc8",
+      "partId": "hearth-retro-app",
+      "open": "hearth-retro-app",
+      "group": "apps",
+      "kind": "builtin",
+      "builtOn": "RetroDECK and EmuDeck",
+      "licence": "GPL-3",
+      "tagline": "Your emulator games as shelves, set up in one go",
+      "about": "Your emulator games as shelves in Game Mode, every emulator installed and set the same way, the BIOS check and your controllers. Built on RetroDECK and EmuDeck (GPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+    },
+    {
       "id": "controller-lab",
       "name": "Controller Lab",
       "card": "test every button, stick and rumble; calibrate drift",
