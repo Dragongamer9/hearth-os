@@ -761,7 +761,7 @@ PanelWindow {
         // ---- Blocks: its own window, moved by its title
         Rectangle {
             id: libWin
-            visible: !side.visible
+            visible: !side.forBlock
             x: 150; y: 110; width: 380; height: Math.min(700, ed.sh - 260)
             radius: 14; color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.97); border.color: Theme.line
             clip: true
@@ -877,16 +877,18 @@ PanelWindow {
 
         // ---- the toolbar
         Text {
-            visible: !side.visible
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: tool.top; bottomMargin: 12 }
+            visible: !side.forBlock
+            anchors { horizontalCenter: tool.horizontalCenter; bottom: tool.top; bottomMargin: 12 }
             text: "EDITING YOUR DESKTOP · NOTHING IS KEPT UNTIL KEEP THIS · ESC CANCELS"
             color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.2
             Rectangle { z: -1; anchors { fill: parent; margins: -6 } radius: 6; color: Theme.panel2; border.color: Theme.line }
         }
         Rectangle {
             id: tool
-            visible: !side.visible
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 28 }
+            visible: !side.forBlock
+            // beside the side panel while the bar itself is picked
+            x: side.visible ? Math.max(8, (side.x - width) / 2) : (ed.sw - width) / 2
+            anchors { bottom: parent.bottom; bottomMargin: 28 }
             width: toolRow.implicitWidth + 20; height: 56; radius: 16
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.97); border.color: Theme.line
             Row {
@@ -1428,10 +1430,10 @@ PanelWindow {
             }
         }
 
-        // ---- the small toolbar while a block (or the bar) is picked
+        // ---- the small toolbar while a block is picked: Undo, Redo, Cancel, Try it, Keep this
         Rectangle {
             id: smallTool
-            visible: side.visible
+            visible: side.forBlock && !ed.trying
             x: Math.max(12, (side.x - width) / 2); anchors { bottom: parent.bottom; bottomMargin: 28 }
             width: smallRow.implicitWidth + 20; height: 56; radius: 16
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.97); border.color: Theme.line
