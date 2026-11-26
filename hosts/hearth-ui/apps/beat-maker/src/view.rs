@@ -480,9 +480,9 @@ struct StepState {
 }
 
 const NAME_W: f32 = 90.0;
-const CELL_H: f32 = 30.0;
+const CELL_H: f32 = 28.0;
 const GAP: f32 = 5.0;
-const ROW_H: f32 = 37.0;
+const ROW_H: f32 = 34.0;
 
 impl<'a> Steps<'a> {
     fn cell_w(&self, w: f32) -> f32 {
@@ -580,7 +580,7 @@ fn beat_pane(a: &App) -> E<'_> {
     };
     let foot = row![t1("Click to add a hit · drag up and down for how hard", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "+ Row", Ck::Normal, None, if pat.is_some() { Some(Msg::AddRow) } else { None })].align_y(iced::Center);
     let body = column![scrollable(grid).height(Length::Fill), container(foot).padding(pad(6.0, 0.0, 0.0, 0.0))];
-    paned(&p, pane(&p, head.into(), container(body).padding(14.0).into()))
+    paned(&p, pane(&p, head.into(), container(body).padding(pad(10.0, 14.0, 8.0, 14.0)).into()))
 }
 
 // ------------------------------------------------------------------ the notes
