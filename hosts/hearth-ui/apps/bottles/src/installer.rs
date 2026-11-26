@@ -53,10 +53,11 @@ pub fn parse(y: &str) -> Manifest {
             if l.trim().is_empty() || l.trim_start().starts_with('#') {
                 continue;
             }
-            if indent(l) == 0 {
+            let t = l.trim_start();
+            // the next top-level key ends the list (its items may sit at the left edge too: "- action: …")
+            if indent(l) == 0 && !t.starts_with("- ") {
                 break;
             }
-            let t = l.trim_start();
             if t.starts_with("- ") && indent(l) <= item_ind {
                 item_ind = indent(l);
                 if let Some(c) = cur.take() {
