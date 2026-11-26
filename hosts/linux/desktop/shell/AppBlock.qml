@@ -27,7 +27,7 @@ Item {
     readonly property string words: {
         const vals = Object.assign({}, ab ? ab.wordValues : {}, { count: countNow });
         if (look.words) return L.fillWords(look.words, vals);
-        if (shows === "count") { const c = ab ? ab.countOf(look.showsRef || block.ref) : null; return (c ? c.label + " · " : "") + (countNow === "" ? "–" : countNow); }
+        if (shows === "count") { const c = ab ? ab.countOf(look.showsRef || block.ref || (ab.counts.length ? ab.counts[0].id : "")) : null; return (c ? c.label + " · " : "") + (countNow === "" ? "–" : countNow); }
         if (shows === "clock") return Qt.formatTime(now, "h:mm AP");
         if (shows === "words") return L.fillWords(block.label || "Your words", vals);
         if (shows === "space") return "";
