@@ -100,7 +100,7 @@ jobs:
             cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
             cp -a /src/hosts/linux/desktop/shell/screens /tmp/w/hosts/linux/desktop/shell/
             cd /tmp/w/hosts/hearth-ui
-            # (with the controller app: it turns on the log crate's std feature the workspace build relies on)
+            # (with the controller app: it turns on the std feature of the log crate, as the workspace build does)
             if cargo test -p hearth-store -p hearth-pad-host > /tmp/w/t.log 2>&1; then
               echo "::notice title=Hearth Store tests::$(grep -E "^test result" /tmp/w/t.log | tr "\n" " ")"
             else
