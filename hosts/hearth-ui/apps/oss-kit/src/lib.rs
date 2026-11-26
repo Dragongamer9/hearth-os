@@ -9,6 +9,7 @@
 //! that touches starting the device), and the safe writers (settings_file.rs, red flag 9).
 
 pub mod need;
+pub mod yaml;
 
 use hearth_ui::describe::Describe;
 use hearth_ui::ui::{self, t, tb, tm, TitleMsgs};
@@ -258,7 +259,9 @@ pub fn dot<'a, M: 'a>(c: Color, d: f32) -> E<'a, M> {
 pub fn mark<'a, M: 'a>(letters: &str, from: Color, to: Color, size: f32) -> E<'a, M> {
     let g = iced::gradient::Linear::new(iced::Degrees(135.0)).add_stop(0.0, from).add_stop(1.0, to);
     let fs = (size * 0.42).round().max(7.0);
-    container(tb(letters.to_string(), fs, Color::WHITE).wrapping(Wrapping::None))
+    // the gear (Settings' own mark) is drawn, not a letter
+    let inner: E<'a, M> = if letters == "⚙" { ui::glyph(ui::G::Gear, Color::WHITE, (size * 0.62).round(), 2.0) } else { tb(letters.to_string(), fs, Color::WHITE).wrapping(Wrapping::None).into() };
+    container(inner)
         .center_x(Length::Fixed(size))
         .center_y(Length::Fixed(size))
         .style(move |_: &Theme| container::Style {
@@ -378,6 +381,46 @@ pub fn side_row<'a, M: Clone + 'a>(p: &Pal, inner: impl Into<E<'a, M>>, on: bool
     click(body, Some(m))
 }
 
+// ------------------------------------------------------------------ picking a file
+
+/// Hearth's Open window for one file (hearth-file-chooser; kdialog or zenity where it isn't), off the window's
+/// thread: the path picked, or None.
+pub fn pick_file(title: &str, patterns: &[&str]) -> impl std::future::Future<Output = Option<String>> + Send + 'static {
+    let title = title.to_string();
+    let pats: Vec<String> = patterns.iter().map(|s| s.to_string()).collect();
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let _ = std::thread::Builder::new().name("hearth-pick".into()).spawn(move || {
+        let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let req = dir.join(format!("hearth-pick-{}.json", std::process::id()));
+        let res = dir.join(format!("hearth-pick-{}-answer.json", std::process::id()));
+        let _ = std::fs::remove_file(&res);
+        let body = serde_json::json!({"kind": "open", "title": title, "multiple": false, "filters": [{"name": title, "patterns": pats}]});
+        let mut got: Option<String> = None;
+        if std::fs::write(&req, body.to_string()).is_ok() {
+            let ok = std::process::Command::new("hearth-file-chooser").env("HEARTH_PICK_REQUEST", &req).env("HEARTH_PICK_RESULT", &res).status().map(|s| s.success()).unwrap_or(false);
+            if ok {
+                got = std::fs::read_to_string(&res).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v.get("paths").and_then(|p| p.get(0)).and_then(|p| p.as_str()).map(str::to_string));
+            }
+            let _ = std::fs::remove_file(&req);
+            let _ = std::fs::remove_file(&res);
+        }
+        if got.is_none() {
+            let filter = pats.join(" ");
+            for cmd in [vec!["kdialog".to_string(), "--getopenfilename".into(), home().to_string_lossy().to_string(), filter.clone()], vec!["zenity".to_string(), "--file-selection".into()]] {
+                if let Ok(o) = std::process::Command::new(&cmd[0]).args(&cmd[1..]).output() {
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if o.status.success() && !s.is_empty() {
+                        got = Some(s);
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = tx.send(got);
+    });
+    async move { rx.await.ok().flatten() }
+}
+
 // ------------------------------------------------------------------ safe writes (red flag 9)
 
 pub use hearth_ui::settings_file;
@@ -420,7 +463,8 @@ pub fn tilde(p: &std::path::Path) -> String {
 
 /// A size in words (1.2 GB, 340 MB).
 pub fn size_words(b: u64) -> String {
-    ui::bytes(b as f64)
+    let gb = b as f64 / 1_073_741_824.0;
+    if (1.0..100.0).contains(&gb) { format!("{gb:.1} GB") } else { ui::bytes(b as f64) }
 }
 
 /// The total size of a folder (what's in it, not following links).

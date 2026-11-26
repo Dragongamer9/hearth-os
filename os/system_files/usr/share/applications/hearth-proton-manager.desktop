@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Proton Manager
+Comment=The Proton and Wine your Windows games run with (built on ProtonUp-Qt)
+Exec=/usr/bin/hearth-proton-manager
+TryExec=/usr/bin/hearth-proton-manager
+Icon=hearth-proton-manager
+Categories=Settings;Game;
+Keywords=proton;wine;ge;protonup;compatibility;steam;lutris;windows;games;
+StartupWMClass=hearth-proton-manager

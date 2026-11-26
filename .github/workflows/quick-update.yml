@@ -208,7 +208,7 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "hearth-game-fixer": "Hearth Game Fixer", "mantel-rust": "Mantel in Rust",
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "hearth-3d": "Hearth 3D", "hearth-bottles": "Hearth Bottles", "hearth-overlay": "Hearth Overlay", "hearth-proton-manager": "Proton Manager", "hearth-game-fixer": "Hearth Game Fixer", "mantel-rust": "Mantel in Rust",
               "hearth-layout": "Desktop layouts", "hearth-game-mode": "Game Mode host", "hearth-home-server-helper": "Home server helper",
               "hearth-storage-helper": "Hearth Storage helper", "hearth-ai-share-helper": "AI sharing helper",
               "hearth-controller-lab": "Controller Lab", "hearth-saves": "Saves", "hearth-mods": "Mods", "hearth-gamestore": "Hearth Games",

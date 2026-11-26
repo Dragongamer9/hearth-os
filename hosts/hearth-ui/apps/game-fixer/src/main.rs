@@ -291,6 +291,13 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 g.yaml = g.config.as_ref().and_then(|c| std::fs::read_to_string(c).ok()).unwrap_or_default();
                 g.note = lutris::read_note(&g.slug);
             }
+            // each game's name, for Proton Manager's list (it reads Lutris' files, which have no names)
+            let names: serde_json::Map<String, Value> = gs.iter().map(|g| (g.slug.clone(), json!(g.name))).collect();
+            let nf = k::data_dir("game-fixer").join("names.json");
+            if k::settings_file::read_json(&nf).as_object() != Some(&names) {
+                let _ = std::fs::create_dir_all(k::data_dir("game-fixer"));
+                let _ = k::settings_file::write_json(&nf, &Value::Object(names));
+            }
             a.games = gs;
             if !a.games.iter().any(|g| g.slug == a.pick) {
                 a.pick = a.games.first().map(|g| g.slug.clone()).unwrap_or_default();
