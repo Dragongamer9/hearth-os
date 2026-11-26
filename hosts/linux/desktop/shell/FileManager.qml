@@ -1854,13 +1854,79 @@ Scope {
             { id: "tabs", title: "The tabs", x: 0, y: 0, w: 24, h: 2 },
             { id: "address", title: "The address bar", x: 0, y: 2, w: 24, h: 2 },
             { id: "toolbar", title: "The command bar", x: 0, y: 4, w: 24, h: 2 },
-            { id: "sidebar", title: "The navigation pane", x: 0, y: 6, w: 4, h: 18 },
+            { id: "sidebar", title: "The navigation pane", label: "Sidebar", x: 0, y: 6, w: 4, h: 18 },
             { id: "folder", title: "The folder", x: 4, y: 6, w: 10, h: 16 },
             { id: "status", title: "The status bar", x: 4, y: 22, w: 10, h: 2 },
             { id: "split", title: "Split view", x: 14, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 },
-            { id: "preview", title: "The details pane", x: 19, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 }
+            { id: "preview", title: "The details pane", label: "Preview", x: 19, y: 6, w: 5, h: 18, beside: ["folder", "status"], size: 5 }
         ];
         return [{ id: "window", title: "Hearth Files", blocks: own }, { id: "chooser", title: "The file chooser", blocks: own.filter(b => b.id !== "tabs" && b.id !== "split") }];
+    }
+    // Files' own blocks (drag and drop board 3: Files' blocks, "drag into Files"): its buttons, panes and counts
+    function blockRun(id, x, y) {
+        const cmd = ["new", "cut", "copy", "paste", "rename", "copypath", "delete", "sort", "view", "hidden", "undo", "redo", "details", "refresh", "sortdl"];
+        if (cmd.indexOf(id) >= 0) return command(id, x, y);
+        if (id === "share") return propsAt([current ? current.path : listing ? listing.path : home], "sharing");
+        if (id === "back") return goBack();
+        if (id === "forward") return goForward();
+        if (id === "up") return goUp(false);
+        if (id === "invert") return invertSelection();
+        // the rest are the right-click menu's own (on the folder, or on what's picked)
+        menuItems = [];
+        menuOnFolder = ["terminal", "newfolder", "newfile", "newtab", "home", "termpanel", "splitview"].indexOf(id) >= 0 || !targets().length;
+        if (id === "compress" && !targets().length) return say("Pick something first");
+        runMenu(id);
+    }
+    readonly property var blockActions: [
+        { id: "sortdl", label: "Sort my Downloads", icon: "sparkle" }, { id: "share", label: "Share", icon: "share" },
+        { id: "terminal", label: "Open in terminal", icon: "window" }, { id: "compress", label: "Compress", icon: "archive" },
+        { id: "new", label: "New", icon: "plus" }, { id: "newfolder", label: "New folder", icon: "folder" }, { id: "newfile", label: "New file", icon: "file" },
+        { id: "cut", label: "Cut", icon: "cut" }, { id: "copy", label: "Copy", icon: "copy" }, { id: "paste", label: "Paste", icon: "clipboard" },
+        { id: "rename", label: "Rename", icon: "edit" }, { id: "copypath", label: "Copy path", icon: "link" }, { id: "delete", label: "Delete", icon: "trash" },
+        { id: "sort", label: "Sort", icon: "menu" }, { id: "view", label: "View", icon: "grid" }, { id: "hidden", label: "Show", icon: "eye" },
+        { id: "undo", label: "Undo", icon: "undo" }, { id: "redo", label: "Redo", icon: "sync" }, { id: "details", label: "Details pane", icon: "info" },
+        { id: "refresh", label: "Refresh", icon: "sync" }, { id: "back", label: "Back", icon: "back" }, { id: "forward", label: "Forward", icon: "forward" },
+        { id: "up", label: "Up a folder", icon: "chevu" }, { id: "home", label: "Home", icon: "home" }, { id: "newtab", label: "New tab", icon: "plus" },
+        { id: "markall", label: "Select all", icon: "check" }, { id: "invert", label: "Invert selection", icon: "check" },
+        { id: "props", label: "Properties", icon: "info" }, { id: "termpanel", label: "Terminal pane", icon: "window" }, { id: "splitview", label: "Split view", icon: "grid" }
+    ].map(a => Object.assign(a, { run: (x, y) => filesApp.blockRun(a.id, x, y) }))
+    readonly property var blockCounts: [
+        { id: "items", label: "Items here", value: () => filesApp.entries.length },
+        { id: "loose", label: "Loose in Downloads", value: () => sortDl.loose },
+        { id: "selected", label: "Selected", value: () => filesApp.markCount },
+        { id: "copied", label: "Copied or to move", value: () => filesApp.clip.paths.length },
+        { id: "folder", label: "This folder's name", value: () => filesApp.listing ? filesApp.listing.name || "" : "" }
+    ]
+    // Files' Details pane (a pane of its own from Files' blocks): what's picked, its size, kind and when it changed
+    Component {
+        id: detailsPaneComp
+        Rectangle {
+            color: Theme.panel
+            readonly property var e: filesApp.current
+            Column {
+                anchors { fill: parent; margins: 16 }
+                spacing: 8
+                Text { text: "DETAILS"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.2 }
+                Text { width: parent.width; text: parent.parent.e ? parent.parent.e.name : (filesApp.listing ? filesApp.listing.name || "" : ""); elide: Text.ElideMiddle; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                Repeater {
+                    model: {
+                        const e = parent.parent.e;
+                        if (!e) return [["Items", filesApp.plural(filesApp.entries.length, "item")]];
+                        const r = [["Kind", e.dir ? "Folder" : (e.mime || (e.name.indexOf(".") > 0 ? e.name.split(".").pop().toUpperCase() + " file" : "File"))]];
+                        if (!e.dir) r.push(["Size", filesApp.fmtSize(e.size)]);
+                        if (e.mtime || e.modified) r.push(["Modified", filesApp.fmtDate(e.mtime || e.modified)]);
+                        if (e.path) r.push(["Where", e.path.replace(/\/[^\/]*$/, "") || "/"]);
+                        return r;
+                    }
+                    delegate: Column {
+                        required property var modelData
+                        width: parent.width
+                        Text { text: parent.modelData[0]; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
+                        Text { width: parent.width; text: parent.modelData[1]; elide: Text.ElideMiddle; color: Theme.text; font.family: Theme.font; font.pixelSize: 13 }
+                    }
+                }
+            }
+        }
     }
     property string menuKind: ""               // which menu showMenu is showing (Edit layout › Menus… puts its items in order)
     property var dryItems: null                // a menu's items, made without opening it (Edit layout › Menus…)
@@ -5299,6 +5365,13 @@ Scope {
                 // (filesApp: inside AppBlocks, "app" is its own app id)
                 pages: filesApp.blockPages
                 parts: ({ tabs: tabsBar, address: addressBar, toolbar: cmdBar, sidebar: navPane, folder: folderCol, status: statusBar, split: splitPane, preview: detailsBox })
+                actions: filesApp.blockActions
+                panes: [{ id: "preview", label: "Preview", icon: "image", part: "preview" }, { id: "details", label: "Details", icon: "info", make: detailsPaneComp },
+                        { id: "tree", label: "Folder tree", icon: "folder", part: "sidebar" }, { id: "second", label: "Second folder", icon: "grid", part: "split" },
+                        { id: "address", label: "Address bar", icon: "link", part: "address" }, { id: "tabs", label: "Tabs", icon: "list", part: "tabs" },
+                        { id: "commands", label: "Command bar", icon: "menu", part: "toolbar" }, { id: "status", label: "Status bar", icon: "info", part: "status" }]
+                counts: filesApp.blockCounts
+                marks: ({ "Search": searchBox })
                 menus: [{ id: "view", title: "View", items: () => filesApp.dryMenu(() => filesApp.viewMenu(-1, -1)) },
                         { id: "context", title: "Right-click (empty space)", items: () => filesApp.dryMenu(() => filesApp.openMenu(true, -1, -1)) }]
                 Component.onCompleted: filesApp.blocks = blocks

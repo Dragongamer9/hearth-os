@@ -727,6 +727,20 @@ Scope {
                     { id: "recent", title: "Recent", blocks: [
                         { id: "head", title: "The header", x: 0, y: 0, w: 24, h: 2 },
                         { id: "list", title: "The pictures", x: 0, y: 2, w: 24, h: 22 }] }]
+                // Capture's own blocks (drag and drop board 3): take a picture of the screen, a window or a part, record, Recent
+                actions: [{ id: "screen", label: "Whole screen", icon: "display", run: () => cap.take("screen") },
+                          { id: "window", label: "A window", icon: "window", run: () => cap.take("window") },
+                          { id: "area", label: "A part of the screen", icon: "grid", run: () => cap.take("area") },
+                          { id: "recent", label: "Recent", icon: "image", run: () => { cap.page = "recent"; } },
+                          { id: "takepage", label: "Take", icon: "cam", run: () => { cap.page = "take"; } },
+                          { id: "share", label: "Share", icon: "share", run: () => { if (cap.editor) cap.editor.share(); } },
+                          { id: "save", label: "Save and copy", icon: "check", run: () => { if (cap.editor) cap.editor.saveAndCopy(); } },
+                          { id: "ocr", label: "Copy the words in it", icon: "doc", run: () => { if (cap.editor) cap.editor.readText(); } },
+                          { id: "qr", label: "Read a QR code", icon: "qr", run: () => { if (cap.editor) cap.editor.readQr(); } }]
+                panes: cap.page === "edit" ? [{ id: "head", label: "The header", icon: "menu", part: "head" }, { id: "editor", label: "The editor", icon: "edit", part: "editor" }]
+                     : cap.page === "recent" ? [{ id: "head", label: "The header", icon: "menu", part: "head" }, { id: "list", label: "The pictures", icon: "image", part: "list" }]
+                     : [{ id: "head", label: "The header", icon: "menu", part: "head" }, { id: "options", label: "What to capture", icon: "cam", part: "options" }, { id: "recent", label: "Recent, at a glance", icon: "image", part: "recent" }]
+                counts: [{ id: "recent", label: "Pictures taken", value: () => (cap.recent || []).length }]
                 parts: cap.page === "edit" ? { head: head, editor: editorLoader }
                      : cap.page === "recent" ? { head: head, list: recentPage }
                      : { head: head, options: takeOptions, recent: takeRecent }

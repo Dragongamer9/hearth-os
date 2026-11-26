@@ -1173,6 +1173,12 @@ FocusScope {
             { id: "page", title: "The page", x: 0, y: 3, w: 24, h: 20 },
             { id: "hints", title: "The hint bar", x: 0, y: 23, w: 24, h: 1 }] }]
         parts: ({ title: rmTitle, tabs: rmTabs, page: rmPage, hints: rmHint })
+        // Resource Monitor's own blocks (drag and drop board 3): a button for every tab, the next and the last one
+        actions: v.tabList.map(t => ({ id: "tab-" + t[0], label: t[1], icon: t[0] === "cpu" ? "cpu" : t[0] === "disk" ? "drive" : t[0] === "net" ? "wifi" : t[0] === "memory" ? "box" : "grid", run: () => { if (v.rm) v.rm.tab = t[0]; } }))
+            .concat([{ id: "next", label: "Next tab", icon: "forward", run: () => v.step(1) }, { id: "prev", label: "Previous tab", icon: "back", run: () => v.step(-1) }])
+        panes: [{ id: "title", label: "The title row", icon: "window", part: "title" }, { id: "tabs", label: "The tabs", icon: "list", part: "tabs" },
+                { id: "page", label: "The page", icon: "doc", part: "page" }, { id: "hints", label: "The hint bar", icon: "pad", part: "hints" }]
+        counts: [{ id: "tab", label: "This tab", value: () => { const t = v.tabList.find(x => x[0] === v.tab); return t ? t[1] : ""; } }]
     }
 
     // ---- the actions menu

@@ -2693,6 +2693,7 @@ jobs:
           unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
           SH="$PWD/hosts/linux/desktop/shell"
           A="$HOME/.config/nimbus/apps"; rm -rf "$A"
+          L="$HOME/.config/nimbus/app-looks"; rm -rf "$L"
           rm -f "$XDG_RUNTIME_DIR"/wayland-*
           CONF=$(python3 $SH/hearth-system labwc-config)
           labwc -C "$CONF" > $o/labwc.log 2>&1 &
@@ -2717,6 +2718,29 @@ jobs:
             ipc appblocks edit "$app"; sleep 2
             grim "$o/$name-2-edit-layout.png" || true
             want "$app" "Edit layout opens in place" '"editing":true'
+            want "$app" "board 3: the editor (outlines, its blocks window, the toolbar) is loaded" '"editor":true'
+            # board 3 (drag-drop-3.png): one of the app's own buttons held over its first bar (the lit line, "Drop: …"),
+            # let go there, then Customize on a part; Cancel: nothing written
+            local js bar act first hx hy h
+            js=$(st "$app")
+            bar=$(echo "$js" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("bars") or [""])[0])' 2>/dev/null)
+            act=$(echo "$js" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("actions") or [""])[0])' 2>/dev/null)
+            first=$(echo "$js" | python3 -c 'import json,sys; d=json.load(sys.stdin); b=d.get("blocks") or [""]; print(b[min(1, len(b)-1)])' 2>/dev/null)
+            if [ -n "$bar" ] && [ -n "$act" ]; then
+              read -r hx hy <<< "$(ipc appblocks draft "$app" | python3 -c 'import json,sys; d=json.load(sys.stdin); p=[q for q in d["parts"] if q["id"]==sys.argv[1]][0]; print(int(p["x"]+p["w"]*0.45), int(p["y"]+p["h"]/2))' "$bar" 2>/dev/null)"
+              h=$(ipc appblocks hold "$app" "action:$act" "${hx:-300}" "${hy:-60}"); sleep 1
+              grim "$o/$name-2b-block-held-in-a-bar.png" || true
+              case "$h" in *'"kind":"bar"'*'Drop: '*) say "$app: one of its buttons held over $bar: $(echo "$h" | cut -c1-220)" ;; *) bad "$app: a block held over its bar ($bar): $h" ;; esac
+              ipc appblocks letGo "$app"; sleep 1
+              want "$app" "let go: the button is in $bar" ":action:$bar"
+              grim "$o/$name-2c-block-in-the-bar.png" || true
+            else bad "$app: no bar ($bar) or no buttons of its own ($act): $(echo "$js" | cut -c1-300)"; fi
+            ipc appblocks customize "$app" "$first" look; sleep 2
+            grim "$o/$name-2d-customize.png" || true
+            want "$app" "Right-click › Customize opens the side panel for $first" "\"customize\":\"$first\""
+            ipc appblocks cancel "$app"; sleep 1
+            want "$app" "Cancel: back as it was" '"editing":false'
+            [ -e "$L/$app.json" ] && bad "$app: Cancel wrote $L/$app.json" || say "$app: Cancel wrote nothing"
             ipc appblocks done "$app"; sleep 1
             ipc appblocks partMenu "$app" ""; sleep 1
             grim "$o/$name-3-right-click-a-part.png" || true
@@ -2751,6 +2775,107 @@ jobs:
           [ "$(cat "$A/files.json")" = '{"layout":' ] && say "files: the unreadable file was left as it was" || bad "files: the unreadable file was changed"
           ipc files close; sleep 2
           rm -rf "$A"
+          # ---- drag and drop board 3 in Files (AppBlocksEditor.qml, AppBlockCustomize.qml, AppBlock.qml; mockup
+          # docs/mockups/drag-drop/drag-drop-3.png): Downloads in Edit layout, Sort my Downloads held over the command
+          # bar between Sort and View (the lit line), let go there; Preview sized by its edge (the guide, "Preview: … px ·
+          # lined up with Search"); the sidebar by its edge; a Count block anywhere on the window; Customize on the command
+          # bar (every tab, a look applied), on the new block; Layers; Start from; nothing written until Try it; Go back;
+          # Keep this (both files, the safe way); Files opened again as kept. hearth-layout isn't built here: a stand-in
+          # keeps app-keep's change the way hearth-layout merges it (only for this part).
+          cat > /tmp/fakebin/hearth-layout <<'PY'
+          #!/usr/bin/env python3
+          import json, os, sys
+          if len(sys.argv) >= 4 and sys.argv[1] == "app-keep":
+              p = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "nimbus", "apps", sys.argv[2] + ".json")
+              os.makedirs(os.path.dirname(p), exist_ok=True)
+              try:
+                  m = json.load(open(p))
+              except Exception:
+                  m = {}
+              l = m.setdefault("layout", {})
+              for k, v in (json.loads(sys.argv[3]).get("layout") or {}).items():
+                  cur = l.setdefault(k, {})
+                  for n, x in v.items():
+                      if k == "blocks" and not x:
+                          cur.pop(n, None)
+                      else:
+                          cur[n] = x
+              m["format"] = 1
+              json.dump(m, open(p + ".tmp", "w")); os.replace(p + ".tmp", p)
+              print(json.dumps(m)); sys.exit(0)
+          print('{"ok": false}'); sys.exit(1)
+          PY
+          chmod +x /tmp/fakebin/hearth-layout
+          DL=$(HOME=$HOME python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import hearth_files_sortdl as s; print(s.downloads())' "$SH")
+          mkdir -p "$DL/Installers" "$DL/Pictures" "$DL/Videos"
+          python3 -c 'import sys,zlib,struct; c=lambda t,d: struct.pack(">I",len(d))+t+d+struct.pack(">I",zlib.crc32(t+d)); open(sys.argv[1],"wb").write(b"\x89PNG\r\n\x1a\n"+c(b"IHDR",struct.pack(">IIBBBBB",1,1,8,2,0,0,0))+c(b"IDAT",zlib.compress(b"\x00\xe9\xa4\x3d"))+c(b"IEND",b""))' "$DL/console.png"
+          printf 'zip\n' > "$DL/mod.zip"
+          ipc files open "$DL"; sleep 5
+          ipc filemanager select console.png; ipc filemanager details on; sleep 2
+          ipc appblocks edit files; sleep 2
+          grim $o/board3-files-1-editing.png || true
+          want files "board 3: Downloads in Edit layout (outlined, labelled, Files' blocks, the toolbar)" '"editor":true'
+          bi=$(ipc appblocks barItems files toolbar)
+          read -r hx hy <<< "$(echo "$bi" | python3 -c 'import json,sys; k=json.load(sys.stdin); n=[x["name"] for x in k]; s=k[n.index("Sort")] if "Sort" in n else k[len(k)//2]; v=k[n.index("View")] if "View" in n else s; print(int((s["x"]+v["x"])/2), s["y"])' 2>/dev/null)"
+          say "the command bar's items: $(echo "$bi" | cut -c1-300)"
+          h=$(ipc appblocks hold files action:sortdl "${hx:-600}" "${hy:-120}"); sleep 1
+          grim $o/board3-files-2-block-held-in-the-command-bar.png || true
+          case "$h" in *'"kind":"bar","bar":"toolbar"'*'Drop: command bar, after Sort'*'"line":true'*) say "Sort my Downloads over the command bar, between Sort and View: $(echo "$h" | cut -c1-240)" ;; *) bad "Sort my Downloads held over the command bar: $h" ;; esac
+          ipc appblocks letGo files; sleep 2
+          grim $o/board3-files-3-in-the-command-bar.png || true
+          want files "let go: Sort my Downloads is in the command bar" ':action:toolbar'
+          n=$(ipc appblocks size files preview l -60 0); sleep 1
+          grim $o/board3-files-4-preview-sized-with-the-guide.png || true
+          case "$n" in *'Preview: '*' px'*) say "Preview sized by its edge: $(echo "$n" | cut -c1-200)" ;; *) bad "Preview sized by its edge: $n" ;; esac
+          ipc appblocks sizeLetGo files; sleep 1
+          n=$(ipc appblocks size files sidebar r 40 0); sleep 1
+          grim $o/board3-files-5-sidebar-sized.png || true
+          case "$n" in *'Sidebar: '*' px'*) say "the sidebar sized by its edge: $(echo "$n" | cut -c1-200)" ;; *) bad "the sidebar sized by its edge: $n" ;; esac
+          ipc appblocks sizeLetGo files; sleep 1
+          h=$(ipc appblocks hold files make:count 760 520); sleep 1
+          grim $o/board3-files-6-a-count-held-anywhere.png || true
+          case "$h" in *'"kind":"window"'*) say "a Count block over the window: $(echo "$h" | cut -c1-200)" ;; *) bad "a Count block held over the window: $h" ;; esac
+          ipc appblocks letGo files; sleep 1
+          want files "a block anywhere on the window" ':count:window'
+          ipc appblocks customize files toolbar look; sleep 2
+          grim $o/board3-files-7-customize-look.png || true
+          ipc appblocks look files toolbar '{"fill":"#3b2a1d","see":15,"corners":14,"edge":"line","edgeColor":"#ff7a2f","edgeW":2,"shadow":"soft","icon":"menu","words":"Commands · {items}","show":"both","font":"Noto Serif","fontSize":14,"weight":"bold","hover":"lighter","pressed":"darker","m":[4,8,4,8],"pad":6}'; sleep 2
+          grim $o/board3-files-8-customize-applied.png || true
+          want files "the look is on the command bar" '"looks":["toolbar"'
+          for t in shows does place when motion; do ipc appblocks customize files toolbar $t; sleep 1; grim $o/board3-files-9-customize-$t.png || true; done
+          bid=$(st files | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x.split(":")[0] for x in d.get("added", []) if ":action:" in x]; print(a[0] if a else "")' 2>/dev/null)
+          ipc appblocks customize files "$bid" look; sleep 1
+          ipc appblocks look files "$bid" '{"fill":"#ff7a2f","corners":8,"textColor":"#1a120c","iconColor":"#1a120c","weight":"bold"}'; sleep 1
+          grim $o/board3-files-10-customize-the-new-block.png || true
+          ipc appblocks customize files "" look; sleep 1
+          ipc appblocks layers files; sleep 1; grim $o/board3-files-11-layers.png || true; ipc appblocks layers files
+          ipc appblocks startFrom files; sleep 1; grim $o/board3-files-12-start-from.png || true; ipc appblocks startFrom files
+          [ -e "$L/files.json" ] || [ -e "$A/files.json" ] && bad "something was written before Keep this or Try it: $(ls "$L" "$A" 2>&1 | tr '\n' ' ')" || say "nothing written before Keep this"
+          ipc appblocks tryIt files; sleep 4
+          grim $o/board3-files-13-trying-it.png || true
+          want files "Try it: Files as it'll be, with a way back" '"trying":true'
+          grep -q '"mantel-window"' "$L/files.json" 2>/dev/null && say "Try it wrote it: $(tr -d '\n ' < "$L/files.json" | cut -c1-300)" || bad "Try it: $(cat "$L/files.json" 2>&1 | head -c 300)"
+          ipc appblocks goBack files; sleep 4
+          grim $o/board3-files-14-gone-back.png || true
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(1 if "mantel-window" in d else 0)' "$L/files.json" 2>/dev/null && say "Go back: as it was" || bad "Go back left it kept: $(cat "$L/files.json" 2>&1 | head -c 300)"
+          want files "Go back: Files' own again" '"mode":"own"'
+          ipc appblocks edit files; sleep 2
+          read -r hx hy <<< "$(ipc appblocks barItems files toolbar | python3 -c 'import json,sys; k=json.load(sys.stdin); n=[x["name"] for x in k]; s=k[n.index("Sort")] if "Sort" in n else k[len(k)//2]; v=k[n.index("View")] if "View" in n else s; print(int((s["x"]+v["x"])/2), s["y"])' 2>/dev/null)"
+          ipc appblocks hold files action:sortdl "${hx:-600}" "${hy:-120}"; ipc appblocks letGo files
+          ipc appblocks size files preview l -60 0; ipc appblocks sizeLetGo files
+          ipc appblocks look files toolbar '{"fill":"#3b2a1d","corners":14,"edge":"line","edgeColor":"#ff7a2f","shadow":"soft"}'; sleep 1
+          ipc appblocks keep files; sleep 4
+          want files "Keep this: closed, kept" '"editing":false'
+          python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["mantel-window"]; assert any(b["kind"]=="action" and b["ref"]=="sortdl" and b["in"]=="toolbar" for b in p["added"]); assert p["looks"]["toolbar"]["fill"]=="#3b2a1d"; assert "preview" in p["rects"]' "$L/files.json" 2>/dev/null && say "Keep this wrote the looks and blocks: $(tr -d '\n ' < "$L/files.json" | cut -c1-300)" || bad "Keep this (looks): $(cat "$L/files.json" 2>&1 | head -c 400)"
+          ls "$L"/.files.json.lock "$L"/files.json* >/dev/null 2>&1 && say "app-looks written by hearth_settings_io (merged, under its lock): $(ls -a "$L" | tr '\n' ' ')" || say "app-looks: $(ls -a "$L" 2>&1 | tr '\n' ' ')"
+          grep -q '"mantel-window"' "$A/files.json" 2>/dev/null && say "and the cells through hearth-layout app-keep: $(tr -d '\n ' < "$A/files.json" | cut -c1-200)" || bad "Keep this (cells): $(cat "$A/files.json" 2>&1 | head -c 300)"
+          grim $o/board3-files-15-kept.png || true
+          ipc files close; sleep 2; ipc files open "$DL"; sleep 5
+          grim $o/board3-files-16-opened-again-as-kept.png || true
+          want files "opened again: as kept (on the window, Sort my Downloads in the command bar)" '"mode":"grid"'
+          want files "its block is there" ':action:toolbar'
+          ipc filemanager details off; ipc files close; sleep 2
+          rm -rf "$A" "$L" "$DL/Installers" "$DL/Pictures" "$DL/Videos" "$DL/console.png" "$DL/mod.zip"; rm -f /tmp/fakebin/hearth-layout
           shoot task-manager task-manager ipc tasks tab processes
           ipc tasks tab performance:cpu; sleep 4; ipc appblocks edit task-manager; sleep 2; grim $o/task-manager-4-performance-edit-layout.png || true
           want task-manager "Performance's own blocks" '"tiles","detail"'
@@ -2807,7 +2932,7 @@ jobs:
           ipc files close; sleep 2
           rm -f /tmp/fakebin/hearth-layout
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
-          xbad=$(grep -E "(AppBlocks|AppBlocksFlow|AppBlocksHub|EditLayoutButton|DescribeIt|FileManager|FilesIpc|FilesSortDownloads|FilesSortSheet|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)" "$LOG" 2>/dev/null | sort -u | head -12 || true)
+          xbad=$(grep -E "(AppBlocks|AppBlocksFlow|AppBlocksHub|AppBlocksEditor|AppBlockCustomize|AppBlock|EditLayoutButton|DescribeIt|FileManager|FilesIpc|FilesSortDownloads|FilesSortSheet|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)" "$LOG" 2>/dev/null | sort -u | head -12 || true)
           [ -z "$xbad" ] && say "no QML errors from the apps made of blocks" || bad "$(echo "$xbad" | cut -c1-300 | tr '\n' ' ')"
           ls -la $o
           pkill -x labwc || true; pkill -f quickshell || true
