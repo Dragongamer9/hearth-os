@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 pub fn dir() -> PathBuf {
-    let h = hearth_oss_kit::home();
+    let h = hearth_oss_kit_a::home();
     std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| h.join(".config")).join("MangoHud")
 }
 

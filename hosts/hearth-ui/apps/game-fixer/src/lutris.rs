@@ -64,7 +64,7 @@ impl Game {
 
 /// "~/…" and "$HOME/…" in a path written in a settings file.
 pub fn expand(p: &str) -> String {
-    let h = hearth_oss_kit::home().to_string_lossy().to_string();
+    let h = hearth_oss_kit_a::home().to_string_lossy().to_string();
     if let Some(r) = p.strip_prefix("~/") {
         format!("{h}/{r}")
     } else if let Some(r) = p.strip_prefix("$HOME/") {
@@ -139,7 +139,7 @@ pub fn games_of(j: &Value) -> Vec<Game> {
 
 /// Lutris' folders for its games' settings files: its own (old and new places) and its Flathub app's.
 pub fn config_dirs() -> Vec<PathBuf> {
-    let h = hearth_oss_kit::home();
+    let h = hearth_oss_kit_a::home();
     let cfg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| h.join(".config"));
     let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| h.join(".local/share"));
     vec![
@@ -172,7 +172,7 @@ pub fn config_for(slug: &str) -> Option<PathBuf> {
 
 /// Lutris' runners folder: which runners it has (DOSBox, ScummVM…), wine and Proton aside.
 pub fn other_runners() -> Vec<String> {
-    let h = hearth_oss_kit::home();
+    let h = hearth_oss_kit_a::home();
     let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| h.join(".local/share"));
     let mut v: Vec<String> = Vec::new();
     for d in [data.join("lutris/runners"), h.join(".var/app/net.lutris.Lutris/data/lutris/runners")] {
@@ -205,7 +205,7 @@ pub fn wine_versions(out: &str) -> Vec<String> {
     v
 }
 
-pub use hearth_oss_kit::yaml::{quote, yget, ymap, yset};
+pub use hearth_oss_kit_a::yaml::{quote, yget, ymap, yset};
 
 // ------------------------------------------------------------------ fixes
 
@@ -331,19 +331,19 @@ pub fn move_fix_files(dir: &Path, f: &Fix, on: bool) -> Result<(), String> {
 // ------------------------------------------------------------------ Hearth's notes on a game, logs
 
 pub fn notes_dir() -> PathBuf {
-    hearth_oss_kit::data_dir("game-fixer").join("games")
+    hearth_oss_kit_a::data_dir("game-fixer").join("games")
 }
 pub fn logs_dir() -> PathBuf {
-    hearth_oss_kit::data_dir("game-fixer").join("logs")
+    hearth_oss_kit_a::data_dir("game-fixer").join("logs")
 }
 pub fn read_note(slug: &str) -> Value {
-    hearth_oss_kit::settings_file::read_json(&notes_dir().join(format!("{slug}.json")))
+    hearth_oss_kit_a::settings_file::read_json(&notes_dir().join(format!("{slug}.json")))
 }
 /// Sets these keys of the game's note (merge-on-write, atomic, a .bak).
 pub fn write_note(slug: &str, keys: serde_json::Map<String, Value>) -> Result<(), String> {
     let d = notes_dir();
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-    hearth_oss_kit::settings_file::merge_json(&d.join(format!("{slug}.json")), &keys).map(|_| ()).map_err(|e| e.to_string())
+    hearth_oss_kit_a::settings_file::merge_json(&d.join(format!("{slug}.json")), &keys).map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// A log's lines and how each is coloured: 0 plain, 1 good (green), 2 a warning (yellow), 3 an error (red).

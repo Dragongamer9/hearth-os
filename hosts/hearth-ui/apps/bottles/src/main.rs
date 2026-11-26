@@ -10,8 +10,8 @@
 //! and This bottle's settings, each moved, sized, hidden and customized (Edit layout), with its own buttons, panes and
 //! info in its blocks window. `--bottle NAME` opens that bottle.
 
-use hearth_oss_kit::need::{self, Have, Need};
-use hearth_oss_kit::{self as k, yaml, Ch, Sz, Tag, E};
+use hearth_oss_kit_a::need::{self, Have, Need};
+use hearth_oss_kit_a::{self as k, yaml, Ch, Sz, Tag, E};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use hearth_ui::ui::{self, t, tb, TitleMsgs, G};
@@ -906,7 +906,7 @@ fn side(a: &App) -> E<'_, Msg> {
         list = list.push(k::side_row(&p, container(inner).padding(k::pad(3.0, 0.0, 3.0, 0.0)), b.name == a.pick, 36.0, Msg::Pick(b.name.clone())));
     }
     if a.bottles.is_empty() && a.have.ok() {
-        list = list.push(k::mu(&p, "No bottles yet: ＋ New bottle makes one.", 12.0));
+        list = list.push(k::mu(&p, "No bottles yet: + New bottle makes one.", 12.0));
     }
     let drop = container(column![tb("Run a .exe", 11.0, p.text), k::para(p.muted, "Drop a Windows program here. Hearth picks a bottle for it or makes a new one.", 11.0)].spacing(3.0))
         .padding(k::pad(9.0, 10.0, 9.0, 10.0))
@@ -965,9 +965,9 @@ fn head(a: &App, b: &Bottle, i: usize) -> E<'static, Msg> {
         bottle_mark(i, 40.0, 52.0),
         column![k::h1::<Msg>(&p, b.name.clone()), k::mu1::<Msg>(&p, meta.join(" · "), 12.0)].spacing(3.0),
         k::fill(),
-        k::chip(&p, "▶ Run a program…", Ch::Acc, Sz::Lg, a.have.ok().then_some(Msg::RunProgram)),
-        k::chip(&p, "Open its C: drive", Ch::Plain, Sz::Lg, Some(Msg::OpenC)),
-        k::chip(&p, "⋯", Ch::Plain, Sz::Lg, Some(Msg::Pop(Pop::More))),
+        k::chip(&p, "▶ Run a program…", Ch::Acc, Sz::Md, a.have.ok().then_some(Msg::RunProgram)),
+        k::chip(&p, "Open its C: drive", Ch::Plain, Sz::Md, Some(Msg::OpenC)),
+        k::chip(&p, "⋯", Ch::Plain, Sz::Md, Some(Msg::Pop(Pop::More))),
     ]
     .spacing(10.0)
     .align_y(iced::Center);
@@ -1027,7 +1027,7 @@ fn programs(a: &App, b: &Bottle) -> E<'static, Msg> {
 fn extras(a: &App, b: &Bottle) -> E<'static, Msg> {
     let p = a.p;
     let deps = yaml::ylist(&b.yml, &["Installed_Dependencies"]);
-    let mut c = Column::new().push(row![k::h2::<Msg>(&p, "Extras installed"), k::fill(), k::chip(&p, "＋ Add", Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::Extras)))].align_y(iced::Center)).push(k::gap(1.0, 4.0));
+    let mut c = Column::new().push(row![k::h2::<Msg>(&p, "Extras installed"), k::fill(), k::chip(&p, "+ Add", Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::Extras)))].align_y(iced::Center)).push(k::gap(1.0, 4.0));
     let last = deps.len().saturating_sub(1);
     for (i, d) in deps.iter().enumerate() {
         let name = EXTRAS.iter().find(|x| x.0 == d || d.starts_with(x.0)).map(|x| x.1.to_string()).unwrap_or_else(|| d.clone());
@@ -1040,7 +1040,7 @@ fn extras(a: &App, b: &Bottle) -> E<'static, Msg> {
     if deps.is_empty() {
         c = c.push(k::mu(&p, "None yet.", 12.0));
     }
-    k::card(&p, c)
+    k::card_fit(&p, c)
 }
 
 fn snaps(a: &App, b: &Bottle) -> E<'static, Msg> {
@@ -1057,7 +1057,7 @@ fn snaps(a: &App, b: &Bottle) -> E<'static, Msg> {
     if n == 0 {
         c = c.push(k::mu(&p, "None yet: Take one now keeps the bottle as it is, to go back to.", 12.0));
     }
-    k::card(&p, c)
+    k::card_fit(&p, c)
 }
 
 fn running(a: &App) -> E<'static, Msg> {
@@ -1084,7 +1084,7 @@ fn running(a: &App) -> E<'static, Msg> {
     if n == 0 {
         c = c.push(k::mu(&p, "Nothing's running in this bottle.", 12.0));
     }
-    k::card(&p, c)
+    k::card_fit(&p, c)
 }
 
 fn get_program(a: &App) -> E<'static, Msg> {
@@ -1106,7 +1106,7 @@ fn get_program(a: &App) -> E<'static, Msg> {
         w += cw;
     }
     rows = rows.push(cur);
-    k::card(&p, column![row![k::h2::<Msg>(&p, "Get a program"), k::fill(), k::mu1::<Msg>(&p, "installers checked by the community", 10.0)].align_y(iced::Center), k::gap(1.0, 8.0), rows])
+    k::card_fit(&p, column![row![k::h2::<Msg>(&p, "Get a program"), k::fill(), k::mu1::<Msg>(&p, "installers checked by the community", 10.0)].align_y(iced::Center), k::gap(1.0, 8.0), rows])
 }
 
 fn settings(a: &App, b: &Bottle) -> E<'static, Msg> {
@@ -1152,7 +1152,7 @@ fn page(a: &App) -> E<'_, Msg> {
         return container(column![k::h1::<Msg>(&p, "Hearth Bottles needs Bottles"), k::para(p.muted, need::missing_words(&BOTTLES), 13.0), k::chip(&p, if a.busy { "Getting Bottles…" } else { "Get Bottles" }, Ch::Acc, Sz::Md, (!a.busy).then_some(Msg::GetBottles)), k::said(&p, &a.said)].spacing(12.0).max_width(560.0)).padding(40.0).into();
     }
     let Some(b) = a.bottle().cloned() else {
-        return container(column![k::mu(&p, "No bottles yet: ＋ New bottle makes one.", 13.0), k::said(&p, &a.said)].spacing(10.0)).padding(40.0).into();
+        return container(column![k::mu(&p, "No bottles yet: + New bottle makes one.", 13.0), k::said(&p, &a.said)].spacing(10.0)).padding(40.0).into();
     };
     let i = a.bottles.iter().position(|x| x.name == b.name).unwrap_or(0);
     let has_said = !a.said.is_empty();
@@ -1282,7 +1282,7 @@ fn view(a: &App) -> Element<'_, Msg> {
         title: "Hearth Bottles",
         line: "· Windows apps, each in its own bottle".into(),
         middle: None,
-        right: vec![k::chip(&p, "＋ New bottle", Ch::Acc, Sz::Sm, a.have.ok().then_some(Msg::Pop(Pop::New)))],
+        right: vec![k::chip(&p, "+ New bottle", Ch::Acc, Sz::Sm, a.have.ok().then_some(Msg::Pop(Pop::New)))],
         msgs: TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::WClose },
         open: Msg::Describe(hearth_ui::describe::DMsg::Open),
     };

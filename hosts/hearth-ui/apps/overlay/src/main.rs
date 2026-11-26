@@ -10,8 +10,8 @@
 
 mod conf;
 
-use hearth_oss_kit::need::{self, Have, Need};
-use hearth_oss_kit::{self as k, Ch, Sz, E};
+use hearth_oss_kit_a::need::{self, Have, Need};
+use hearth_oss_kit_a::{self as k, Ch, Sz, E};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use hearth_ui::ui::{self, t, tb, TitleMsgs, G};
@@ -226,7 +226,7 @@ impl App {
     }
 }
 
-/// Programs running now that look like games (for ＋ Game): Windows programs and anything MangoHud is in.
+/// Programs running now that look like games (for + Game): Windows programs and anything MangoHud is in.
 fn running_programs() -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
     if let Ok(rd) = std::fs::read_dir("/proc") {
@@ -465,7 +465,7 @@ fn view_body(a: &App) -> E<'_, Msg> {
     for f in &a.files {
         tabs.push((a.name_of(f), a.tab.as_deref() == Some(f.as_str()), Msg::Tab(Some(f.clone()))));
     }
-    tabs.push(("＋ Game".into(), false, Msg::Pop(Pop::AddGame)));
+    tabs.push(("+ Game".into(), false, Msg::Pop(Pop::AddGame)));
     let on = if a.tab.is_some() { !conf::on(&a.text, "no_display") } else { env_file().exists() };
     let head = row![k::tabs(&p, tabs), k::fill(), t("On", 12.0, p.text), k::switch(&p, on, Some(Msg::OnOff))].spacing(8.0).align_y(iced::Center);
 

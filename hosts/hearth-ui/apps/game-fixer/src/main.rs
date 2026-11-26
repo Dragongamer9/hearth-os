@@ -12,8 +12,8 @@
 
 mod lutris;
 
-use hearth_oss_kit::need::{self, Have, Need};
-use hearth_oss_kit::{self as k, Ch, Sz, Tag, E};
+use hearth_oss_kit_a::need::{self, Have, Need};
+use hearth_oss_kit_a::{self as k, Ch, Sz, Tag, E};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use hearth_ui::ui::{self, t, tb, TitleMsgs, G};
@@ -587,7 +587,7 @@ fn side(a: &App) -> E<'_, Msg> {
     if a.loading {
         list = list.push(k::mu(&p, "Asking Lutris for your games…", 12.0));
     } else if a.games.is_empty() && a.have.ok() && a.problem.is_empty() {
-        list = list.push(k::mu(&p, "No games in Lutris yet. ＋ Install a game picks one with the community's script.", 12.0));
+        list = list.push(k::mu(&p, "No games in Lutris yet. + Install a game picks one with the community's script.", 12.0));
     }
     let games = column![k::cap(&p, format!("Your games · {}", a.games.len())), gap(6.0), scrollable(list).height(Length::Fill)].spacing(0.0);
     let words = match a.count {
@@ -878,7 +878,7 @@ fn page(a: &App) -> E<'_, Msg> {
         return container(inner).padding(40.0).into();
     }
     let Some(g) = a.game().cloned() else {
-        let msg = if a.loading { "Asking Lutris for your games…".to_string() } else if !a.problem.is_empty() { a.problem.clone() } else { "Pick a game, or ＋ Install a game.".into() };
+        let msg = if a.loading { "Asking Lutris for your games…".to_string() } else if !a.problem.is_empty() { a.problem.clone() } else { "Pick a game, or + Install a game.".into() };
         return container(column![k::mu(&p, msg, 13.0), k::said(&p, &a.said)].spacing(10.0)).padding(40.0).into();
     };
     let items: Vec<(&'static str, E<'_, Msg>)> = vec![
@@ -995,7 +995,7 @@ fn view(a: &App) -> Element<'_, Msg> {
         title: "Hearth Game Fixer",
         line: "· any Windows game, with the community's fixes".into(),
         middle: None,
-        right: vec![k::chip(&p, "＋ Install a game", Ch::Acc, Sz::Sm, Some(Msg::Pop(Pop::Install)))],
+        right: vec![k::chip(&p, "+ Install a game", Ch::Acc, Sz::Sm, Some(Msg::Pop(Pop::Install)))],
         msgs: TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::WClose },
         open: Msg::Describe(hearth_ui::describe::DMsg::Open),
     };

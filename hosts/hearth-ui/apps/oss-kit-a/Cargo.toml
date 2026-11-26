@@ -4,7 +4,7 @@
 # installing it the Hearth way (Flathub, for this person only), and the safe writers (red flag 9).
 # A library only: no program of its own. No version line: the owner picks every version number.
 [package]
-name = "hearth-oss-kit"
+name = "hearth-oss-kit-a"
 edition = "2021"
 description = "The pieces Hearth's open-source apps share (Game Fixer, Proton Manager, Overlay, Bottles, 3D)"
 license = "GPL-3.0-or-later"

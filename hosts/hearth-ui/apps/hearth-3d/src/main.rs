@@ -13,8 +13,8 @@
 mod scene;
 mod view3d;
 
-use hearth_oss_kit::need::{self, Have, Need};
-use hearth_oss_kit::{self as k, Ch, Sz, E};
+use hearth_oss_kit_a::need::{self, Have, Need};
+use hearth_oss_kit_a::{self as k, Ch, Sz, E};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use hearth_ui::ui::{self, t, tb, TitleMsgs, G};
@@ -725,7 +725,7 @@ fn viewport(a: &App) -> E<'_, Msg> {
     });
     let tl = row![
         k::chip(&p, if a.cam.persp { "User view · perspective" } else { "User view · flat" }, Ch::Plain, Sz::Sm, Some(Msg::Persp)),
-        k::chip::<Msg>(&p, format!("Collection: {}", coll.unwrap_or_else(|| "nothing picked".into())), Ch::Plain, Sz::Sm, None),
+        k::chip(&p, format!("Collection: {}", coll.unwrap_or_else(|| "nothing picked".into())), Ch::Plain, Sz::Sm, Some(Msg::Tool(6))),
     ]
     .spacing(6.0);
     let sh = |s: Shade, l: &str| (l.to_string(), a.shade == s, Msg::Shade(s));
@@ -821,7 +821,7 @@ fn mods_col<'a>(a: &'a App, c: Column<'a, Msg>) -> Column<'a, Msg> {
         .align_y(iced::Center);
         c = c.push(container(r).padding(k::pad(7.0, 10.0, 7.0, 10.0)).width(Length::Fill).style(ui::boxed(p.panel, p.r(8.0), Some((p.line, 1.0)))));
     }
-    c.push(row![k::chip(&p, "＋ Add a change", Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::AddChange)))])
+    c.push(row![k::chip(&p, "+ Add a change", Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::AddChange)))])
 }
 
 fn props(a: &App) -> E<'_, Msg> {
@@ -945,7 +945,7 @@ fn timeline(a: &App) -> E<'_, Msg> {
         k::mu1::<Msg>(&p, words, 11.0),
         k::fill(),
         k::chip(&p, format!("Keys: {}", if a.keys_of.is_empty() { "none" } else { a.keys_of.as_str() }), Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::Keys))),
-        k::chip(&p, "＋ Key", Ch::Plain, Sz::Sm, a.picked_obj().map(|_| Msg::AddKey)),
+        k::chip(&p, "+ Key", Ch::Plain, Sz::Sm, a.picked_obj().map(|_| Msg::AddKey)),
     ]
     .spacing(7.0)
     .align_y(iced::Center);
@@ -976,7 +976,7 @@ fn pop_box(a: &App) -> Option<E<'_, Msg>> {
                 "File" => vec![("Open…".into(), false, Msg::Open), ("Save".into(), false, Msg::Save), ("Import a model…".into(), false, Msg::Import), ("Send to Godot (glTF)".into(), false, Msg::Export("godot")), ("Send to Hearth CAD (STL)".into(), false, Msg::Export("cad"))],
                 "Edit" => vec![(format!("Undo{}", if a.undo.is_empty() { "" } else { " the last change" }), false, Msg::Undo)],
                 "Add" => ADDS.iter().enumerate().map(|(i, x)| (x.0.to_string(), false, Msg::Add(i))).collect(),
-                "Object" => vec![("Duplicate".into(), false, Msg::Duplicate), ("Hide".into(), false, Msg::HidePicked), ("Delete".into(), false, Msg::Delete), ("＋ Key at this frame".into(), false, Msg::AddKey)],
+                "Object" => vec![("Duplicate".into(), false, Msg::Duplicate), ("Hide".into(), false, Msg::HidePicked), ("Delete".into(), false, Msg::Delete), ("+ Key at this frame".into(), false, Msg::AddKey)],
                 _ => vec![("Render this frame".into(), false, Msg::Render)],
             };
             k::chooser(&p, m, opts, Msg::Close)
@@ -1052,7 +1052,7 @@ const KIT: Kit = Kit {
         tile("save", "Save", G::Check),
         tile("render", "Render this frame", G::Camera),
         tile("play", "Play the animation", G::Play),
-        tile("key", "＋ Key", G::Plus),
+        tile("key", "+ Key", G::Plus),
         tile("godot", "Send to Godot", G::Rocket),
         tile("cad", "Send to Hearth CAD", G::Link),
         tile("undo", "Undo", G::Update),

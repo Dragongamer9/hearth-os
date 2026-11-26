@@ -181,7 +181,7 @@ pub fn tabs<'a, M: Clone + 'a>(p: &Pal, items: Vec<(String, bool, M)>) -> E<'a, 
 /// A field that opens a list (`.field` with ▾), or shows a value.
 pub fn field<'a, M: Clone + 'a>(p: &Pal, label: impl Into<String>, min_w: f32, on: Option<M>) -> E<'a, M> {
     let c = container(t(label.into(), 11.0, p.text).wrapping(Wrapping::None)).center_y(Length::Fixed(26.0)).padding(pad(0.0, 9.0, 0.0, 9.0)).width(Length::Shrink).style(bx(p.bg, p.r(7.0), Some((p.line, 1.0))));
-    let c = container(c).width(Length::Fixed(min_w.max(1.0)));
+    let c = container(c).width(if min_w > 0.0 { Length::Fixed(min_w) } else { Length::Shrink });
     click(c, on)
 }
 
@@ -326,7 +326,7 @@ pub struct Bar<'a, M> {
     pub line: String,
     /// what's in the middle of the bar (Hearth 3D's menus and modes)
     pub middle: Option<E<'a, M>>,
-    /// the buttons on its right, before Minimize (＋ Install a game)
+    /// the buttons on its right, before Minimize (+ Install a game)
     pub right: Vec<E<'a, M>>,
     pub msgs: TitleMsgs<M>,
     /// a right-click on the bar: Describe it
@@ -355,7 +355,7 @@ pub fn window<'a, M: Clone + 'a>(
     for r in bar.right {
         mid = mid.push(r);
     }
-    let mid = mouse_area(container(mid).width(Length::Fill).center_y(Length::Fixed(40.0))).on_press(bar.msgs.drag.clone()).on_double_click(bar.msgs.maximize.clone()).on_right_press(bar.open.clone());
+    let mid = mouse_area(container(mid).width(Length::FillPortion(40)).center_y(Length::Fixed(40.0))).on_press(bar.msgs.drag.clone()).on_double_click(bar.msgs.maximize.clone()).on_right_press(bar.open.clone());
     let top = hearth_ui::describe::title_bar_with(p, d, mark(bar.letters, bar.from, bar.to, 18.0), bar.title, Some(mid.into()), bar.msgs, Pal::mix(p.bg, Color::BLACK, 0.2), bar.open);
     let foot = container(row![fill(), t(format!("{} · ", credit.0), 10.0, p.muted), tb(credit.1.to_string(), 10.0, p.muted)].align_y(iced::Center)).padding(pad(3.0, 14.0, 4.0, 14.0)).width(Length::Fill);
     let all = container(column![top, ui::hline(p.line), container(body).width(Length::Fill).height(Length::Fill), foot]).width(Length::Fill).height(Length::Fill).style(bx(p.bg, p.window_corner, Some((p.line, 1.0))));
@@ -383,7 +383,7 @@ pub fn side_row<'a, M: Clone + 'a>(p: &Pal, inner: impl Into<E<'a, M>>, on: bool
 
 // ------------------------------------------------------------------ picking a file
 
-/// Hearth's Open window for one file (hearth-file-chooser; kdialog or zenity where it isn't), off the window's
+/// Hearth's Open window for one file (hearth-file-chooser; zenity where it isn't), off the window's
 /// thread: the path picked, or None.
 pub fn pick_file(title: &str, patterns: &[&str]) -> impl std::future::Future<Output = Option<String>> + Send + 'static {
     let title = title.to_string();
@@ -406,7 +406,7 @@ pub fn pick_file(title: &str, patterns: &[&str]) -> impl std::future::Future<Out
         }
         if got.is_none() {
             let filter = pats.join(" ");
-            for cmd in [vec!["kdialog".to_string(), "--getopenfilename".into(), home().to_string_lossy().to_string(), filter.clone()], vec!["zenity".to_string(), "--file-selection".into()]] {
+            for cmd in [vec!["zenity".to_string(), "--file-selection".into(), format!("--file-filter={filter}")]] {
                 if let Ok(o) = std::process::Command::new(&cmd[0]).args(&cmd[1..]).output() {
                     let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
                     if o.status.success() && !s.is_empty() {

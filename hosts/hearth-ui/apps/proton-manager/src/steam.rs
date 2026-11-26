@@ -164,7 +164,7 @@ pub fn write(n: &Node) -> String {
 
 /// Steam's own folders on this device (native first, then the Flatpak's), as ProtonUp-Qt looks for them.
 pub fn roots() -> Vec<PathBuf> {
-    let h = hearth_oss_kit::home();
+    let h = hearth_oss_kit_a::home();
     let mut v: Vec<PathBuf> = Vec::new();
     for p in [h.join(".steam/root"), h.join(".steam/steam"), h.join(".local/share/Steam"), h.join(".var/app/com.valvesoftware.Steam/data/Steam")] {
         if p.join("steamapps").is_dir() || p.join("config").is_dir() {
@@ -274,7 +274,7 @@ pub fn set_mapping(root: &Path, app: &str, tool: Option<&str>) -> Result<(), Str
         return Err("Steam hasn't made its settings file yet (start it once).".into());
     }
     let mut bad = false;
-    hearth_oss_kit::settings_file::update_text(&p, |t| {
+    hearth_oss_kit_a::settings_file::update_text(&p, |t| {
         let mut n = parse(t);
         if n.get(&["InstallConfigStore"]).is_none() {
             bad = true;

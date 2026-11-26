@@ -20,7 +20,7 @@ pub struct Cam {
 
 impl Default for Cam {
     fn default() -> Self {
-        Cam { yaw: -0.785, pitch: 0.55, dist: 26.0, target: [0.0, 0.0, 3.0], persp: true }
+        Cam { yaw: -0.785, pitch: 0.5, dist: 15.0, target: [0.0, 0.0, 2.0], persp: true }
     }
 }
 

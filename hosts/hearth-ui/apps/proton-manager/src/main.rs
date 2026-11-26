@@ -12,7 +12,7 @@
 
 mod steam;
 
-use hearth_oss_kit::{self as k, yaml, Ch, Sz, Tag, E};
+use hearth_oss_kit_a::{self as k, yaml, Ch, Sz, Tag, E};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use hearth_ui::ui::{self, t, tb, TitleMsgs, G};
