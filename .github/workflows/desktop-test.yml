@@ -2845,7 +2845,7 @@ jobs:
           LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
           ipc() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | tail -n1 || echo "ipc $* failed"; }
           B="$HOME/.config/nimbus/bar.json"
-          before=$(cat "$B" 2>/dev/null | md5sum)
+          before=$( (cat "$B" 2>/dev/null || true) | md5sum)
           ipc deskedit open ""; sleep 5
           [ "$(ipc deskedit shown)" = true ] && say "Edit desktop opens" || bad "Edit desktop didn't open: $(grep -i -E 'DesktopEditor|desktop-edit' "$LOG" | tail -5 | tr '\n' ' ')"
           grim $o/deskedit-1-open.png || true
@@ -2863,7 +2863,7 @@ jobs:
           grim $o/deskedit-4-panel-anywhere.png || true
           d=$(ipc deskedit draft)
           case "$d" in *'"place":"free"'*) say "a panel anywhere (not on an edge)" ;; *) bad "+ Panel: $(echo "$d" | cut -c1-300)" ;; esac
-          [ "$(cat "$B" 2>/dev/null | md5sum)" = "$before" ] && say "nothing written before Keep this" || bad "bar.json changed before Keep this"
+          [ "$( (cat "$B" 2>/dev/null || true) | md5sum)" = "$before" ] && say "nothing written before Keep this" || bad "bar.json changed before Keep this"
           ipc deskedit keep; sleep 4
           grep -q '"place": *"free"' "$B" && grep -q quickaccess "$B" && say "Keep this wrote it: $(tr -d '\n ' < "$B" | cut -c1-300)" || bad "Keep this: $(cat "$B" 2>/dev/null | head -c 400)"
           ls "$B".bak* >/dev/null 2>&1 && say "a .bak was kept" || say "no .bak (bar.json was new)"
