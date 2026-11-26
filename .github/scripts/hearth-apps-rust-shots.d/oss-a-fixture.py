@@ -162,7 +162,7 @@ elif app == "overlay":
     w(".config/MangoHud/wine-ForzaHorizon5.conf", conf)
     w(".config/MangoHud/wine-eldenring.conf", conf.replace("fps_limit=120", "fps_limit=60"))
     w(".config/environment.d/90-hearth-overlay.conf", "MANGOHUD=1\n")
-    w(".config/nimbus/overlay.json", json.dumps({"names": {"wine-ForzaHorizon5.conf": "Forza Horizon 5", "wine-eldenring.conf": "Elden Ring"}, "gameModeLevel": 3, "warnGpu": 83}) + "\n")
+    w(".config/nimbus/overlay.json", json.dumps({"names": {"wine-ForzaHorizon5.conf": "Forza Horizon 5", "wine-eldenring.conf": "Elden Ring"}, "gameModeLevel": 3, "warnGpu": 83, "warnOn": True}) + "\n")
 elif app == "bottles":
     MB = 1048576
     user = os.environ.get("USER") or "ci"

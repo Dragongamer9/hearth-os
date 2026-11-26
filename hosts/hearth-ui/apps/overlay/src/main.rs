@@ -9,6 +9,8 @@
 //! block (Edit layout), with the app's own buttons, panes and info in its blocks window.
 
 mod conf;
+mod hot;
+mod place;
 
 use hearth_oss_kit_a::need::{self, Have, Need};
 use hearth_oss_kit_a::{self as k, Ch, Sz, E};
@@ -89,6 +91,7 @@ enum Msg {
     Done,
     GetIt,
     GotIt(run::Output),
+    PlaceInGame,
     Drag,
     Max,
     Min,
@@ -355,8 +358,23 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.write_level();
         }
         Msg::Warn(v) => {
+            // a temperature turns Hearth's own watch on (hot.rs: its user service, and MangoHud's exec= line that shows
+            // the warning in the game); 0 is Off (both taken out again)
             a.pop = None;
-            a.save(json!({"warnGpu": v}));
+            let on = v > 0;
+            if on {
+                a.save(json!({"warnGpu": v, "warnOn": true}));
+            } else {
+                a.save(json!({"warnOn": false}));
+            }
+            let line = hot::exec_line();
+            a.change(|t| conf::set(t, "exec", on.then_some(line.as_str())));
+            a.write_level();
+            a.said = match hot::set_on(on) {
+                Ok(()) if on => format!("Hearth watches your graphics card: from {v} °C the overlay in the game says it's hot."),
+                Ok(()) => "No more warnings when it's hot.".into(),
+                Err(e) => format!("The warning couldn't be turned on: {e}"),
+            };
         }
         Msg::Limit(v) => {
             a.pop = None;
@@ -443,6 +461,17 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.said = if o.ok { "MangoHud is here for your Flatpak games.".into() } else { format!("Couldn't get MangoHud: {}", o.why()) };
             return Task::perform(need::probe(&MANGOHUD), Msg::Have);
         }
+        Msg::PlaceInGame => {
+            // the see-through window over the game, with the ghost to drag (hearth-overlay --place)
+            let me = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "hearth-overlay".into());
+            let mut argv = vec![me, "--place".to_string()];
+            if let Some(f) = &a.tab {
+                argv.push("--game".into());
+                argv.push(f.clone());
+            }
+            run::detached(&argv.iter().map(String::as_str).collect::<Vec<_>>());
+            a.said = "Drag the box over your game: the overlay moves with it. Enter keeps it.".into();
+        }
         Msg::Drag => return win::drag(),
         Msg::Max => return win::toggle_maximize(),
         Msg::Min => return win::minimize(),
@@ -490,7 +519,8 @@ fn view_body(a: &App) -> E<'_, Msg> {
         grid = grid.push(rr);
     }
     let pos_name = PLACES.iter().find(|x| x.0 == pos).map(|x| x.1).unwrap_or("Top left");
-    let where_ = column![cap(&p, "Where"), row![grid, k::para(p.muted, format!("{pos_name}\nDrag it in the game\nto place it anywhere"), 11.0)].spacing(14.0)];
+    // "Drag it in the game to place it anywhere": Hearth's own see-through window over the game (place.rs)
+    let where_ = column![cap(&p, "Where"), row![grid, k::click(k::para(p.muted, format!("{pos_name}\nDrag it in the game\nto place it anywhere"), 11.0), Some(Msg::PlaceInGame))].spacing(14.0)];
 
     let one = conf::on(&a.text, "horizontal");
     let mut dots = Row::new().spacing(5.0);
@@ -500,13 +530,14 @@ fn view_body(a: &App) -> E<'_, Msg> {
         dots = dots.push(k::click(container(Space::new()).width(Length::Fixed(17.0)).height(Length::Fixed(17.0)).style(ui::boxed(k::rgb(&format!("#{c}")), 4.0, Some((ring, 1.5)))), Some(Msg::Pop(Pop::Colour(i)))));
     }
     let warn = a.set.get("warnGpu").and_then(Value::as_u64).unwrap_or(83);
+    let warn_on = a.set.get("warnOn").and_then(Value::as_bool).unwrap_or(false);
     let look = column![
         cap(&p, "Look"),
         k::kv(&p, "Size", row![k::slider(&p, 8.0..=32.0, a.size, 110.0, Msg::Size, Some(Msg::Saved)), container(k::mu1::<Msg>(&p, format!("{} px", a.size.round()), 11.0)).width(Length::Fixed(44.0)).align_x(iced::alignment::Horizontal::Right)].spacing(8.0).align_y(iced::Center)),
         k::kv(&p, "See-through", row![k::slider(&p, 0.0..=90.0, a.see, 110.0, Msg::See, Some(Msg::Saved)), container(k::mu1::<Msg>(&p, format!("{} %", a.see.round()), 11.0)).width(Length::Fixed(44.0)).align_x(iced::alignment::Horizontal::Right)].spacing(8.0).align_y(iced::Center)),
         k::kv(&p, "Layout", k::seg(&p, vec![("Rows".into(), !one, Msg::OneLine(false)), ("One line".into(), one, Msg::OneLine(true))])),
         k::kv(&p, "Colours", dots),
-        k::kv(&p, "Warn when hot", k::field(&p, format!("GPU {warn} °C"), 0.0, Some(Msg::Pop(Pop::Warn)))),
+        k::kv(&p, "Warn when hot", k::field(&p, if warn_on { format!("GPU {warn} °C") } else { format!("Off · GPU {warn} °C") }, 0.0, Some(Msg::Pop(Pop::Warn)))),
     ];
 
     let limit: u32 = conf::get(&a.text, "fps_limit").and_then(|v| v.split(',').next().and_then(|x| x.trim().parse().ok())).unwrap_or(0);
@@ -586,7 +617,13 @@ fn pop_box(a: &App) -> Option<E<'_, Msg>> {
             }
             ui::dialog_box(&p, 360.0, column![row![k::h2::<Msg>(&p, format!("{}'s colour", COLOUR_KEYS[i].1)), k::fill(), k::chip(&p, "Close", Ch::Plain, Sz::Sm, Some(Msg::Close))], r].spacing(12.0))
         }
-        Pop::Warn => k::chooser(&p, "Warn when the GPU is this hot", [75u32, 80, 83, 85, 90].iter().map(|v| (format!("GPU {v} °C"), a.set.get("warnGpu").and_then(Value::as_u64).unwrap_or(83) == *v as u64, Msg::Warn(*v))).collect(), Msg::Close),
+        Pop::Warn => {
+            let on = a.set.get("warnOn").and_then(Value::as_bool).unwrap_or(false);
+            let cur = a.set.get("warnGpu").and_then(Value::as_u64).unwrap_or(83);
+            let mut opts: Vec<(String, bool, Msg)> = [75u32, 80, 83, 85, 90].iter().map(|v| (format!("GPU {v} °C"), on && cur == *v as u64, Msg::Warn(*v))).collect();
+            opts.push(("Off".into(), !on, Msg::Warn(0)));
+            k::chooser(&p, "Warn when the GPU is this hot", opts, Msg::Close)
+        }
         Pop::Keys => {
             let cur = conf::get(&a.text, "toggle_hud").unwrap_or_else(|| "Shift_R+F12".into());
             k::chooser(&p, "Show and hide", KEYS.iter().map(|(kk, n)| (n.to_string(), *kk == cur, Msg::Key(kk))).collect(), Msg::Close)
@@ -719,6 +756,12 @@ fn subscription(_a: &App) -> Subscription<Msg> {
 }
 
 fn main() -> iced::Result {
+    if app::flag("--place") {
+        return place::run();
+    }
+    if app::flag("--watch") {
+        std::process::exit(hot::watch());
+    }
     if app::handle_cli("hearth-overlay", "Hearth Overlay: the numbers over your games (built on MangoHud and GOverlay).\n  --game PROGRAM   that game's own settings") {
         return Ok(());
     }

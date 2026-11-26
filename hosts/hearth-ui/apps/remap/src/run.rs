@@ -234,3 +234,46 @@ mod tests {
         assert_eq!(pick(&s, "Pad", &ps, &f("", "", false)).as_deref(), Some("Everywhere"));
     }
 }
+
+/// `hearth-remap-app --run-step N`: a macro's "run a command" step fired (Input Remapper pressed Super + Ctrl + Alt +
+/// F12+N and labwc's keybind started this). Runs that step's command from remap.json as you, in its own session, and
+/// returns at once; never as root (a command a macro runs is yours alone). Exit 2: no such step, 3: run as root.
+pub fn run_step(slot: u8) -> i32 {
+    if unsafe { geteuid() } == 0 {
+        eprintln!("hearth-remap-app: a macro's command never runs as root");
+        return 3;
+    }
+    let settings = crate::kit::read_settings(ir::APP);
+    let Some(cmd) = ir::command_of(&settings, slot) else {
+        eprintln!("hearth-remap-app: no macro step runs a command on {slot}");
+        return 2;
+    };
+    use std::os::unix::process::CommandExt;
+    let home = std::env::var_os("HOME").unwrap_or_default();
+    let r = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&cmd)
+        .current_dir(&home)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn();
+    match r {
+        Ok(_) => {
+            // what ran, for Settings and for you (not a setting: the runtime folder)
+            let mut now = now_read();
+            now["lastRun"] = json!({"slot": slot, "command": cmd, "at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)});
+            now_write(&now);
+            0
+        }
+        Err(e) => {
+            eprintln!("hearth-remap-app: {cmd}: {e}");
+            1
+        }
+    }
+}
+
+extern "C" {
+    fn geteuid() -> u32;
+}

@@ -56,8 +56,28 @@ before=$(md5sum "$OH/.config/MangoHud/MangoHud.conf")
 SHOT_WAIT=3.5 oss oss-a-03-overlay hearth-overlay "$OV"
 SHOT_WAIT=3.5 oss oss-a-03-overlay-forza hearth-overlay "$OV" --game wine-ForzaHorizon5.conf
 SHOT_WAIT=4.5 oss oss-a-03-overlay-editing hearth-overlay env HEARTH_ARRANGE_OPEN=overlay:settings HEARTH_STUDIO_STAGE=overlay:none "$OV"
-[ -n "$vk" ] && { kill "$vk" 2>/dev/null; wait "$vk" 2>/dev/null; }
 [ "$before" = "$(md5sum "$OH/.config/MangoHud/MangoHud.conf")" ] || echo "::error title=oss-03 overlay::opening it changed MangoHud.conf"
+# Drag it in the game to place it anywhere (place.rs): Hearth's see-through window over the game with the overlay's
+# ghost, dragged from near the top left to the middle (wl-drag.py); MangoHud's file gets the spot as it moves.
+( sleep 2.2; python3 "$ROOT/.github/scripts/wl-drag.py" 1280 800 90,80 520,330 --steps 30 >/tmp/ov-drag.log 2>&1 ) &
+SHOT_WAIT=4.5 oss oss-a-03-overlay-place hearth-overlay-place "$OV" --place --at 40,40
+ox=$(grep -E '^offset_x=' "$OH/.config/MangoHud/MangoHud.conf" | tail -1 | cut -d= -f2)
+oy=$(grep -E '^offset_y=' "$OH/.config/MangoHud/MangoHud.conf" | tail -1 | cut -d= -f2)
+if [ "${ox:-0}" -gt 300 ] && [ "${oy:-0}" -gt 150 ]; then echo "::notice title=oss-03 overlay place::dragged: MangoHud's position top-left, offset $ox, $oy ($(cat /tmp/ov-drag.log))"
+else echo "::error title=oss-03 overlay place::the drag didn't place it (offset ${ox:-none}, ${oy:-none}; $(cat /tmp/ov-drag.log))"; fi
+# Warn when hot (hot.rs): Hearth's watch reads the card's temperature (86 °C here, a stand-in file) and MangoHud shows
+# its warning line in the game through its exec= line.
+echo 86000 > /tmp/ov-temp
+printf 'exec=cat %s/hearth-overlay-hot\n' "$XDG_RUNTIME_DIR" >> "$OH/.config/MangoHud/MangoHud.conf"
+env HOME="$OH" XDG_CONFIG_HOME="$OH/.config" HEARTH_OVERLAY_TEMP=/tmp/ov-temp "$OV" --watch >/tmp/ov-watch.log 2>&1 &
+ow=$!
+sleep 2.5
+grep -q 'hot' "$XDG_RUNTIME_DIR/hearth-overlay-hot" 2>/dev/null && echo "::notice title=oss-03 overlay hot::$(cat "$XDG_RUNTIME_DIR/hearth-overlay-hot")" || echo "::error title=oss-03 overlay hot::no warning written ($(tail -c 300 /tmp/ov-watch.log))"
+SHOT_WAIT=3.5 oss oss-a-03-overlay-hot hearth-overlay "$OV"
+echo 70000 > /tmp/ov-temp; sleep 2.5
+[ -s "$XDG_RUNTIME_DIR/hearth-overlay-hot" ] && [ -n "$(tr -d '[:space:]' < "$XDG_RUNTIME_DIR/hearth-overlay-hot")" ] && echo "::error title=oss-03 overlay hot::the warning stayed after it cooled"
+kill $ow 2>/dev/null; wait $ow 2>/dev/null
+[ -n "$vk" ] && { kill "$vk" 2>/dev/null; wait "$vk" 2>/dev/null; }
 
 # ---- 08 Hearth Bottles (Bottles): two programs running in Office and tools (stand-ins with its WINEPREFIX)
 oss_world bottles

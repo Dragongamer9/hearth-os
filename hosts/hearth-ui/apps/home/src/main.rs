@@ -9,6 +9,7 @@
 //! Your choices: ~/.config/nimbus/home.json. $HEARTH_HOME_FIXTURE: made-up answers (CI's pictures; nothing is sent).
 
 mod ha;
+mod mjpeg;
 
 use ha::Ha;
 use hearth_oss::prefs::Prefs;
@@ -39,6 +40,8 @@ enum Msg {
     Secret(String),
     Got(Result<World, String>),
     Cam(String, Option<Vec<u8>>),
+    /// a picture of a camera's moving stream (mjpeg.rs)
+    Moving(String, Vec<u8>),
     Tab(&'static str),
     Toggle(String),
     Room(String),
@@ -68,6 +71,8 @@ struct App {
     ha: Option<Ha>,
     world: World,
     cams: HashMap<String, iced::widget::image::Handle>,
+    /// when each camera's moving picture last came in
+    moving: HashMap<String, std::time::Instant>,
     tab: &'static str,
     room: String,
     bright: f32,
@@ -166,6 +171,7 @@ impl App {
             ha: None,
             world: World::default(),
             cams: HashMap::new(),
+            moving: HashMap::new(),
             tab: "home",
             bright: 60.0,
             focus: 0,
@@ -231,6 +237,14 @@ impl App {
     fn cameras(&self) -> Vec<Value> {
         self.of("camera").into_iter().take(2).collect()
     }
+    /// Where the cameras' moving pictures come from: Home Assistant once signed in (CI's pictures: a stand-in
+    /// stream, $HEARTH_HOME_STREAM).
+    fn stream_from(&self) -> Option<(String, String)> {
+        if self.fixture {
+            return std::env::var("HEARTH_HOME_STREAM").ok().map(|b| (b, String::new()));
+        }
+        self.ha.as_ref().filter(|h| !h.token.is_empty()).map(|h| (h.base.clone(), h.token.clone()))
+    }
     fn plugs(&self) -> Vec<Value> {
         self.of("switch").into_iter().filter(|s| !ha::id(s).contains("automation")).take(4).collect()
     }
@@ -277,6 +291,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if let Some(h) = a.ha.clone().filter(|_| !a.fixture) {
                 for c in a.cameras() {
                     let id = ha::id(&c).to_string();
+                    // a camera whose moving picture is coming in doesn't need its still
+                    if a.moving.get(&id).map(|t| t.elapsed().as_secs() < 5).unwrap_or(false) {
+                        continue;
+                    }
                     let h2 = h.clone();
                     t.push(Task::perform(bg(move || { let b = h2.bytes(&format!("/api/camera_proxy/{id}")).ok(); (id, b) }), |r| { let (id, b) = r.unwrap_or_default(); Msg::Cam(id, b) }));
                 }
@@ -305,6 +323,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if let Some(b) = b {
                 a.cams.insert(id, iced::widget::image::Handle::from_bytes(b));
             }
+        }
+        Msg::Moving(id, b) => {
+            a.moving.insert(id.clone(), std::time::Instant::now());
+            a.cams.insert(id, iced::widget::image::Handle::from_bytes(b));
         }
         Msg::Tab(t) => a.tab = t,
         Msg::Toggle(id) => {
@@ -835,6 +857,15 @@ fn subscription(a: &App) -> Subscription<Msg> {
     // what your home says, again every 10 s while it's open and signed in (not in CI's pictures)
     if a.ha.is_some() && !a.fixture {
         s.push(iced::time::every(std::time::Duration::from_secs(10)).map(|_| Msg::Tick));
+    }
+    // the cameras as moving video (Home Assistant's camera_proxy_stream), only while their tile is shown
+    if a.tab == "home" || a.tab == "cameras" {
+        if let Some((base, token)) = a.stream_from() {
+            for c in a.cameras() {
+                let cam = mjpeg::Cam { base: base.clone(), token: token.clone(), id: ha::id(&c).to_string() };
+                s.push(Subscription::run_with(cam, mjpeg::frames).map(|(id, b)| Msg::Moving(id, b)));
+            }
+        }
     }
     Subscription::batch(s)
 }

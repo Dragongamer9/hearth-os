@@ -289,6 +289,13 @@ impl App {
             self.said = format!("Couldn't keep that: {e}");
         }
     }
+    /// The run slot for step `i` of the macro being changed: the one it has, else the first free one.
+    fn slot_for(&self, i: usize) -> u8 {
+        match self.sel_macro().and_then(|m| m.steps.get(i)) {
+            Some(Step::Run(k, _)) => *k,
+            _ => ir::free_slot(&self.macros).unwrap_or(ir::RUN_SLOTS),
+        }
+    }
     fn keep_macros(&mut self) {
         self.refresh_used();
         let v = ir::macros_json(&self.macros);
@@ -629,8 +636,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::StepKind(k) => {
             let (sel, i) = (a.macro_sel.clone(), a.step.unwrap_or(usize::MAX));
             let txt = a.step_text.clone();
+            let slot = a.slot_for(i);
             if let Some(s) = a.macros.iter_mut().find(|m| m.id == sel).and_then(|m| m.steps.get_mut(i)) {
-                *s = make_step(k, &txt);
+                *s = make_step(k, &txt, slot);
             }
             a.keep_macros();
             return a.write_all_using();
@@ -639,8 +647,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.step_text = v;
             let (sel, i) = (a.macro_sel.clone(), a.step.unwrap_or(usize::MAX));
             let txt = a.step_text.clone();
+            let slot = a.slot_for(i);
             if let Some(s) = a.macros.iter_mut().find(|m| m.id == sel).and_then(|m| m.steps.get_mut(i)) {
-                *s = make_step(s.kind(), &txt);
+                *s = make_step(s.kind(), &txt, slot);
             }
         }
         Msg::StepDelete => {
@@ -766,11 +775,13 @@ fn step_value(s: &Step) -> String {
         Step::Move(d, n) => format!("{d} {n}"),
         Step::Scroll(d) => d.to_string(),
         Step::Wait(ms) => ms.to_string(),
+        Step::Run(_, c) => c.clone(),
     }
 }
-fn make_step(kind: &str, v: &str) -> Step {
+fn make_step(kind: &str, v: &str, slot: u8) -> Step {
     let v = v.trim();
     match kind {
+        "run a command" => Step::Run(slot, v.to_string()),
         "press" => Step::Press(sym_of(if v.is_empty() { "a" } else { v })),
         "hold" => Step::Hold(sym_of(if v.is_empty() { "shift" } else { v })),
         "let go" => Step::LetGo(sym_of(if v.is_empty() { "shift" } else { v })),
@@ -991,7 +1002,7 @@ fn macro_block(a: &App) -> E<'_, Msg> {
         grid = grid.push(r);
     }
     c = c.push(grid);
-    c = c.push(row![t("Steps can be: press, hold, let go, type words, click, move the pointer, scroll, wait", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "Try it", Some(Msg::TryIt))].spacing(16.0).align_y(iced::Center));
+    c = c.push(row![t("Steps can be: press, hold, let go, type words, click, move the pointer, scroll, wait, run a command", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "Try it", Some(Msg::TryIt))].spacing(16.0).align_y(iced::Center));
     card(&p, scrollable(c).height(Length::Fill)).height(Length::Fill).into()
 }
 
@@ -1300,10 +1311,13 @@ fn shown(a: &App) -> Element<'_, Msg> {
 }
 
 fn main() -> iced::Result {
+    if let Some(n) = app::arg("--run-step") {
+        std::process::exit(run::run_step(n.parse().unwrap_or(0)));
+    }
     if app::flag("--run") {
         std::process::exit(run::run_forever());
     }
-    if app::handle_cli("hearth-remap-app", "Hearth Remap: any key, mouse or controller button, your way (built on Input Remapper).\n  --run              turn profiles on when their game or app is in front (hearth-remap.service)\n  --device NAME      open with that device\n  --profile NAME     and that profile") {
+    if app::handle_cli("hearth-remap-app", "Hearth Remap: any key, mouse or controller button, your way (built on Input Remapper).\n  --run-step N       run the command of a macro's step N (labwc's keybind for Super+Ctrl+Alt+F12+N)\n  --run              turn profiles on when their game or app is in front (hearth-remap.service)\n  --device NAME      open with that device\n  --profile NAME     and that profile") {
         return Ok(());
     }
     let w = app::window("hearth-remap", (1840.0, 970.0), (1100.0, 700.0));

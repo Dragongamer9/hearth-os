@@ -240,6 +240,20 @@
     <keybind key="W-C-S-F10"><action name="SnapToRegion" region="wide-middle" /></keybind>
     <keybind key="W-C-S-F11"><action name="SnapToRegion" region="narrow-right" /></keybind>
     <!-- ==== end Snap layouts ==== -->
+    <!-- Hearth Remap's "run a command" macro steps (hosts/hearth-ui/apps/remap, ir.rs Step::Run): Input Remapper presses
+         Super+Ctrl+Alt+F13…F24 and this runs that step's command as you (the Store's copy of Hearth Remap when it has one). -->
+    <keybind key="W-C-A-F13"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 1" /></keybind>
+    <keybind key="W-C-A-F14"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 2" /></keybind>
+    <keybind key="W-C-A-F15"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 3" /></keybind>
+    <keybind key="W-C-A-F16"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 4" /></keybind>
+    <keybind key="W-C-A-F17"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 5" /></keybind>
+    <keybind key="W-C-A-F18"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 6" /></keybind>
+    <keybind key="W-C-A-F19"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 7" /></keybind>
+    <keybind key="W-C-A-F20"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 8" /></keybind>
+    <keybind key="W-C-A-F21"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 9" /></keybind>
+    <keybind key="W-C-A-F22"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 10" /></keybind>
+    <keybind key="W-C-A-F23"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 11" /></keybind>
+    <keybind key="W-C-A-F24"><action name="Execute" command="/usr/libexec/hearth/hearth-part run hearth-remap-app /usr/bin/hearth-remap-app --run-step 12" /></keybind>
   </keyboard>
 
   <mouse>

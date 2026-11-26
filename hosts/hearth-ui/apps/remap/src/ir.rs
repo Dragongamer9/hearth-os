@@ -176,9 +176,32 @@ pub enum Step {
     Move(&'static str, u16),
     Scroll(&'static str),
     Wait(u32),
+    /// run a command (its slot 1–12 and the command): Input Remapper presses Super + Ctrl + Alt + F12+slot, which
+    /// Hearth's own keybind in labwc (rc.xml) turns into `hearth-remap-app --run-step SLOT`, run as you (never root).
+    Run(u8, String),
 }
 
-pub const STEP_KINDS: [&str; 8] = ["press", "hold", "let go", "type words", "click", "move the pointer", "scroll", "wait"];
+pub const STEP_KINDS: [&str; 9] = ["press", "hold", "let go", "type words", "click", "move the pointer", "scroll", "wait", "run a command"];
+/// How many commands macros can run (Super + Ctrl + Alt + F13 … F24).
+pub const RUN_SLOTS: u8 = 12;
+
+/// The key Input Remapper presses for a run slot (1 → F13).
+pub fn run_key(slot: u8) -> String {
+    format!("modify(Super_L, modify(Control_L, modify(Alt_L, key(F{}))))", 12 + slot.clamp(1, RUN_SLOTS))
+}
+
+/// The first run slot no macro uses yet (one slot a command; the one a step had is kept when its command changes).
+pub fn free_slot(ms: &[Macro]) -> Option<u8> {
+    (1..=RUN_SLOTS).find(|n| !ms.iter().flat_map(|m| m.steps.iter()).any(|s| matches!(s, Step::Run(k, _) if k == n)))
+}
+
+/// The command a run slot runs, from Hearth's own remap.json (the one place macros live).
+pub fn command_of(settings: &Value, slot: u8) -> Option<String> {
+    macros_of(settings).into_iter().flat_map(|m| m.steps).find_map(|s| match s {
+        Step::Run(k, c) if k == slot && !c.trim().is_empty() => Some(c),
+        _ => None,
+    })
+}
 
 impl Step {
     pub fn kind(&self) -> &'static str {
@@ -191,6 +214,7 @@ impl Step {
             Step::Move(..) => "move the pointer",
             Step::Scroll(_) => "scroll",
             Step::Wait(_) => "wait",
+            Step::Run(..) => "run a command",
         }
     }
     /// The board's words ("Press B", "Wait 50 ms", "Click where the pointer is").
@@ -205,6 +229,7 @@ impl Step {
             Step::Move(d, n) => (format!("Move the pointer {d} {n}"), None),
             Step::Scroll(d) => (format!("Scroll {d}"), None),
             Step::Wait(ms) => (format!("Wait {ms} ms"), None),
+            Step::Run(_, c) => ("Run".into(), Some(if c.chars().count() > 28 { format!("{}…", c.chars().take(27).collect::<String>()) } else { c.clone() })),
         }
     }
     /// How long it takes: its wait, or a key's press and release (input-remapper's keystroke_sleep_ms each).
@@ -225,6 +250,7 @@ impl Step {
             Step::Move(d, n) => json!(["move", d, n]),
             Step::Scroll(d) => json!(["scroll", d]),
             Step::Wait(ms) => json!(["wait", ms]),
+            Step::Run(slot, c) => json!(["run", c, slot]),
         }
     }
     fn from_json(v: &Value) -> Option<Step> {
@@ -239,6 +265,7 @@ impl Step {
             "move" => Step::Move(dir(&s(1)), a.get(2).and_then(Value::as_u64).unwrap_or(10).min(500) as u16),
             "scroll" => Step::Scroll(if s(1) == "up" { "up" } else { "down" }),
             "wait" => Step::Wait(a.get(1).and_then(Value::as_u64).unwrap_or(50).min(60_000) as u32),
+            "run" => Step::Run(a.get(2).and_then(Value::as_u64).unwrap_or(1).clamp(1, RUN_SLOTS as u64) as u8, s(1)),
             _ => return None,
         })
     }
@@ -288,6 +315,7 @@ impl Macro {
                 Step::Move(d, n) => parts.push(format!("mouse({d}, {n})")),
                 Step::Scroll(d) => parts.push(format!("wheel({d}, 1)")),
                 Step::Wait(ms) => parts.push(format!("wait({ms})")),
+                Step::Run(slot, _) => parts.push(run_key(*slot)),
             }
         }
         if parts.is_empty() {
@@ -706,6 +734,21 @@ mod tests {
 }
 
 /// Hearth's macros and profiles' extras (remap.json), read.
+#[cfg(test)]
+mod run_tests {
+    use super::*;
+    #[test]
+    fn a_run_step_is_hearths_key_and_its_command_is_found() {
+        let m = Macro { id: "m".into(), name: "Open notes".into(), colour: String::new(), mode: "once".into(), steps: vec![Step::Press("b".into()), Step::Run(3, "hearth-notes-app".into())] };
+        assert_eq!(m.compile(), "key(b).modify(Super_L, modify(Control_L, modify(Alt_L, key(F15))))");
+        let v = json!({"macros": macros_json(&[m.clone()])});
+        assert_eq!(command_of(&v, 3).as_deref(), Some("hearth-notes-app"));
+        assert_eq!(command_of(&v, 4), None);
+        assert_eq!(free_slot(&[m]), Some(1));
+        assert_eq!(Step::Run(3, "x".into()).words().0, "Run");
+    }
+}
+
 pub fn macros_of(v: &Value) -> Vec<Macro> {
     v.get("macros")
         .and_then(Value::as_array)
