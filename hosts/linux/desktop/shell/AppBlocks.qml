@@ -472,11 +472,13 @@ Item {
             onPartChanged: if (part) ab.noteShown(bid, part.visible)
             readonly property bool plain: isPane ? false : (!p || L.plainLook(p)) && L.lookEmpty(ab.effLooks[bid] || {})
             readonly property bool hovered: hov.hovered
-            readonly property bool wanted: !!p && !!r && (ab.editing ? !p.hidden : ab.panelShown[bid] === true || (!p.hidden && ab.panelShown[bid] !== false))
+            readonly property bool wanted: !!p && (ab.editing ? !p.hidden : ab.panelShown[bid] === true || (!p.hidden && ab.panelShown[bid] !== false))
             readonly property bool whenOk: ab.editing || L.showsNow(look, hovered, showing, ab.page)
-            // (only when pointed at: there, see-through, until the pointer comes)
-            visible: wanted && (whenOk || look.when === "hover")
-            opacity: whenOk ? (look.appear === "fade" || look.appear === "pop" ? appearT : 1) : 0.001
+            // When it shows: not shown is see-through and takes no clicks (still there, so the part's own showing is
+            // seen and the pointer can bring one shown only when pointed at)
+            visible: wanted
+            opacity: whenOk ? (look.appear === "fade" || look.appear === "pop" ? appearT : 1) : (look.when === "hover" ? 0.001 : 0)
+            enabled: whenOk || look.when === "hover"
             x: r ? r.x : 0
             y: r ? r.y : 0
             width: r ? r.w : 0
@@ -549,7 +551,7 @@ Item {
                     anchors.fill: parent
                     readonly property color base: hd.look.fill ? Qt.color(hd.look.fill)
                         : hd.d && hd.d.bg !== undefined ? hd.d.bg : (hd.isPane || hd.look.cardFill || hd.look.see !== undefined || hd.look.edge) ? Theme.panel : "transparent"
-                    visible: !hd.plain || (hd.d && hd.d.bg !== undefined) || hd.isPane
+                    visible: (!hd.plain || (hd.d && hd.d.bg !== undefined) || hd.isPane) && (hd.showing || ab.editing)
                     color: base.a === 0 ? "transparent" : Qt.rgba(base.r, base.g, base.b, base.a * (1 - (hd.look.see || 0) / 100))
                     radius: box.rad
                     border.width: hd.look.edge === "line" || hd.look.edge === "glow" ? (hd.look.edgeW || 1) : (hd.isPane ? 1 : 0)
@@ -1154,7 +1156,7 @@ Item {
         z: 40
         active: ab.editing || ab.trying
         Component.onCompleted: setSource("AppBlocksEditor.qml", { ab: ab })
-        onStatusChanged: if (status === Loader.Error) { console.warn("AppBlocks: the editor couldn't load (AppBlocksEditor.qml); " + ab.app + " stays as it is"); ab.close(); }
+        onStatusChanged: if (status === Loader.Error) { console.warn("AppBlocks: the editor couldn't load (AppBlocksEditor.qml); " + ab.app + " stays as it is"); Qt.callLater(ab.close); }
     }
     property alias editorItem: editor.item
 

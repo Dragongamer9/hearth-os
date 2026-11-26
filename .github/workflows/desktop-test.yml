@@ -2934,6 +2934,9 @@ jobs:
           cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
           xbad=$(grep -E "(AppBlocks|AppBlocksFlow|AppBlocksHub|AppBlocksEditor|AppBlockCustomize|AppBlock|EditLayoutButton|DescribeIt|FileManager|FilesIpc|FilesSortDownloads|FilesSortSheet|SettingsFrame|SetPage|SetHeader|TaskManagerView|Capture|ResourceMonitorView|ReliabilityView|RestoreView|app-blocks)\.(qml|js).*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|Unable|non-existent|binding loop)" "$LOG" 2>/dev/null | sort -u | head -12 || true)
           [ -z "$xbad" ] && say "no QML errors from the apps made of blocks" || bad "$(echo "$xbad" | cut -c1-300 | tr '\n' ' ')"
+          # board 3's own files: any warning at all from them, a binding loop, or one of them that couldn't load
+          xb3=$(grep -E "(AppBlocksEditor|AppBlockCustomize|AppBlock|AppBlocks)\.qml|couldn't load \((AppBlocksEditor|AppBlockCustomize|AppBlock)\.qml|AppBlock\.qml couldn't load" "$LOG" 2>/dev/null | grep -i -E "warn|error|loop|cannot|couldn't|unable|undefined|not a" | grep -v "couldn't be read" | sort -u | head -12 || true)
+          [ -z "$xb3" ] && say "no warnings from board 3's files (AppBlocksEditor, AppBlockCustomize, AppBlock, AppBlocks)" || bad "board 3: $(echo "$xb3" | cut -c1-300 | tr '\n' ' ')"
           ls -la $o
           pkill -x labwc || true; pkill -f quickshell || true
 

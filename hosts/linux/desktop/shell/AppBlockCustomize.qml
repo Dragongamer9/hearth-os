@@ -133,7 +133,7 @@ Rectangle {
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: cp.set({ fill: parent.modelData === "" ? "" : String(parent.modelData).toLowerCase().slice(0, 7) }) }
                         }
                     }
-                    Hex { value: cp.look.fill || ""; onCommit: v => { const t = v.trim(); if (t === "" || /^#[0-9a-fA-F]{6}$/.test(t)) cp.set({ fill: t.toLowerCase() }); } }
+                    Words { width: 96; hint: "#rrggbb"; value: cp.look.fill || ""; onCommit: v => { const t = v.trim(); if (t === "" || /^#[0-9a-fA-F]{6}$/.test(t)) cp.set({ fill: t.toLowerCase() }); } }
                 }
                 Line {
                     label: "See-through"
@@ -465,7 +465,7 @@ Rectangle {
                         Row { x: 10; anchors.verticalCenter: parent.verticalCenter; spacing: 8
                             Icon { visible: cp.pick && cp.pick.icons && parent.parent.modelData[0] !== ""; name: parent.parent.modelData[0] || "dot"; size: 14; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
                             Text { text: parent.parent.modelData[1]; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter } }
-                        MouseArea { id: pkM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { const p = cp.pick; cp.pick = null; p.done(parent.modelData[0]); } }
+                        MouseArea { id: pkM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { const v = parent.modelData[0], p = cp.pick; cp.pick = null; p.done(v); } }
                     }
                 }
             }
@@ -543,7 +543,6 @@ Rectangle {
         }
         Text { visible: wi.text === "" && !wi.activeFocus; anchors { left: parent.left; leftMargin: 10; verticalCenter: parent.verticalCenter } text: wd.hint; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
     }
-    component Hex: Words { width: 96; hint: "#rrggbb" }
     component Slide: Item {
         id: sl
         property real from: 0

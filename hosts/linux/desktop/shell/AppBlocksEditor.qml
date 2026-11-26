@@ -17,8 +17,8 @@ Item {
     id: ed
     property var ab: null
     readonly property bool on: !!ab && ab.editing
-    readonly property real W: width
-    readonly property real H: height
+    readonly property real ew: width
+    readonly property real eh: height
     property bool snapOn: true
     property int grid: L.PX_GRID
     property bool guidesOn: true
@@ -27,7 +27,9 @@ Item {
     property string startName: "Hearth"
     property string note: ""
     property var guides: []
-    property real lineX: -1; property real lineY: 0; property real lineLen: 0
+    property real lineX: -1
+    property real lineY: 0
+    property real lineLen: 0
     property point dragAt: Qt.point(0, 0)
     property var target: null              // where a dragged block would land: {kind: "bar", bar, at, before} | {kind: "window", x, y} | {kind: "lib"}
     property string dragLib: ""            // a block from the Blocks window being dragged ("action:share", "make:button"…)
@@ -43,21 +45,21 @@ Item {
             if (lk && (lk.wMode || lk.hMode) && !p.hidden) {
                 const it = ab.parts[p.id];
                 const need = ab.alive(it) ? { w: it.implicitWidth || 0, h: it.implicitHeight || 0 } : null;
-                r = Object.assign({}, p, L.sizedByLook(p, lk, need, ab.draft.parts.filter((q, j) => j !== i && !q.hidden), W, H));
+                r = Object.assign({}, p, L.sizedByLook(p, lk, need, ab.draft.parts.filter((q, j) => j !== i && !q.hidden), ew, eh));
             }
             return Object.assign({}, r, { name: ab.labelOf(p.id) });
         });
-        for (const b of ab.draft.added) if (b.kind === "pane") out.push(Object.assign({ id: b.id, title: ab.blockName(b), name: ab.blockName(b), hidden: false, pane: true }, L.fromFrac(b, W, H)));
+        for (const b of ab.draft.added) if (b.kind === "pane") out.push(Object.assign({ id: b.id, title: ab.blockName(b), name: ab.blockName(b), hidden: false, pane: true }, L.fromFrac(b, ew, eh)));
         return out;
     }
     function commitList(d, list) {
         for (const q of list) {
-            if (q.pane) { const b = d.added.find(x => x.id === q.id); if (b) Object.assign(b, L.toFrac(q, W, H)); continue; }
+            if (q.pane) { const b = d.added.find(x => x.id === q.id); if (b) Object.assign(b, L.toFrac(q, ew, eh)); continue; }
             const p = d.parts.find(x => x.id === q.id);
             if (p) { p.x = q.x; p.y = q.y; p.w = q.w; p.h = q.h; p.hidden = !!q.hidden; }
         }
     }
-    readonly property var shown: { void W; void H; if (!ab) return []; void ab.draft; return canvasList().filter(p => !p.hidden); }
+    readonly property var shown: { void ew; void eh; if (!ab) return []; void ab.draft; return canvasList().filter(p => !p.hidden); }
     function marksNow() {
         const out = [];
         if (!ab || !ab.marks) return out;
@@ -102,7 +104,7 @@ Item {
         if (!moving) return;
         const m = moving, dx = p.x - m.sx, dy = p.y - m.sy;
         const opt = { grid: snapOn ? grid : 0, guides: guidesOn, marks: m.marks, title: ab.labelOf(m.id) };
-        const r = m.edges ? L.sizePx(m.list, m.id, m.edges, dx, dy, W, H, opt) : L.movePx(m.list, m.id, dx, dy, W, H, opt);
+        const r = m.edges ? L.sizePx(m.list, m.id, m.edges, dx, dy, ew, eh, opt) : L.movePx(m.list, m.id, dx, dy, ew, eh, opt);
         guides = r.guides; note = r.note || (m.edges ? "" : "");
         dragAt = p;
         const d = L.copy(ab.draft);
@@ -186,7 +188,7 @@ Item {
             t = { kind: "lib" }; note = dragBlock ? "Let go to take it out" : "";
         } else if (!isPaneDrag()) {
             for (const q of shown) {
-                if (q.pane || L.partKind(q, W, H) !== "bar" || !inBox(p, q, 4)) continue;
+                if (q.pane || L.partKind(q, ew, eh) !== "bar" || !inBox(p, q, 4)) continue;
                 const part = ab.parts[q.id];
                 const row = ab.rowOf(part);
                 const hd = ab.holderOf(q.id);
@@ -215,16 +217,16 @@ Item {
             }
         }
         if (!t) {
-            const w = isPaneDrag() ? Math.min(420, W * 0.3) : 160, h = isPaneDrag() ? H * 0.6 : 36;
+            const w = isPaneDrag() ? Math.min(420, ew * 0.3) : 160, h = isPaneDrag() ? eh * 0.6 : 36;
             let x = p.x - w / 2, y = p.y - h / 2;
             if (guidesOn || snapOn) {
                 const list = canvasList().concat([{ id: "__drag", x: x, y: y, w: w, h: h }]);
-                const r = L.movePx(list, "__drag", 0, 0, W, H, { grid: snapOn ? grid : 0, guides: guidesOn, marks: marksNow() });
+                const r = L.movePx(list, "__drag", 0, 0, ew, eh, { grid: snapOn ? grid : 0, guides: guidesOn, marks: marksNow() });
                 const me = r.list.find(z => z.id === "__drag");
                 x = me.x; y = me.y; guides = r.guides;
                 note = r.note || L.dropNote("", "", true);
             } else note = L.dropNote("", "", true);
-            t = { kind: "window", x: Math.max(0, Math.min(W - w, x)), y: Math.max(0, Math.min(H - h, y)), w: w, h: h };
+            t = { kind: "window", x: Math.max(0, Math.min(ew - w, x)), y: Math.max(0, Math.min(eh - h, y)), w: w, h: h };
         }
         target = t;
     }
@@ -243,9 +245,9 @@ Item {
             const r = { x: Math.round(t.x), y: Math.round(t.y), w: Math.round(t.w), h: Math.round(t.h) };
             if (pn && pn.part) {
                 const p = d.parts.find(x => x.id === pn.part);
-                if (p) { if (!p.hidden) { r.w = p.w; r.h = p.h; r.x = Math.max(0, Math.min(W - p.w, Math.round(dragAt.x - p.w / 2))); r.y = Math.max(0, Math.min(H - p.h, Math.round(dragAt.y - p.h / 2))); } Object.assign(p, r, { hidden: false }); made = p.id; }
+                if (p) { if (!p.hidden) { r.w = p.w; r.h = p.h; r.x = Math.max(0, Math.min(ew - p.w, Math.round(dragAt.x - p.w / 2))); r.y = Math.max(0, Math.min(eh - p.h, Math.round(dragAt.y - p.h / 2))); } Object.assign(p, r, { hidden: false }); made = p.id; }
             } else if (pn) {
-                const b = Object.assign(L.newBlock(lid, ab.newId(), ""), L.toFrac(r, W, H), { in: "" });
+                const b = Object.assign(L.newBlock(lid, ab.newId(), ""), L.toFrac(r, ew, eh), { in: "" });
                 d.added.push(b); made = b.id;
             }
         } else {
@@ -269,7 +271,7 @@ Item {
                 const it = ab.blockItems[b.id];
                 const w = it ? it.width : 140, h = it ? it.height : 36;
                 b.in = ""; delete b.at;
-                Object.assign(b, L.toFrac({ x: t.x + (t.w - w) / 2, y: t.y + (t.h - h) / 2, w: w, h: h }, W, H));
+                Object.assign(b, L.toFrac({ x: t.x + (t.w - w) / 2, y: t.y + (t.h - h) / 2, w: w, h: h }, ew, eh));
                 d.added.push(b);
             }
         }
@@ -325,7 +327,7 @@ Item {
         const id = menuFor;
         ab.withDraft(d => {
             const b = d.added.find(x => x.id === id); if (!b) return;
-            if (bar === "") { b.in = ""; delete b.at; Object.assign(b, L.toFrac({ x: W / 2 - 70, y: H / 2 - 18, w: 140, h: 36 }, W, H)); }
+            if (bar === "") { b.in = ""; delete b.at; Object.assign(b, L.toFrac({ x: ew / 2 - 70, y: eh / 2 - 18, w: 140, h: 36 }, ew, eh)); }
             else { b.in = bar; b.at = 400; delete b.x; delete b.y; delete b.w; delete b.h; }      // at the bar's end
         });
     }
@@ -342,17 +344,17 @@ Item {
             delegate: Item {
                 id: po
                 required property int index
-                readonly property var modelData: ed.shown[index] || ({ id: "", x: 0, y: 0, w: 0, h: 0 })
+                readonly property var pm: ed.shown[index] || ({ id: "", x: 0, y: 0, w: 0, h: 0 })
                 visible: index < ed.shown.length
-                readonly property bool lit: ed.ab.picked === modelData.id
-                readonly property string kind: L.partKind(modelData, ed.W, ed.H)
-                x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+                readonly property bool lit: ed.ab.picked === pm.id
+                readonly property string kind: L.partKind(pm, ed.ew, ed.eh)
+                x: pm.x; y: pm.y; width: pm.w; height: pm.h
                 z: lit ? 3 : 1
                 Rectangle { anchors.fill: parent; anchors.margins: 3; color: body.containsMouse || po.lit ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.05) : "transparent"; radius: 6 }
-                Dashes { anchors.fill: parent; anchors.margins: 3; lit: po.lit || (ed.target && ed.target.kind === "bar" && ed.target.bar === po.modelData.id) }
+                Dashes { anchors.fill: parent; anchors.margins: 3; lit: po.lit || (ed.target && ed.target.kind === "bar" && ed.target.bar === po.pm.id) }
                 Text {
                     // a part with nothing to show right now (Files' details pane while it's closed)
-                    visible: { const it = ed.ab.parts[po.modelData.id]; return !po.modelData.pane && ed.ab.alive(it) && !it.visible; }
+                    visible: { const it = ed.ab.parts[po.pm.id]; return !po.pm.pane && ed.ab.alive(it) && !it.visible; }
                     anchors.centerIn: parent
                     text: "Not showing now"
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
@@ -362,18 +364,18 @@ Item {
                     anchors.fill: parent; anchors.margins: 8
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: ed.moving && ed.moving.id === po.modelData.id ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                    cursorShape: ed.moving && ed.moving.id === po.pm.id ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                     preventStealing: true
                     // (a block added to this part, under the outline, is the one taken: it moves on its own)
                     onPressed: m => {
                         if (m.button !== Qt.LeftButton) return;
                         const q = mapToItem(ed, m.x, m.y), b = ed.blockAt(q);
-                        if (b) ed.grabBlock(b, q); else ed.grabPart(po.modelData.id, null, q);
+                        if (b) ed.grabBlock(b, q); else ed.grabPart(po.pm.id, null, q);
                     }
                     onPositionChanged: m => { if (!pressed) return; const q = mapToItem(ed, m.x, m.y); if (ed.dragBlock) ed.moveDrag(q); else if (ed.moving) ed.movePart(q); }
                     onReleased: m => { if (m.button !== Qt.LeftButton) return; if (ed.dragBlock) ed.endDrag(); else ed.letGoPart(); }
-                    onClicked: m => { if (m.button === Qt.RightButton) { const q = mapToItem(ed, m.x, m.y); ed.partMenu(ed.blockAt(q) || po.modelData.id, q.x, q.y); } }
-                    onDoubleClicked: ed.ab.customize(po.modelData.id, "look")
+                    onClicked: m => { if (m.button === Qt.RightButton) { const q = mapToItem(ed, m.x, m.y); ed.partMenu(ed.blockAt(q) || po.pm.id, q.x, q.y); } }
+                    onDoubleClicked: ed.ab.customize(po.pm.id, "look")
                 }
                 // its edges and corners (the sides that can be dragged get a handle in the middle, as on the board)
                 Repeater {
@@ -390,12 +392,12 @@ Item {
                         hoverEnabled: true
                         preventStealing: true
                         cursorShape: corner ? Qt.SizeFDiagCursor : across ? Qt.SizeHorCursor : Qt.SizeVerCursor
-                        onPressed: m => ed.grabPart(po.modelData.id, modelData, mapToItem(ed, m.x, m.y))
+                        onPressed: m => ed.grabPart(po.pm.id, modelData, mapToItem(ed, m.x, m.y))
                         onPositionChanged: m => { if (pressed) ed.movePart(mapToItem(ed, m.x, m.y)); }
                         onReleased: ed.letGoPart()
                         // (an edge on the window's own edge has nothing to give: no handle there)
-                        readonly property bool inner: !(modelData.l && po.modelData.x < 2) && !(modelData.r && po.modelData.x + po.modelData.w > ed.W - 2)
-                                                      && !(modelData.t && po.modelData.y < 2) && !(modelData.b && po.modelData.y + po.modelData.h > ed.H - 2)
+                        readonly property bool inner: !(modelData.l && po.pm.x < 2) && !(modelData.r && po.pm.x + po.pm.w > ed.ew - 2)
+                                                      && !(modelData.t && po.pm.y < 2) && !(modelData.b && po.pm.y + po.pm.h > ed.eh - 2)
                         Rectangle {
                             // a handle on the sides a part sizes by (a sidebar's or a pane's inner edge; any edge of the one picked)
                             visible: edge.inner && (edge.corner ? (po.lit || edge.containsMouse) : (po.kind === "side" && edge.across) || po.lit || edge.containsMouse)
@@ -407,10 +409,10 @@ Item {
                 }
                 // its name and size ("COMMAND BAR · 48 px"): under it, or inside it when it's at the bottom
                 Tag {
-                    text: L.partLabel(ed.ab.labelOf(po.modelData.id), po.modelData, ed.W, ed.H)
+                    text: L.partLabel(ed.ab.labelOf(po.pm.id), po.pm, ed.ew, ed.eh)
                     lit: po.lit
                     x: 4
-                    y: po.modelData.y + po.modelData.h + 28 <= ed.H ? po.height + 2 : po.kind === "bar" ? -height - 2 : po.height - height - 6
+                    y: po.pm.y + po.pm.h + 28 <= ed.eh ? po.height + 2 : po.kind === "bar" ? -height - 2 : po.height - height - 6
                 }
             }
         }
@@ -442,7 +444,7 @@ Item {
                 z: 7
                 color: "#5ec8ff"; opacity: 0.85
                 x: modelData.x !== undefined ? modelData.x - 1 : 0; y: modelData.y !== undefined ? modelData.y - 1 : 0
-                width: modelData.x !== undefined ? 2 : ed.W; height: modelData.y !== undefined ? 2 : ed.H
+                width: modelData.x !== undefined ? 2 : ed.ew; height: modelData.y !== undefined ? 2 : ed.eh
             }
         }
         Rectangle {
@@ -455,8 +457,8 @@ Item {
             z: 8
             visible: ed.note !== ""
             readonly property bool dragging: ed.dragLib !== "" || ed.dragBlock !== "" || !!ed.moving
-            x: Math.max(8, Math.min(ed.W - width - 12, dragging ? (ed.moving && ed.moving.edges ? ed.dragAt.x - width - 6 : ed.dragAt.x + 26) : ed.W / 2 - width / 2))
-            y: dragging ? Math.min(ed.H - 160, ed.dragAt.y + (ed.moving && ed.moving.edges ? 0 : 34)) : ed.H - 150
+            x: Math.max(8, Math.min(ed.ew - width - 12, dragging ? (ed.moving && ed.moving.edges ? ed.dragAt.x - width - 6 : ed.dragAt.x + 26) : ed.ew / 2 - width / 2))
+            y: dragging ? Math.min(ed.eh - 160, ed.dragAt.y + (ed.moving && ed.moving.edges ? 0 : 34)) : ed.eh - 150
             width: noteT.implicitWidth + 20; height: 30; radius: 6
             color: Qt.rgba(0.07, 0.12, 0.16, 0.95); border.color: "#5ec8ff"
             Text { id: noteT; anchors.centerIn: parent; text: ed.note; color: "#ffffff"; font.family: Theme.font; font.pixelSize: 13 }
@@ -466,9 +468,9 @@ Item {
         Rectangle {
             id: libWin
             z: 10
-            width: Math.min(380, ed.W - 40); height: Math.min(620, ed.H - 220)
-            x: ed.custShown && ed.W - 380 - 560 - 40 >= 0 ? ed.W - width - 560 - 40 : ed.W - width - 30
-            y: Math.min(160, Math.max(48, ed.H - height - 150))
+            width: Math.min(380, ed.ew - 40); height: Math.min(620, ed.eh - 220)
+            x: ed.custShown && ed.ew - 380 - 560 - 40 >= 0 ? ed.ew - width - 560 - 40 : ed.ew - width - 30
+            y: Math.min(160, Math.max(48, ed.eh - height - 150))
             radius: 14; color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.98); border.color: Theme.line
             clip: true
             Rectangle { z: -1; anchors.fill: parent; anchors.margins: -1; anchors.topMargin: 6; radius: 16; color: Qt.rgba(0, 0, 0, 0.35) }
@@ -481,7 +483,7 @@ Item {
                     Rectangle { width: 14; height: 14; radius: 7; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: ed.ab ? ed.ab.shortAppName + (/s$/.test(ed.ab.shortAppName) ? "' blocks" : "'s blocks") : "Blocks"; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold } }
                 Text { anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter } text: ed.ab ? "drag into " + ed.ab.shortAppName : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.SizeAllCursor; drag.target: libWin; drag.minimumX: 0; drag.minimumY: 0; drag.maximumX: ed.W - libWin.width; drag.maximumY: ed.H - 80 }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.SizeAllCursor; drag.target: libWin; drag.minimumX: 0; drag.minimumY: 0; drag.maximumX: ed.ew - libWin.width; drag.maximumY: ed.eh - 80 }
             }
             Flickable {
                 anchors { left: parent.left; right: parent.right; top: libTitle.bottom; bottom: parent.bottom; margins: 16 }
@@ -540,8 +542,8 @@ Item {
         Rectangle {
             z: 12
             visible: ed.layersShown
-            x: Math.max(8, Math.min(ed.W - width - 8, tool.x + layersBtn.x)); y: tool.y - height - 10
-            width: 340; height: Math.min(ed.H - 200, layersCol.implicitHeight + 24); radius: 12
+            x: Math.max(8, Math.min(ed.ew - width - 8, tool.x + layersBtn.x)); y: tool.y - height - 10
+            width: 340; height: Math.min(ed.eh - 200, layersCol.implicitHeight + 24); radius: 12
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.98); border.color: Theme.line
             MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
             Flickable {
@@ -585,7 +587,7 @@ Item {
         Rectangle {
             z: 12
             visible: ed.startShown
-            x: Math.max(8, Math.min(ed.W - width - 8, tool.x + startBtn.x)); y: tool.y - height - 10
+            x: Math.max(8, Math.min(ed.ew - width - 8, tool.x + startBtn.x)); y: tool.y - height - 10
             width: 300; height: startCol.implicitHeight + 24; radius: 12
             color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.98); border.color: Theme.line
             MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
@@ -595,7 +597,7 @@ Item {
                 spacing: 4
                 Text { width: parent.width; wrapMode: Text.WordWrap; text: "Puts that layout in place to start from. Undo or Cancel brings yours back."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                 Repeater {
-                    model: ed.ab && ed.startShown ? L.presets(ed.ab.measureOwn(), ed.W, ed.H) : []
+                    model: ed.ab && ed.startShown ? L.presets(ed.ab.measureOwn(), ed.ew, ed.eh) : []
                     delegate: Rectangle {
                         required property var modelData
                         width: startCol.width; height: 40; radius: 8; color: sa.containsMouse ? Theme.panel3 : "transparent"
@@ -673,7 +675,7 @@ Item {
             z: 31
             visible: ed.menuShown
             width: 300; height: emCol.implicitHeight + 16
-            x: Math.max(8, Math.min(ed.W - width - 8, ed.menuAt.x)); y: Math.max(8, Math.min(ed.H - height - 8, ed.menuAt.y))
+            x: Math.max(8, Math.min(ed.ew - width - 8, ed.menuAt.x)); y: Math.max(8, Math.min(ed.eh - height - 8, ed.menuAt.y))
             radius: 12; color: Theme.panel; border.color: Theme.line
             Column {
                 id: emCol
@@ -708,9 +710,9 @@ Item {
             id: cust
             z: 25
             active: ed.on && !!ed.ab && ed.ab.customizeFor !== ""
-            width: Math.min(560, ed.W - 40)
-            height: Math.max(300, ed.H - 130 - 24)
-            x: ed.W - width - 16; y: 16
+            width: Math.min(560, ed.ew - 40)
+            height: Math.max(300, ed.eh - 130 - 24)
+            x: ed.ew - width - 16; y: 16
             Component.onCompleted: setSource("AppBlockCustomize.qml", { ab: ed.ab })
             onStatusChanged: if (status === Loader.Error) { console.warn("AppBlocks: Customize couldn't load (AppBlockCustomize.qml)"); if (ed.ab) ed.ab.customizeFor = ""; }
         }
