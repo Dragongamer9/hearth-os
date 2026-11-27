@@ -8,12 +8,14 @@ The owner, Nov 26: "Ok we're gonna expand heavily on the Server side of hearth O
 store"), never as a Hearth OS update; anything needing system pieces installs itself with the admin password once
 ("Debian system files are unlocked"). Made of blocks.
 
+Checked against CI's pictures (Hearth apps (pure Rust) run 45949114987: hsrv-11-settings, hsrv-11-home, Nov 27): every ticked part is in them; Server mode was cut off in Settings and the dot was yellow, both fixed.
+
 ## Every part of the board
 - [x] Settings' window with its sections on the left, Home server lit — hosts/hearth-ui/apps/settings/src/frame.rs: "let on = i == a.cat && a.query.is_empty();"
 - [x] "Made of blocks · Edit layout" at the bottom of Settings' sections — hosts/hearth-ui/apps/settings/src/frame.rs: "t1(\"Made of blocks · \", 12.0, p.muted)"
 - [x] The title "Settings › Home server", Home server in the accent — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "tb(sec.0, 34.0, p.accent)"
 - [x] Its line "This PC serving your home: AI, games, backups, media and more · every part is its own Hearth Store app" — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "line: \"This PC serving your home: AI, games, backups, media and more · every part is its own Hearth Store app\","
-- [x] The overall card: its dot and "12 of 13 services healthy · 3 PCs · 8 devices" (real counts: healthy services from the Dashboard, PCs, Tailscale's devices) (needs testing on a device) — os/system_files/usr/libexec/nimbus/hearth-server-parts/dash.py: "'%d of %d services healthy · %d PC%s · %d device%s'"
+- [x] The overall card: its dot and "12 of 13 services healthy · 3 PCs · 8 devices" (real counts: healthy services from the Dashboard, PCs, Tailscale's devices) (needs testing on a device) — os/system_files/usr/libexec/nimbus/hearth-server-parts/dash.py: "'state': 'ok' if s['healthy'] >= s['total'] - 1 else"
 - [x] Its line: what needs a fix · last backups 2:36 AM · 1 playing on the TV · all reached privately through Tailscale — os/system_files/usr/libexec/nimbus/hearth-server-parts/dash.py: "bits.append('all reached privately through Tailscale')"
 - [x] Fix it (the first thing that needs a look, fixed) — hosts/hearth-ui/apps/settings/src/cats/hs_board.rs: "engine::spawn(\"dash\", vec![\"fix\".into(), id], String::new())"
 - [x] Open the dashboard — hosts/hearth-ui/apps/server-parts/src/home.rs: "\"Open the dashboard\""

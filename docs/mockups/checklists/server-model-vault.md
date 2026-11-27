@@ -8,6 +8,8 @@ The owner, Nov 26: "Ok we're gonna expand heavily on the Server side of hearth O
 store"), never as a Hearth OS update; anything needing system pieces installs itself with the admin password once
 ("Debian system files are unlocked"). Made of blocks.
 
+Checked against CI's pictures (run 45949114987: hsrv-01-vault, hsrv-02-checks, hsrv-12-vault-setup, Nov 27): every ticked part is in them; the title bar's tag said 2 things need a look (that's board 02's), fixed. The sizes and counts are the real model list's (4.66 TB, 39 of 45), not the board's made-up ones.
+
 ## Every part of the board
 - [x] The window: the HS mark, "Home server helper", the page after it, the tags on the right, the window buttons — hosts/hearth-ui/apps/home-server/src/main.rs: "hearth_oss::w::mark(\"HS\", \"or\", 22.0), \"Home server helper\""
 - [x] Sidebar: "Search the server" (it filters the rows) — hosts/hearth-ui/apps/home-server/src/main.rs: "\"Search the server\""

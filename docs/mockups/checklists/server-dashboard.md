@@ -8,6 +8,8 @@ The owner, Nov 26: "Ok we're gonna expand heavily on the Server side of hearth O
 store"), never as a Hearth OS update; anything needing system pieces installs itself with the admin password once
 ("Debian system files are unlocked"). Made of blocks.
 
+Checked against CI's pictures (run 45949114987: hsrv-03-dash, hsrv-04-tv, hsrv-04-phone, hsrv-14-dash-edit, Nov 27): every ticked part is in them.
+
 ## Every part of the board
 - [x] The window: the HS mark, "Home server helper", the page after it, the tags on the right, the window buttons — hosts/hearth-ui/apps/home-server/src/main.rs: "hearth_oss::w::mark(\"HS\", \"or\", 22.0), \"Home server helper\""
 - [x] Sidebar: "Search the server" (it filters the rows) — hosts/hearth-ui/apps/home-server/src/main.rs: "\"Search the server\""

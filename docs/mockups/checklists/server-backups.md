@@ -8,6 +8,8 @@ The owner, Nov 26: "Ok we're gonna expand heavily on the Server side of hearth O
 store"), never as a Hearth OS update; anything needing system pieces installs itself with the admin password once
 ("Debian system files are unlocked"). Made of blocks.
 
+Checked against CI's pictures (run 45949114987: hsrv-06-backups, hsrv-13-backups-add, Nov 27): every ticked part is in them; By device · all versions was missing and the night's files only showed after pressing Look, both fixed.
+
 ## Every part of the board
 - [x] The window: the HS mark, "Home server helper", the page after it, the tags on the right, the window buttons — hosts/hearth-ui/apps/home-server/src/main.rs: "hearth_oss::w::mark(\"HS\", \"or\", 22.0), \"Home server helper\""
 - [x] Sidebar: "Search the server" (it filters the rows) — hosts/hearth-ui/apps/home-server/src/main.rs: "\"Search the server\""
@@ -39,8 +41,8 @@ store"), never as a Hearth OS update; anything needing system pieces installs it
 - [x] Restore with A file or folder / The whole device / From the Recovery USB — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "(\"From the Recovery USB\".into(), mode == \"usb\""
 - [x] The search, the device ▾ and the night ▾ — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "w::field(&p, format!(\"{name} ▾\"), 0.0, None)"
 - [x] Pick a night · 41 versions, and Tonight, Nov 25 … Nov 15 (week), Nov 8 (week) — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "label = C.day(x['at']) + ' (week)'"
-- [x] The night's files: Saves/Gravesleep (3 files · changed Nov 25), slot1.save 12 MB · 11:52 PM DIFFERENT NOW, slot2.save, settings.cfg (DIFFERENT NOW: it differs in the newest backup) — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "'different': bool(now_x and now_x.get('mtime') != x.get('mtime'))"
-- [x] Put back slot1.save, Put it beside the new one, Open — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "\"Put it beside the new one\""
+- [x] The night's files: Saves/Gravesleep (3 files · changed Nov 25), slot1.save 12 MB · 11:52 PM DIFFERENT NOW, slot2.save, settings.cfg (DIFFERENT NOW: it differs in the newest backup; shown as the page opens with a search) — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "pub fn first_look(a: &App) -> Option<crate::Act> {"
+- [x] Put back slot1.save, Put it beside the new one, Open — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "format!(\"Put back {fname}\")"
 - [x] Putting back never goes over anything: on the server into Home › Restored from backups (and to the device over Taildrop); on the device in place with the one there kept beside it (needs testing on a device) — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "os.rename(real, '%s (before %s)%s' % (base, stamp, ext))"
 - [x] A device puts back only its own files (inside its Home) — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "raise Fail('Only your own files are put back from here')"
 - [x] THE WHOLE DEVICE: "Put the ROG Ally back the way it was on a night you pick: Hearth OS, apps, settings and files. On the Ally: Settings › Updates & recovery › Restore from the server, or start it from the Recovery USB and pick "Restore from my home server" (it finds the server over Wi-Fi or Tailscale)." — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "\" and pick \\\"Restore from my home server\\\" (it finds the server over Wi-Fi or Tailscale).\""
@@ -50,7 +52,7 @@ store"), never as a Hearth OS update; anything needing system pieces installs it
 - [x] LAST NIGHT, STEP BY STEP: 5.6 GB sent in all · 34 min · Full log, and 2:00 server's 9 services, 2:04 ROG Ally · 1.8 GB, 2:11 Laptop, 2:19 Truck laptop, 2:36 Dad's PC, 3:10 copy to R2 · Sunday — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "'%s sent in all · %s'"
 - [x] The server's own services backed up at 2:00 — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "['backup', '--json', '--tag', 'hearth-server', '--exclude-caches']"
 - [x] Space for backups: Backup drive · 4 TB, its bar, "1.9 TB used by 4 devices and 9 services" — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "'%s used by %d devices and %s'"
-- [x] BY DEVICE · ALL VERSIONS: each device and the server's own services with its bar and size — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "cap(&p, \"By device · all versions\")"
+- [x] BY DEVICE · ALL VERSIONS: each device and the server's own services with its bar and size — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "let space = column![space, byd].spacing(4.0);"
 - [x] A SECOND COPY AWAY FROM HOME: Copy backups to Cloudflare R2 and "Infrequent Access · encrypted · 1.9 TB ≈ $19 / month · weekly" — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "'Infrequent Access · encrypted · %s ≈ $%d / month · weekly'"
 - [x] The copy really goes to R2 on Sundays (restic's own copy, still encrypted) (needs testing on a device) — os/system_files/usr/libexec/nimbus/hearth-server-parts/backups.py: "dest = 's3:https://%s.r2.cloudflarestorage.com/%s/backups/%s'"
 - [x] PHONE AND XBOX: "The phone's photos and files go to Hearth Cloud. The Xbox keeps its saves in its own cloud: nothing to do here." — hosts/hearth-ui/apps/home-server/src/pages/backups.rs: "\"The phone's photos and files go to Hearth Cloud. The Xbox keeps its saves in its own cloud: nothing to do here.\""
