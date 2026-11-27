@@ -103,6 +103,7 @@ pub fn search(src: &'static str, q: String, games: Vec<(String, String)>) -> imp
 
 fn search_now(src: &'static str, q: &str, games: &[(String, String)], key: &str) -> Result<Vec<Hit>, String> {
     let mut out = Vec::new();
+    let mut errs: Vec<String> = Vec::new();
     match src {
         "nexus" => {
             let acct = nexus::account().ok_or("Sign in to Nexus Mods (Accounts) with your own API key.")?;
@@ -134,7 +135,13 @@ fn search_now(src: &'static str, q: &str, games: &[(String, String)], key: &str)
         "thunderstore" => {
             for (title, _) in games {
                 let c = community(title);
-                let Ok(v) = get(&format!("https://thunderstore.io/api/cyberstorm/listing/{c}/?q={}&ordering=most-downloaded", enc(q)), &[]) else { continue };
+                let v = match get(&format!("https://thunderstore.io/api/cyberstorm/listing/{c}/?q={}&ordering=most-downloaded", enc(q)), &[("Accept", "application/json")]) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        errs.push(format!("{title}: {e}"));
+                        continue;
+                    }
+                };
                 for m in v["results"].as_array().cloned().unwrap_or_default().into_iter().take(10) {
                     let (ns, name) = (m["namespace"].as_str().unwrap_or(""), m["name"].as_str().unwrap_or(""));
                     out.push(Hit {
@@ -214,6 +221,11 @@ fn search_now(src: &'static str, q: &str, games: &[(String, String)], key: &str)
             }
         }
         _ => {}
+    }
+    // every game's search failed (none of them is on that site, or it didn't answer): say why
+    if out.is_empty() && !errs.is_empty() && src == "thunderstore" {
+        errs.sort_by_key(|e| e.contains("HTTP 404"));
+        return Err(format!("none of your games' communities answered ({})", errs.into_iter().take(2).collect::<Vec<_>>().join(" · ")));
     }
     Ok(out)
 }
