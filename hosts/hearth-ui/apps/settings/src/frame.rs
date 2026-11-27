@@ -295,7 +295,9 @@ fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
         "window",
         items,
         move |ps| {
-            let rail = container(column![ps.take("brand"), Space::new().height(Length::Fixed(18.0)), ps.take("search"), Space::new().height(Length::Fixed(14.0)), ps.take("cats")])
+            // "Made of blocks · Edit layout" at the bottom of the list (the Server side's boards, Nov 26: always findable)
+            let blocks_line = row![t1("Made of blocks · ", 12.0, p.muted), mouse_area(tb("Edit layout", 12.0, p.accent)).on_press(Msg::Describe(hearth_ui::arrange::edit_layout())).interaction(mouse::Interaction::Pointer)];
+            let rail = container(column![ps.take("brand"), Space::new().height(Length::Fixed(18.0)), ps.take("search"), Space::new().height(Length::Fixed(14.0)), ps.take("cats"), container(blocks_line).padding(Padding { top: 10.0, right: 0.0, bottom: 4.0, left: 4.0 })])
                 .padding(Padding { top: 20.0, right: 18.0, bottom: 12.0, left: 18.0 })
                 .width(Length::Fixed(320.0))
                 .height(Length::Fill)

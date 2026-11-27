@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Application
+Name=Home server helper
+GenericName=Home server
+Comment=The Server side of Hearth OS: the dashboard, the Model vault, backups for every device and more
+Exec=/usr/bin/hearth-home-server-app
+TryExec=/usr/bin/hearth-home-server-app
+Icon=hearth-home-server
+Categories=System;Utility;
+Keywords=server;home server;dashboard;backups;models;vault;ollama;jellyfin;r2;
+StartupWMClass=hearth-home-server
+Actions=Dashboard;TV;Vault;Backups;
+
+[Desktop Action Dashboard]
+Name=Dashboard
+Exec=/usr/bin/hearth-home-server-app --page dash
+
+[Desktop Action TV]
+Name=Dashboard on the TV
+Exec=/usr/bin/hearth-home-server-app --page tv
+
+[Desktop Action Vault]
+Name=Model vault
+Exec=/usr/bin/hearth-home-server-app --page vault
+
+[Desktop Action Backups]
+Name=Backups
+Exec=/usr/bin/hearth-home-server-app --page backup

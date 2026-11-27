@@ -22,7 +22,7 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-retro-app, hearth-retro-to-steam-app, hearth-studio-app, hearth-beat-maker-app, hearth-game-fixer, hearth-proton-manager, hearth-overlay, hearth-bottles, hearth-3d, hearth-lights-app, hearth-remap-app, hearth-mouse-app, hearth-shield-app, hearth-listen-app, hearth-imagine-app, hearth-passwords-app, hearth-cloud-app, hearth-home-app, hearth-link,
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-retro-app, hearth-retro-to-steam-app, hearth-studio-app, hearth-beat-maker-app, hearth-game-fixer, hearth-proton-manager, hearth-overlay, hearth-bottles, hearth-3d, hearth-lights-app, hearth-remap-app, hearth-mouse-app, hearth-shield-app, hearth-listen-app, hearth-imagine-app, hearth-passwords-app, hearth-cloud-app, hearth-home-app, hearth-home-server-app, hearth-link,
                   hearth-layout, hearth-game-mode, hearth-home-server-helper, hearth-storage-helper, hearth-ai-share-helper,
                   hearth-controller-lab, hearth-saves, hearth-mods, hearth-gamestore, hearth-gamma, hearth-steam,
                   decky-hearth-sync, decky-hearth-link, decky-hearth-music]
@@ -120,6 +120,15 @@ jobs:
             python3 -m py_compile "$src"
             python3 -c 'import json,sys; assert sys.argv[1] in json.load(open("os/system_files/usr/share/hearth/store/system-parts.json"))["parts"]' "$APP"
             mkdir -p /tmp/part && install -m755 "$src" "/tmp/part/$APP"
+            # The Home server helper carries the server's parts' engines next to it (docs/HOME-SERVER-PARTS.md): the
+            # Dashboard, the Model vault, Backups… each one file, all checked here, root-owned once installed.
+            if [ "$APP" = hearth-home-server-helper ]; then
+              for f in os/system_files/usr/libexec/nimbus/hearth-server-parts/*.py; do python3 -m py_compile "$f"; done
+              mkdir -p /tmp/part/hearth-server-parts
+              cp os/system_files/usr/libexec/nimbus/hearth-server-parts/* /tmp/part/hearth-server-parts/
+              rm -rf /tmp/part/hearth-server-parts/__pycache__
+              chmod 644 /tmp/part/hearth-server-parts/*
+            fi
             echo "INNER=$APP" >> "$GITHUB_ENV"
           elif [ "$APP" = hearth-controller-lab ] || [ "$APP" = hearth-saves ] || [ "$APP" = hearth-mods ] || [ "$APP" = hearth-gamestore ]; then
             # Hearth's gaming apps (hosts/hearth-gaming): /usr/bin/<app> starts the Store's copy through hearth-part.
@@ -208,7 +217,7 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "hearth-retro-app": "Hearth Retro", "hearth-retro-to-steam-app": "Retro to Steam", "hearth-studio-app": "Hearth Studio", "hearth-beat-maker-app": "Hearth Beat Maker", "hearth-3d": "Hearth 3D", "hearth-bottles": "Hearth Bottles", "hearth-overlay": "Hearth Overlay", "hearth-proton-manager": "Proton Manager", "hearth-game-fixer": "Hearth Game Fixer", "hearth-lights-app": "Hearth Lights", "hearth-remap-app": "Hearth Remap", "hearth-mouse-app": "Hearth Mouse", "hearth-shield-app": "Hearth Shield", "hearth-listen-app": "Hearth Listen", "hearth-imagine-app": "Hearth Imagine", "hearth-passwords-app": "Hearth Passwords", "hearth-cloud-app": "Hearth Cloud", "hearth-home-app": "Hearth Home", "mantel-rust": "Mantel in Rust",
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "hearth-retro-app": "Hearth Retro", "hearth-retro-to-steam-app": "Retro to Steam", "hearth-studio-app": "Hearth Studio", "hearth-beat-maker-app": "Hearth Beat Maker", "hearth-3d": "Hearth 3D", "hearth-bottles": "Hearth Bottles", "hearth-overlay": "Hearth Overlay", "hearth-proton-manager": "Proton Manager", "hearth-game-fixer": "Hearth Game Fixer", "hearth-lights-app": "Hearth Lights", "hearth-remap-app": "Hearth Remap", "hearth-mouse-app": "Hearth Mouse", "hearth-shield-app": "Hearth Shield", "hearth-listen-app": "Hearth Listen", "hearth-imagine-app": "Hearth Imagine", "hearth-passwords-app": "Hearth Passwords", "hearth-cloud-app": "Hearth Cloud", "hearth-home-app": "Hearth Home", "hearth-home-server-app": "Home server helper (the window)", "mantel-rust": "Mantel in Rust",
               "hearth-layout": "Desktop layouts", "hearth-game-mode": "Game Mode host", "hearth-home-server-helper": "Home server helper",
               "hearth-storage-helper": "Hearth Storage helper", "hearth-ai-share-helper": "AI sharing helper",
               "hearth-controller-lab": "Controller Lab", "hearth-saves": "Saves", "hearth-mods": "Mods", "hearth-gamestore": "Hearth Games",

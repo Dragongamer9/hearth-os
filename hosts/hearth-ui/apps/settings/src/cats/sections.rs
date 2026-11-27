@@ -293,7 +293,7 @@ const SECS: &[Sec] = &[
     Sec {
         id: "hs",
         title: "Home server",
-        line: "This PC serving your home: files, media, AI and backups",
+        line: "This PC serving your home: AI, games, backups, media and more · every part is its own Hearth Store app",
         cols: 3,
         cards: &[
             ("Services", &[
@@ -418,6 +418,9 @@ pub struct State {
     pub of: String,
     pub later: bool,
     pub msg: String,
+    /// Settings › Home server's board (hs_board.rs): every part's summary and its state in the Store
+    pub srv: hearth_server_parts::home::HomeData,
+    pub srv_notes: String,
 }
 
 #[derive(Debug, Clone)]
@@ -434,6 +437,10 @@ pub enum Msg {
     Saved(run::Output),
     TextSize(f32),
     TextSizeDone,
+    /// Settings › Home server (hs_board.rs): the parts read, a button, a command done
+    Srv(Box<hearth_server_parts::home::HomeData>),
+    SrvAct(hearth_server_parts::home::HAct),
+    SrvDone(run::Output),
 }
 
 impl From<hearth_ui::describe::DMsg> for Msg {
@@ -458,6 +465,9 @@ pub fn open(_sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     }
     st.of = sec.to_string();
     st.msg.clear();
+    if sec == "hs" {
+        return Task::batch([load(sec), super::hs_board::load()]);
+    }
     load(sec)
 }
 
@@ -504,6 +514,12 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         }
         Msg::Saved(o) => {
             st.msg = if o.ok { String::new() } else { o.why() };
+        }
+        Msg::Srv(d) => st.srv = *d,
+        Msg::SrvAct(x) => return super::hs_board::act(sh, st, x),
+        Msg::SrvDone(o) => {
+            st.msg = hearth_server_parts::engine::problem(&o);
+            return super::hs_board::load();
         }
     }
     Task::none()
@@ -762,6 +778,10 @@ const ACCENTS: &[(&str, (f32, f32, f32))] = &[
 
 pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     let sec = sec_of(page)?;
+    // Home server's front page is the Server side's home (board 11, hs_board.rs)
+    if sec.id == "hs" {
+        return Some(super::hs_board::view(a));
+    }
     let p = a.sh.p;
     let st = &a.sections;
     let v = &st.vals;

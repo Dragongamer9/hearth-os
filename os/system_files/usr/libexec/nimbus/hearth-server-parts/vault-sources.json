@@ -1,0 +1,15 @@
+{
+  "_comment": "The Model vault's own lists beside Hearth OS's /usr/share/hearth/ai-models.json (Colibri's catalog and the Uncensored group) and the apps' own lists: Hearth Forge's 3D models, Listen's voices (whisper.cpp, its own models list), Kokoro's voice model and Ollama's small model. It updates with the Home server helper's Store part. giants: the five giant text models the middle set leaves out (the owner's board, Nov 26). Licences are each model card's own line as of Nov 26, 2026; the vault checks them again every week.",
+  "giants": ["kimi-k3", "mimo-v2.6-pro", "inkling", "glm-5.3", "deepseek-v4-flash"],
+  "prices": {"standard": 0.015, "infrequent": 0.01, "retrieval": 0.01, "freeGb": 10, "minDays": 30},
+  "models": [
+    {"id": "hunyuan3d-2", "name": "Hunyuan3D 2.0", "app": "Hearth Forge", "repo": "tencent/Hunyuan3D-2", "licence": "Hunyuan", "gb": 18.2},
+    {"id": "trellis-large", "name": "TRELLIS large", "app": "Hearth Forge", "repo": "microsoft/TRELLIS-image-large", "licence": "MIT", "gb": 11.4},
+    {"id": "triposr", "name": "TripoSR", "app": "Hearth Forge", "repo": "stabilityai/TripoSR", "licence": "MIT", "gb": 1.7},
+    {"id": "listen-whisper", "name": "Listen voices · whisper large-v3 and 5 more", "app": "Listen", "repo": "ggerganov/whisper.cpp", "licence": "MIT", "gb": 8.0,
+     "files": ["ggml-large-v3-turbo.bin", "ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3.bin", "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin", "ggml-small.en-tdrz.bin"]},
+    {"id": "kokoro-82m", "name": "Kokoro 82M", "app": "Kokoro voices", "repo": "hexgrad/Kokoro-82M", "licence": "Apache-2.0", "gb": 0.3, "version": "v1.0"},
+    {"id": "ollama-qwen3-14b", "name": "Ollama's small model · Qwen3 14B", "app": "Ollama", "ollama": "qwen3:14b", "licence": "Apache-2.0", "gb": 9.0}
+  ],
+  "forgeLists": ["~/.local/share/hearth/forge/models.json", "~/.config/hearth-forge/models.json"]
+}

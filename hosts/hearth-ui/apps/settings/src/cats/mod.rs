@@ -26,6 +26,7 @@ pub mod gaming;
 pub mod home;
 pub mod kde;
 pub mod hs;
+pub mod hs_board;
 pub mod link;
 pub mod net;
 pub mod pers;

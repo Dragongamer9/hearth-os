@@ -1,0 +1,22 @@
+# The Server side of Hearth OS, shared by the Home server helper (apps/home-server) and Settings › Home server
+# (docs/HOME-SERVER-PARTS.md; the approved boards docs/mockups/server-expansion): the list of the server's parts (one
+# line each), running their engines (the Home server helper's Store system part), each part's state in the Hearth
+# Store, and the Server home board (Settings › Home server's tiles, Updates for the server, your devices). No version
+# line: the owner picks every version number.
+[package]
+name = "hearth-server-parts"
+edition = "2021"
+description = "The Server side's parts, shared by the Home server helper and Settings"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "hearth_server_parts"
+path = "src/lib.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
+iced = { workspace = true, features = ["canvas"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
