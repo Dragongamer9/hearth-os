@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 53,
+  "serial": 54,
   "apps": [
     {
       "id": "command-center",
@@ -213,17 +213,16 @@
       "partId": "mantel",
       "part": {
         "id": "mantel",
-        "version": "1.18.2",
+        "version": "1.18.3",
         "os": "1.18",
         "path": "shell",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.2/mantel-1.18.2.tar.gz",
-        "sha256": "c320aa9af7d77047107caa3779df9f8c08a861726bb57890c7d7a65b471c1de8",
-        "size": 10645812,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.3/mantel-1.18.3.tar.gz",
+        "sha256": "7eb5e05515aa3e2a8250f3456b23e5bccd5fd8d7de19bc79cee620c409ef720e",
+        "size": 10651852,
         "notes": [
-          "Edit desktop: drag any block onto any bar, panel or the desktop; panels anywhere on the screen",
-          "Customize any block: its look, what it shows and does, when and how it appears",
-          "Every Mantel app (Files, Settings, Task Manager, Capture and more) editable the same way",
-          "Describe it: answers in a slightly different shape are read, and its window isn't full screen"
+          "Files a move put aside: a notice after you sign in offers Bring back, Keep or Delete now; nothing is put back or deleted by itself",
+          "Bring back puts back only what's missing and never replaces anything",
+          "Fixes: the AI section is in Settings' System tab in the controller look"
         ]
       },
       "group": "desktop"
