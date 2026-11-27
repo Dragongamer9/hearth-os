@@ -56,11 +56,16 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
    the Hearth OS version it's for and N counts that app's updates on it (Mantel's next on 1.17 is 1.17.4); a new Hearth
    OS version starts N at 1 again (after 1.18, Mantel's next is 1.18.1). Each still needs the owner's go-ahead.
 
-14. **RED FLAG: Store updates first, Hearth OS releases last** (the owner, Nov 24, 2026: "try our best not to push a
-   Major Release, Try our best to push updates thru the Hearth Store"). Build every change so it can ship as a Hearth
-   Store update of the app or part it lives in (Mantel, an app, a helper, a service); a Hearth OS release only for what
-   truly lives in the image (booting, the base system, the Store itself), and then batched. Say which way each change
-   ships before building it.
+14. **RED FLAG: NO more major updates: everything goes through the Hearth Store** (the owner, Nov 26, 2026: "The goal
+   is NO more Major updates, Everything goes thru the store and if somthing needs a PC restart it will tell the user";
+   before that, Nov 24: "try our best not to push a Major Release"). Build every change so it ships as a Hearth Store
+   update of the app or part it lives in (Mantel, an app, a helper, a service, gamescope, the session, the login
+   screen). Hearth OS on Debian is writable ("Debian system files are unlocked"): a part that needs a system package,
+   root service, device rule or firewall rule installs it itself through hearth-admin with the admin password once
+   (hearth-unlock keeps it across updates). Every part keeps a built-in copy it falls back to (red flag 2). When an
+   update needs a restart (or signing out), the Store says so before and after installing and never restarts by
+   itself. Say how each change ships before building it; anything that seems to need a Hearth OS release goes to the
+   owner first.
 
 ## Branches and releasing
 
