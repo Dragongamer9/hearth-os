@@ -5,7 +5,9 @@ import pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 # helpers that are part of another app's quick update, not apps of their own
-NOT_APPS = {"hearth-g15"}
+# (hearth-server-more-app only shows the Home server helper's five more pages on their own for CI's pictures; the pages
+# themselves are built into hearth-home-server-app and update with it; it never goes into Hearth OS.)
+NOT_APPS = {"hearth-g15", "hearth-server-more-app"}
 
 
 class StoreParts(unittest.TestCase):

@@ -11,7 +11,7 @@ store"), never as a Hearth OS update; anything needing system pieces installs it
 ## Every part of the board
 - [x] The window: the HS mark, "Home server helper", the page after it, the tags on the right, the window buttons — hosts/hearth-ui/apps/home-server/src/main.rs: "hearth_oss::w::mark(\"HS\", \"or\", 22.0), \"Home server helper\""
 - [x] Sidebar: "Search the server" (it filters the rows) — hosts/hearth-ui/apps/home-server/src/main.rs: "\"Search the server\""
-- [x] Sidebar: HOME SERVER, then Server home and every part from one list (one line each), the open one lit, each with its count — hosts/hearth-ui/apps/home-server/src/main.rs: "items.push((pt.id, pt.name, home::count(&a.home, pt.id)));"
+- [x] Sidebar: HOME SERVER, then Server home and every part from one list (one line each), the open one lit, each with its count — hosts/hearth-ui/apps/home-server/src/main.rs: "home::count(&a.home, pt.id)"
 - [x] Sidebar counts: Dashboard "12 ok", Model vault "1.25 TB", Backups "4 devices" — os/system_files/usr/libexec/nimbus/hearth-server-parts/dash.py: "'count': '%d ok' % s['healthy']"
 - [ ] Sidebar rows for Game servers, Game cache, Remote play, Media and PCs (feature/server-2 adds their lines to hearth_server_parts::parts)
 - [x] THIS SERVER: the dot, "Nvidia PC · RTX 5070 12 GB", "Hearth OS · up 9 days", "Reached over Tailscale only" — os/system_files/usr/libexec/nimbus/hearth-server-parts/dash.py: "'Reached over Tailscale only' if ts else 'At home only'"
