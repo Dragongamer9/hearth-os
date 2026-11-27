@@ -212,7 +212,7 @@ var PAGES = [
 // them. Each tab holds whole categories, so every page is in one tab: Quick is its own page.
 var TABS = [
     { id: "quick", label: "Quick", cats: [] },
-    { id: "system", label: "System", cats: ["system", "home", "apps", "updates", "a11y"] },
+    { id: "system", label: "System", cats: ["system", "home", "apps", "ai", "updates", "a11y"] },
     { id: "network", label: "Network", cats: ["net"] },
     { id: "devices", label: "Devices", cats: ["bt", "link"] },
     { id: "gaming", label: "Gaming", cats: ["gaming"] },
