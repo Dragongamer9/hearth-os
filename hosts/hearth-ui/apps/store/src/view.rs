@@ -1461,7 +1461,7 @@ fn uninstall_dialog(a: &App) -> E<'_, Msg> {
         .style(look::bx(Pal::mix(tn.card, tn.text, 0.02), 9.0, None));
     let keep_row = ring(d.focus == 0, 9.0, click(keep_row, Some(Msg::DlgKeep)));
     let facts = column![
-        kv(&p, "The app", format!("{} {} · AppImage in your home folder · {}", e.name, i.version, mb(i.size, false)), None, false),
+        kv(&p, "The app", if e.kind == Kind::Store { format!("{} {} · {}", e.name, a.parts.get(&e.id).map(|h| h.version.clone()).unwrap_or_default(), installs_as(e)) } else { format!("{} {} · AppImage in your home folder · {}", e.name, i.version, mb(i.size, false)) }, None, false),
         kv(&p, "Its menu entry and icon", "Yes", None, false),
         kv(&p, "Settings and data", if d.keep { "Kept (turn the switch off to move them to the Trash)" } else { "Moved to the Trash (not deleted)" }, None, false),
     ];

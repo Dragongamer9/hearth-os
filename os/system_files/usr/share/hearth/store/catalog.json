@@ -592,7 +592,7 @@
       "builtOn": "RetroDECK and EmuDeck",
       "licence": "GPL-3",
       "tagline": "Your emulator games as shelves, set up in one go",
-      "about": "Your emulator games as shelves in Game Mode, every emulator installed and set the same way, the BIOS check and your controllers. Built on RetroDECK and EmuDeck (GPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Your emulator games as shelves in Game Mode, every emulator installed and set the same way, the BIOS check and your controllers. Built on RetroDECK and EmuDeck (GPL-3). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "retro-to-steam",
@@ -610,7 +610,7 @@
       "builtOn": "Steam ROM Manager",
       "licence": "GPL-3",
       "tagline": "Your emulator games in the Steam library, with art",
-      "about": "Hearth Retro's games added to Steam as non-Steam games, each with its art from community art sites, starting in the emulator Hearth Retro set up. Steam's own files only, with Steam closed: never a sign-in. Built on Steam ROM Manager (GPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Hearth Retro's games added to Steam as non-Steam games, each with its art from community art sites, starting in the emulator Hearth Retro set up. Steam's own files only, with Steam closed: never a sign-in. Built on Steam ROM Manager (GPL-3). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "studio",
@@ -628,7 +628,7 @@
       "builtOn": "OBS Studio",
       "licence": "GPL-2",
       "tagline": "Scenes, going live, recording and the sound mixer",
-      "about": "Go live and record with OBS Studio: what viewers see, the stream's health, your scenes and what's in them, the sound mixer and how scenes switch, plus a 9:16 copy of each recording for phones. Built on OBS Studio (GPL-2). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Go live and record with OBS Studio: what viewers see, the stream's health, your scenes and what's in them, the sound mixer and how scenes switch, plus a 9:16 copy of each recording for phones. Built on OBS Studio (GPL-2). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "beat-maker",
@@ -646,7 +646,7 @@
       "builtOn": "LMMS",
       "licence": "GPL-2",
       "tagline": "Songs from patterns, a piano roll and instruments",
-      "about": "Make a song from patterns: the beat, the piano roll, instruments and sounds, played as you go, exported for Hearth's videos (with LMMS projects and its renderer). Built on LMMS (GPL-2). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Make a song from patterns: the beat, the piano roll, instruments and sounds, played as you go, exported for Hearth's videos (with LMMS projects and its renderer). Built on LMMS (GPL-2). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "controller-lab",
@@ -832,7 +832,7 @@
       "builtOn": "OpenRGB",
       "licence": "GPL-2",
       "tagline": "Every light in your PC, one place",
-      "about": "Every RGB device in your PC in one picture: one colour or effect for all, zones you paint by dragging, and profiles for games and night. Built on OpenRGB (GPL-2). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Every RGB device in your PC in one picture: one colour or effect for all, zones you paint by dragging, and profiles for games and night. Built on OpenRGB (GPL-2). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "remap",
@@ -850,7 +850,7 @@
       "builtOn": "Input Remapper",
       "licence": "GPL-3",
       "tagline": "Any key, mouse or controller button, your way",
-      "about": "Remap keys, mouse and controller buttons for each game and app, with macros you record or write, turned on by themselves when the game is in front. Built on Input Remapper (GPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Remap keys, mouse and controller buttons for each game and app, with macros you record or write, turned on by themselves when the game is in front. Built on Input Remapper (GPL-3). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "mouse",
@@ -868,7 +868,7 @@
       "builtOn": "libratbag and Piper",
       "licence": "MIT / GPL-2",
       "tagline": "Your gaming mouse's DPI, buttons and lights",
-      "about": "Your gaming mouse's DPI steps, buttons, report rate and lights, kept on the mouse itself, with a profile for each game. Built on libratbag (MIT) and Piper (GPL-2). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Your gaming mouse's DPI steps, buttons, report rate and lights, kept on the mouse itself, with a profile for each game. Built on libratbag (MIT) and Piper (GPL-2). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "shield",
@@ -886,7 +886,7 @@
       "builtOn": "AdGuard Home and Pi-hole",
       "licence": "GPL-3 / EUPL-1.2",
       "tagline": "Ads and trackers blocked for every device at home",
-      "about": "Ads and trackers blocked for every device on your network, the TV too: what each device asked for, block lists, always allow and always block, and family rules. Built on AdGuard Home (GPL-3) and Pi-hole (EUPL-1.2). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Ads and trackers blocked for every device on your network, the TV too: what each device asked for, block lists, always allow and always block, and family rules. Built on AdGuard Home (GPL-3) and Pi-hole (EUPL-1.2). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "listen",
@@ -904,7 +904,7 @@
       "builtOn": "whisper.cpp",
       "licence": "MIT",
       "tagline": "Speech to words, on your own PC",
-      "about": "Recordings made into words with their times and voices, live captions for anything playing, export to .txt, .srt and .vtt, and Send to Voice Studio. Nothing leaves your network. Built on whisper.cpp (MIT). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Recordings made into words with their times and voices, live captions for anything playing, export to .txt, .srt and .vtt, and Send to Voice Studio. Nothing leaves your network. Built on whisper.cpp (MIT). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "imagine",
@@ -922,7 +922,7 @@
       "builtOn": "ComfyUI",
       "licence": "GPL-3",
       "tagline": "Type it and your Nvidia PC makes the picture",
-      "about": "Say what you want and your Nvidia PC makes it: Type and make beside the node graph it runs, results, the queue and the models. Built on ComfyUI (GPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Say what you want and your Nvidia PC makes it: Type and make beside the node graph it runs, results, the queue and the models. Built on ComfyUI (GPL-3). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "passwords",
@@ -940,7 +940,7 @@
       "builtOn": "Vaultwarden and KeePassXC",
       "licence": "AGPL-3 / GPL-3",
       "tagline": "Your vault, kept on your own server",
-      "about": "Your passwords, 2-step codes and cards in a vault on your own server, locked copies on each device, the password maker and the security check. Built on Vaultwarden (AGPL-3) and KeePassXC (GPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Your passwords, 2-step codes and cards in a vault on your own server, locked copies on each device, the password maker and the security check. Built on Vaultwarden (AGPL-3) and KeePassXC (GPL-3). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "cloud",
@@ -958,7 +958,7 @@
       "builtOn": "Nextcloud",
       "licence": "AGPL-3",
       "tagline": "Your own cloud, on your Nvidia PC",
-      "about": "Your own cloud on your Nvidia PC: files, calendar and contacts on your phone and laptop, and links you share that end by themselves. Built on Nextcloud (AGPL-3). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Your own cloud on your Nvidia PC: files, calendar and contacts on your phone and laptop, and links you share that end by themselves. Built on Nextcloud (AGPL-3). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "home",
@@ -976,7 +976,7 @@
       "builtOn": "Home Assistant",
       "licence": "Apache-2.0",
       "tagline": "Your smart home on the big screen",
-      "about": "Your lights, thermostat, cameras, plugs, scenes and routines on one TV-friendly board, with a controller. Built on Home Assistant (Apache-2.0). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Your lights, thermostat, cameras, plugs, scenes and routines on one TV-friendly board, with a controller. Built on Home Assistant (Apache-2.0). Get it from the Hearth Store, which keeps it up to date."
     },
     {
       "id": "forge",
@@ -994,7 +994,7 @@
       "builtOn": "Hunyuan3D, TRELLIS, TripoSR and 19 more open models",
       "licence": "each model's own",
       "tagline": "Real 3D models from a photo or a few words",
-      "about": "Make real 3D models from a photo or a few words on your own Nvidia PC with 22 open models (Hunyuan3D, TRELLIS, TripoSR and more), or online with Tripo3D and your own key. Ready them for a game or for printing and send them to Hearth 3D, Godot, O3DE or Hearth CAD. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Make real 3D models from a photo or a few words on your own Nvidia PC with 22 open models (Hunyuan3D, TRELLIS, TripoSR and more), or online with Tripo3D and your own key. Ready them for a game or for printing and send them to Hearth 3D, Godot, O3DE or Hearth CAD. Get it from the Hearth Store, which keeps it up to date."
     }
   ],
   "system": {
