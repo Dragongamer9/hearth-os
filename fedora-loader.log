@@ -1,0 +1,9 @@
+Added 01_users.cfg
+Added 10_blscfg.cfg
+Added 14_menu_show_once.cfg
+Added 30_uefi-firmware.cfg
+Added 41_custom.cfg
+Installed: grub.cfg
+Installed: bootuuid.cfg
+Installed: "fedora/grub.cfg"
+Installed: "fedora/bootuuid.cfg"
