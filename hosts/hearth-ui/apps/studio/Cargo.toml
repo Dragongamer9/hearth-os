@@ -20,3 +20,9 @@ iced = { workspace = true, features = ["image"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }
+# Twitch and YouTube at once (relay.rs): Hearth Studio's own RTMP relay, so the stream keys stay in its memory (never
+# on another program's command line), sent over RTMPS with rustls (ring, the web's certificate authorities).
+rml_rtmp = "0.8"
+bytes = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
