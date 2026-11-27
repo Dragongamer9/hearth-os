@@ -32,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     # A new branch starts with no cache (a branch only reads its own and main's): about 50 minutes to build, then the tests
-    timeout-minutes: 90
+    timeout-minutes: 120
     container: registry.fedoraproject.org/fedora:45
     steps:
       - name: Rust and the libraries iced uses
