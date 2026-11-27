@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 44,
+  "serial": 45,
   "apps": [
     {
       "id": "command-center",
@@ -297,15 +297,16 @@
       "open": "hearth-task-manager",
       "part": {
         "id": "hearth-task-manager",
-        "version": "1.18.1",
+        "version": "1.18.2",
         "os": "1.18",
         "path": "hearth-task-manager",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-task-manager-1.18.1/hearth-task-manager-1.18.1.tar.gz",
-        "sha256": "49fd69185c1c3685ed1b2fbf6331d1a4eeced4970bc32352bae8ea5a5d2418ef",
-        "size": 7344963,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-task-manager-1.18.2/hearth-task-manager-1.18.2.tar.gz",
+        "sha256": "89de7edc937902d29e96e5a5671674df2b9b2a6fba81acd7588c0fb6da7e0db8",
+        "size": 7638995,
         "notes": [
-          "Edit layout: move, resize or hide any part of the app, right on it",
-          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+          "Drag and drop: move, size and customize any part of the app, right on it (Customize: look, what it shows, what it does)",
+          "Your own blocks: buttons that run anything, counts, words",
+          "Nothing is kept until Keep this; Cancel and Esc change nothing"
         ]
       }
     },
