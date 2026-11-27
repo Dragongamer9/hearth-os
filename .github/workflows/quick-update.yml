@@ -229,7 +229,7 @@ jobs:
           # Store's public list and hearthos.fun/store). Their part goes into the store branch's private.json, which
           # nothing publishes; the owner's own devices read the entry from ~/.config/nimbus/store-private.json
           # (docs/HEARTH-STORE.md, The private list), where its "part" is copied from here.
-          private_apps = ("hearth-forge-app",)
+          private_apps = ()  # Hearth Forge went public (the owner, Nov 26: "push it to the public")
           if app in private_apps:
               pp = "private.json"
               try:

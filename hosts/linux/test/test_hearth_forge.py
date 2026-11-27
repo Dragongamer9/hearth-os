@@ -960,19 +960,22 @@ class MakeFlow(unittest.TestCase):
         self.assertIn("start_new_session=True", HELPER.read_text(), 'Stop ends the model and everything it started')
 
 
-class Private(unittest.TestCase):
-    def test_never_in_the_public_list(self):
-        cat = (ROOT / 'os/system_files/usr/share/hearth/store/catalog.json').read_text().lower()
-        self.assertNotIn('forge', cat)
+class Public(unittest.TestCase):
+    """It started private and went public (the owner, Nov 26: "push it to the public")."""
+    def test_in_the_public_list(self):
+        cat = json.loads((ROOT / 'os/system_files/usr/share/hearth/store/catalog.json').read_text())
+        f = [a for a in cat['apps'] if a['id'] == 'forge']
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]['partId'], 'hearth-forge-app')
 
-    def test_its_store_updates_go_to_the_private_list(self):
+    def test_its_store_updates_go_to_the_public_list(self):
         q = (ROOT / '.github/workflows/quick-update.yml').read_text()
         self.assertIn('hearth-forge-app,', q)
-        self.assertIn('private_apps = ("hearth-forge-app",)', q)
+        self.assertNotIn('private_apps = ("hearth-forge-app",)', q)
 
-    def test_hidden_in_everyones_menu(self):
+    def test_shown_in_everyones_menu(self):
         d = (ROOT / 'os/system_files/usr/share/applications/hearth-forge.desktop').read_text()
-        self.assertIn('NoDisplay=true', d)
+        self.assertNotIn('NoDisplay=true', d)
 
 
 if __name__ == '__main__':

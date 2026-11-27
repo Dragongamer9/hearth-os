@@ -1,7 +1,7 @@
 //! hearth-forge-app: Hearth Forge (docs/mockups/checklists/hearth-forge.md; the approved boards
 //! docs/mockups/hearth-forge/01-make.png and 02-models.png). Real 3D models from a photo or a few words, made on the
 //! owner's Nvidia PC (RTX 5070, 12 GB) by the open models (Hunyuan3D, TRELLIS, TripoSR and the others, each under its
-//! own licence), or online by Tripo3D with his own key. Private: only on his own devices (the Store's private list,
+//! own licence), or online by Tripo3D with his own key. Public in the Hearth Store (the owner, Nov 26: "push it to the public"; it was private at first,
 //! never its public one).
 //!
 //! The making happens in Hearth Forge's own service on the Nvidia PC (helper/hearth-forge.py, built in, run as you by
@@ -183,7 +183,6 @@ impl App {
         };
         a.made = forge::local_made();
         let _ = forge::helper();
-        menu_entry();
         let t = Task::batch([ping(&a.base), local_status(), a.balance()]);
         (a, t)
     }
@@ -292,24 +291,6 @@ impl App {
     }
     pub fn thumb(&self, id: &str) -> Option<&iced::widget::image::Handle> {
         self.img(id, "photo-cut.png").or_else(|| self.img(id, "photo.png"))
-    }
-}
-
-/// Private (hidden in everyone's menu): the first time it opens on a device, it puts its own entry in this person's
-/// menu, so the owner finds it there after opening it from the Store's private list. Written once, never changed.
-fn menu_entry() {
-    let Some(dir) = forge::data().parent().and_then(|p| p.parent()).map(|p| p.join("applications")) else { return };
-    let f = dir.join("hearth-forge.desktop");
-    if f.exists() {
-        return;
-    }
-    let exe = if std::path::Path::new("/usr/bin/hearth-forge-app").is_file() { "/usr/bin/hearth-forge-app".to_string() } else { std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "hearth-forge-app".into()) };
-    let text = format!("[Desktop Entry]\nType=Application\nName=Hearth Forge\nGenericName=3D models from a photo or words\nComment=Real 3D models from a photo or a few words, on your own Nvidia PC\nExec={exe}\nIcon=hearth-forge\nCategories=Graphics;3DGraphics;\nStartupWMClass=hearth-forge\n");
-    if std::fs::create_dir_all(&dir).is_ok() {
-        let tmp = dir.join(".hearth-forge.desktop.tmp");
-        if std::fs::write(&tmp, text).is_ok() {
-            let _ = std::fs::rename(&tmp, &f);
-        }
     }
 }
 
@@ -1280,7 +1261,7 @@ fn view(a: &App) -> Element<'_, Msg> {
             ("make", hearth_ui::studio::made(&a.describe, "window", "make", || make_side(a))),
             ("view", hearth_ui::studio::made(&a.describe, "window", "view", || container(view_middle(a)).padding(Padding { top: 16.0, right: 18.0, bottom: 16.0, left: 18.0 }).width(Length::Fill).height(Length::Fill).into())),
             ("send", hearth_ui::studio::made(&a.describe, "window", "send", || send_side(a))),
-            ("credit", credit_line(&p, "Built on Hunyuan3D, TRELLIS, TripoSR and the other open models (each model's own licence)", " · private, not in the public Store")),
+            ("credit", credit_line(&p, "Built on Hunyuan3D, TRELLIS, TripoSR and the other open models (each model's own licence)", " · in the Hearth Store")),
         ];
         for (id, which) in [("pane:waiting", "waiting"), ("pane:lately", "lately")] {
             if a.describe.wants_pane(which) {
@@ -1311,7 +1292,7 @@ fn view(a: &App) -> Element<'_, Msg> {
         Some(false) => w::tag(&p, "Nvidia PC not reachable", Tg::Warn),
         None => w::tag(&p, "Looking for the Nvidia PC…", Tg::Dk),
     };
-    let middle: Element<'_, Msg> = container(row![t(sub, 14.0, p.muted), Space::new().width(Length::Fill), w::tag(&p, "Private · only your devices", Tg::Dk), gpu_tag].spacing(8.0).align_y(iced::Center)).width(Length::FillPortion(30)).into();
+    let middle: Element<'_, Msg> = container(row![t(sub, 14.0, p.muted), Space::new().width(Length::Fill), gpu_tag].spacing(8.0).align_y(iced::Center)).width(Length::FillPortion(30)).into();
     let bar = hearth_ui::describe::title_bar_with(&p, &a.describe, w::mark("HF", "or", 22.0), "Hearth Forge", Some(middle), TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
     let all = container(column![bar, ui::hline(p.line), base]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, p.window_corner, Some((p.line, 1.0))));
     ui::edges(all.into(), Msg::Resize)

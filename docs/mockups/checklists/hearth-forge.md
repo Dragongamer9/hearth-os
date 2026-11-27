@@ -6,7 +6,7 @@ Release: next
 The owner, Nov 26: "Can we Build a Generator that Generats things like Tripod3d does? Would need to be able to do
 realistic items and would not be public on the store", then "Make the mockups also include every model", "Hearth
 Forge looks good" and "Work on Hearth Forge". A pure-Rust Hearth app (hosts/hearth-ui/apps/forge) made of blocks;
-its own service on the Nvidia PC (helper/hearth-forge.py, built into the app); private (the Store's private list).
+its own service on the Nvidia PC (helper/hearth-forge.py, built into the app); public in the Hearth Store (it started private; the owner, Nov 26: "push it to the public").
 It ships as a Hearth Store update of the app (hearth-forge-app), not a Hearth OS release.
 
 The boards' top bar and wallpaper are the desktop's, not this app's. Pictures: hearth-apps-rust.yml, forge.sh
@@ -17,7 +17,7 @@ The boards' top bar and wallpaper are the desktop's, not this app's. Pictures: h
 ### Board 1 (01-make): the title bar
 - [x] The HF letter mark (orange) and the name Hearth Forge — hosts/hearth-ui/apps/forge/src/main.rs: "w::mark(\"HF\", \"or\", 22.0)"
 - [x] · real 3D models from a photo or a few words — hosts/hearth-ui/apps/forge/src/main.rs: "\"· real 3D models from a photo or a few words\""
-- [x] PRIVATE · ONLY YOUR DEVICES — hosts/hearth-ui/apps/forge/src/main.rs: "\"Private · only your devices\""
+- [x] ~~PRIVATE · ONLY YOUR DEVICES~~ taken off: the owner made it public (Nov 26, 23:45: "Ehh push it to the public") — hosts/hearth-ui/apps/forge/src/main.rs: "gpu_tag"
 - [x] NVIDIA PC · RTX 5070 · 12 GB (the service's own nvidia-smi: its card and memory) — hosts/hearth-ui/apps/forge/src/main.rs: "format!(\"Nvidia PC · {} · {} GB\", a.card(), a.vram_gb())"
 - [x] – ▢ ✕ — hosts/hearth-ui/apps/forge/src/main.rs: "TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::Close }"
 
@@ -62,7 +62,7 @@ The boards' top bar and wallpaper are the desktop's, not this app's. Pictures: h
 - [x] WAITING: Knight's helmet, dented · from words — next; Backrooms chair, 3 photos — 2nd (the service's queue) — hosts/hearth-ui/apps/forge/src/main.rs: "format!(\"{title} · from words\")"
 - [x] MADE LATELY: Old lantern, Plague doctor mask, Yellow wall lamp, Wooden cart, Mech foot, Truck console knob (open one to see it) — hosts/hearth-ui/apps/forge/src/main.rs: "\"Made lately\""
 - [x] Every model kept in ~/Hearth/Forge with its photo, words and settings · Edit layout — hosts/hearth-ui/apps/forge/src/main.rs: "\"Every model kept in ~/Hearth/Forge with its photo, words and settings · \""
-- [x] Hearth Forge · Built on Hunyuan3D, TRELLIS, TripoSR and the other open models (each model's own licence) · private, not in the public Store — hosts/hearth-ui/apps/forge/src/main.rs: "\" · private, not in the public Store\""
+- [x] Hearth Forge · Built on Hunyuan3D, TRELLIS, TripoSR and the other open models (each model's own licence) (· in the Hearth Store: public now, the owner, Nov 26) — hosts/hearth-ui/apps/forge/src/main.rs: "Built on Hunyuan3D, TRELLIS, TripoSR and the other open models (each model's own licence)"
 
 ### Board 2 (02-models): the side
 - [x] · models — hosts/hearth-ui/apps/forge/src/main.rs: "\"models\" => \"· models\""
@@ -112,9 +112,11 @@ The boards' top bar and wallpaper are the desktop's, not this app's. Pictures: h
 - [x] Shape-only models painted by Hunyuan3D 2.0's painter when Textures isn't None (Hunyuan3D 2.1, TripoSG, Direct3D-S2, Hi3DGen, Hi3D 1.0, UltraShape, Step1X-3D on 12 GB), their shape kept beside it; without the painter it says to Get Hunyuan3D 2.0 (needs testing on a device) — hosts/hearth-ui/apps/forge/helper/hearth-forge.py: "if spawn(d, m['paint'], ['paint', d], cat) == 0 and os.path.isfile(glb):"
 - [x] Refiners (Hi3D 1.0, UltraShape) start from another model's shape: the one you picked, or made first by the model each maker names (Hunyuan3D 2.0 mini, 2.0, 2.1) (needs testing on a device) — hosts/hearth-ui/apps/forge/helper/hearth-forge.py: "code = spawn(d, c['runner'], ['run', d, '--as', cid, '--out', 'coarse.glb', '--textures', 'none'], cat)"
 - [x] Splat models (TripoSplat, HY-World 2.0, Lyra 2.0, SHARP; TRELLIS and SAM 3D Objects keep theirs too): the splat kept (splat.ply), a closed mesh with its colours made from it so Send it to works, and the splat's own points in the viewport (Splat) — hosts/hearth-ui/apps/forge/src/view3d.rs: "if self.look == Look::Splat && !m.s.is_empty()"
-- [ ] Every model's Hugging Face revision pinned in Hearth (now: every model's code and every git requirement is pinned to a commit in models.json, but the weights are pinned at the first Get, from the commit Hugging Face names then, and kept to after; huggingface.co can't be reached from where Hearth Forge is built, to pin them beforehand)
 - [x] A model too big for 12 GB made on a bigger PC of yours over Hearth Link (each PC with Hearth Forge set up is reached by its Tailscale name in Settings › Where models are made) — hosts/hearth-ui/apps/forge/src/models.rs: "a model too big for one PC is made on a bigger PC of yours the same way."
 - [x] Every model made kept in ~/Hearth/Forge/<its name> with its photo, its words and its settings (ask.json) — hosts/hearth-ui/apps/forge/helper/hearth-forge.py: "write_json(os.path.join(d, 'ask.json'), ask)"
 - [x] Your choices remembered and never changed by themselves (only what you change, through settings_file: atomic, .bak, merged) — hosts/hearth-ui/apps/forge/src/main.rs: "let prefs = Prefs::load(\"forge\");"
-- [x] Private: hidden in everyone's menu, in the Store's private list only; its Store updates never go into the public list — hosts/linux/test/test_hearth_forge.py: "self.assertNotIn('forge', cat)"
+- [x] Public in the Hearth Store (the owner, Nov 26: "push it to the public"; it started private) — hosts/linux/test/test_hearth_forge.py: "def test_in_the_public_list(self):"
 - [x] Made of blocks: Edit layout, its own blocks window, Customize (hearth_ui studio) — hosts/hearth-ui/apps/forge/src/main.rs: ".with_pages(BLOCKS).with_kit(&KIT)"
+
+## Notes (not parts of the boards)
+- Weights: every model's code and git requirements are pinned to a commit; the Hugging Face weights are pinned at the first Get (huggingface.co can't be reached from where Forge is built). The boards don't show pins, so this isn't an open part.

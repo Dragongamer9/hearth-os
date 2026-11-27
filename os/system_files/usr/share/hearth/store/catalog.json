@@ -959,6 +959,23 @@
       "licence": "Apache-2.0",
       "tagline": "Your smart home on the big screen",
       "about": "Your lights, thermostat, cameras, plugs, scenes and routines on one TV-friendly board, with a controller. Built on Home Assistant (Apache-2.0). It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+    },
+    {
+      "id": "forge",
+      "name": "Hearth Forge",
+      "short": "Forge",
+      "card": "Real 3D models from a photo or a few words",
+      "icon": "HF",
+      "from": "#ffb36b",
+      "to": "#ff6a1f",
+      "partId": "hearth-forge-app",
+      "open": "hearth-forge-app",
+      "group": "apps",
+      "kind": "builtin",
+      "builtOn": "Hunyuan3D, TRELLIS, TripoSR and 19 more open models",
+      "licence": "each model's own",
+      "tagline": "Real 3D models from a photo or a few words",
+      "about": "Make real 3D models from a photo or a few words on your own Nvidia PC with 22 open models (Hunyuan3D, TRELLIS, TripoSR and more), or online with Tripo3D and your own key. Ready them for a game or for printing and send them to Hearth 3D, Godot, O3DE or Hearth CAD. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
     }
   ],
   "system": {

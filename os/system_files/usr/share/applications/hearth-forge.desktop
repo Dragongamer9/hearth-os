@@ -9,7 +9,3 @@ Icon=hearth-forge
 Categories=Graphics;3DGraphics;
 Keywords=3d;model;mesh;generate;hunyuan3d;trellis;triposr;tripo;glb;stl;print;
 StartupWMClass=hearth-forge
-# Private (the owner: "would not be public on the store"): hidden in everyone's menu. It's opened from the Hearth
-# Store's private list on the owner's own devices; the first time it opens there it puts its own entry in that
-# person's menu (~/.local/share/applications/hearth-forge.desktop).
-NoDisplay=true
