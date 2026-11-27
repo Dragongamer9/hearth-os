@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 39,
+  "serial": 40,
   "apps": [
     {
       "id": "command-center",
@@ -211,17 +211,17 @@
       "partId": "mantel",
       "part": {
         "id": "mantel",
-        "version": "1.18.1",
+        "version": "1.18.2",
         "os": "1.18",
         "path": "shell",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.1/mantel-1.18.1.tar.gz",
-        "sha256": "71a26cd262de5b0038c26743c49fff9a22c9ebf8d414e152d0000265a41efcc7",
-        "size": 10511366,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.2/mantel-1.18.2.tar.gz",
+        "sha256": "c320aa9af7d77047107caa3779df9f8c08a861726bb57890c7d7a65b471c1de8",
+        "size": 10645812,
         "notes": [
-          "Hearth Files: Sort my Downloads, with one Undo that puts everything back",
-          "Files, Settings, Task Manager, Capture, Resource Monitor, Reliability and System Restore: Edit layout and Describe it",
-          "Edit layout: move, resize or hide any part of the app, right on it",
-          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+          "Edit desktop: drag any block onto any bar, panel or the desktop; panels anywhere on the screen",
+          "Customize any block: its look, what it shows and does, when and how it appears",
+          "Every Mantel app (Files, Settings, Task Manager, Capture and more) editable the same way",
+          "Describe it: answers in a slightly different shape are read, and its window isn't full screen"
         ]
       },
       "group": "desktop"
