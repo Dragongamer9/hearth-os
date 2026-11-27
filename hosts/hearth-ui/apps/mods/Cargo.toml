@@ -25,6 +25,8 @@ futures = { workspace = true }
 libc = { workspace = true }
 # LOOT's masterlist is used only when it's the pinned one (its SHA-256).
 sha2 = "0.10"
+# Make a patch with the winners reads compressed plugin records (zlib).
+flate2 = "1"
 
 [dev-dependencies]
 tempfile = "3"

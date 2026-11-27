@@ -472,7 +472,7 @@ impl Instance {
         let missing = plugin_list.iter().filter(|p| p.active && !p.missing.is_empty()).count();
         if missing > 0 { warnings.push(format!("{missing} active plugin{} need masters that are missing, off or load after them.", if missing == 1 { "" } else { "s" })); }
         json!({"ok": true, "instance": self.public(), "profiles": self.profiles_public(), "mods": mods, "plugins": plugin_list, "archives": archives,
-               "executables": self.executables(), "deployed": vfs::status(self), "warnings": warnings,
+               "executables": self.executables(), "deployed": vfs::status(self), "deployMode": if vfs::links_only(self) { "links" } else { "overlay" }, "warnings": warnings,
                "sort": {"loot": false, "note": "Sorting keeps your order and fixes what the game requires (masters first, every plugin after its masters). LOOT's masterlist isn't used yet."}})
     }
 
@@ -514,6 +514,13 @@ impl Instance {
     /// Installs a mod from an archive or folder (or a staged token): FOMOD installers and BAIN packages answer with
     /// what to choose first (`needs`), unless `choices` is given.
     pub fn install(&self, what: &str, name: Option<&str>, choices: Option<&Value>, enable: bool) -> Result<Value, String> {
+        self.install_as(what, name, choices, enable, "new")
+    }
+    /// install(), with what happens when a mod of that name is already in (`mode`): "new" installs it as a new
+    /// version beside the old one and turns the old one off; "replace" keeps the old one's folder as a version
+    /// (.hearth/versions/<mod>/, so you can go back to it) and puts the new one in its place; "merge" copies the new
+    /// files into the old one's folder (same place in the list). Nothing is deleted.
+    pub fn install_as(&self, what: &str, name: Option<&str>, choices: Option<&Value>, enable: bool, mode: &str) -> Result<Value, String> {
         let (token, fresh) = match self.staged(what.trim_start_matches("token:")) { Some(_) => (what.trim_start_matches("token:").to_string(), false), None => (self.stage(Path::new(what))?, true) };
         let _ = fresh;
         let (root, source) = self.staged(&token).ok_or("The unpacked mod isn't there anymore: choose it again.")?;
@@ -533,11 +540,11 @@ impl Instance {
             };
             let e = fomod::evaluate(&f, &fomod::choices_from(ch), &fs);
             if !e.errors.is_empty() { return Err(e.errors.join(" ")); }
-            let dest = self.new_mod_dir(&mod_name);
+            let (dest, was) = self.dest_for(&mod_name, mode)?;
             let (n, problems) = fomod::apply(&e.files, &froot, &dest);
             notes.extend(problems);
-            if n == 0 { let _ = std::fs::remove_dir_all(&dest); return Err(format!("Those choices install no files. {}", notes.join(" "))); }
-            return self.finish_install(&token, &dest, &src_name, enable, n, notes);
+            if n == 0 { if was.is_none() { let _ = std::fs::remove_dir_all(&dest); } return Err(format!("Those choices install no files. {}", notes.join(" "))); }
+            return self.finish_install_as(&token, &dest, &src_name, enable, n, notes, &mod_name, mode, was);
         }
         // BAIN
         if let Some(pk) = bain_packages(&root) {
@@ -548,7 +555,7 @@ impl Instance {
             let picked: Vec<String> = ch.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string).or_else(|| x.as_u64().and_then(|i| pk.get(i as usize).cloned()))).collect()).unwrap_or_default();
             let picked: Vec<&String> = pk.iter().filter(|p| picked.contains(p)).collect();
             if picked.is_empty() { return Err("Choose at least one part of the package.".into()); }
-            let dest = self.new_mod_dir(&mod_name);
+            let (dest, was) = self.dest_for(&mod_name, mode)?;
             let mut n = 0;
             for p in picked {
                 let from = root.join(p);
@@ -559,21 +566,89 @@ impl Instance {
                     if crate::mods::copy_file(&f, &vfs::ci_join(&dest, &r.to_string_lossy())).is_ok() { n += 1; }
                 }
             }
-            return self.finish_install(&token, &dest, &src_name, enable, n, notes);
+            return self.finish_install_as(&token, &dest, &src_name, enable, n, notes, &mod_name, mode, was);
         }
         // A plain archive: its Data folder.
         let (data, mut more) = data_root(&root, &self.kind);
         notes.append(&mut more);
         let mod_name = mo2::clean_name(&want_name.unwrap_or_else(|| stem.clone()));
-        let dest = self.new_mod_dir(&mod_name);
-        if std::fs::rename(&data, &dest).is_err() {
+        let (dest, was) = self.dest_for(&mod_name, mode)?;
+        let mut files = Vec::new();
+        util::files_under(&data, &mut files);
+        let n = files.len();
+        if n == 0 { self.cancel_stage(&token); return Err("That mod has no files in it.".into()); }
+        if mode == "merge" && dest.is_dir() {
+            crate::mods::copy_tree(&data, &dest).map_err(|e| format!("Couldn't merge the mod's files in ({e})"))?;
+        } else if std::fs::rename(&data, &dest).is_err() {
             crate::mods::copy_tree(&data, &dest).map_err(|e| format!("Couldn't keep the mod's files ({e})"))?;
         }
-        let mut files = Vec::new();
-        util::files_under(&dest, &mut files);
-        if files.is_empty() { let _ = std::fs::remove_dir_all(&dest); self.cancel_stage(&token); return Err("That mod has no files in it.".into()); }
-        let n = files.len();
-        self.finish_install(&token, &dest, &src_name, enable, n, notes)
+        self.finish_install_as(&token, &dest, &src_name, enable, n, notes, &mod_name, mode, was)
+    }
+    /// Where an install goes, and the mod that was already there (its name in the list).
+    fn dest_for(&self, name: &str, mode: &str) -> Result<(PathBuf, Option<String>), String> {
+        let old = self.mods_dir.join(name);
+        if !old.is_dir() || mode == "new" {
+            return Ok((self.new_mod_dir(name), old.is_dir().then(|| name.to_string())));
+        }
+        if mode == "replace" {
+            self.keep_version(name)?;
+        }
+        Ok((old, Some(name.to_string())))
+    }
+    pub fn versions_dir(&self, name: &str) -> PathBuf { self.hearth_dir().join("versions").join(mo2::clean_name(name)) }
+    /// Moves a mod's folder into .hearth/versions/<mod>/<its version> (kept, never deleted).
+    pub fn keep_version(&self, name: &str) -> Result<String, String> {
+        let dir = self.mods_dir.join(name);
+        let ver = Ini::read(&dir.join("meta.ini")).get("General", "version").filter(|v| !v.trim().is_empty()).unwrap_or_else(|| format!("kept {}", util::stamp()));
+        let mut to = self.versions_dir(name).join(mo2::clean_name(&ver));
+        let mut i = 2;
+        while to.exists() { to = self.versions_dir(name).join(format!("{} ({i})", mo2::clean_name(&ver))); i += 1; }
+        std::fs::create_dir_all(to.parent().unwrap_or(&self.mods_dir)).map_err(|e| e.to_string())?;
+        std::fs::rename(&dir, &to).map_err(|e| format!("Couldn't keep {name} {ver} as a version ({e})"))?;
+        let _ = std::fs::write(to.join(".hearth-kept"), util::now_ms().to_string());
+        Ok(to.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+    }
+    /// The versions kept for a mod (newest first): (folder, its version, when it was kept).
+    pub fn versions(&self, name: &str) -> Vec<(String, String, u64)> {
+        let mut v: Vec<(String, String, u64)> = std::fs::read_dir(self.versions_dir(name)).map(|rd| rd.flatten().filter(|e| e.path().is_dir()).map(|e| {
+            let ver = Ini::read(&e.path().join("meta.ini")).get("General", "version").unwrap_or_default();
+            let at = std::fs::read_to_string(e.path().join(".hearth-kept")).ok().and_then(|x| x.trim().parse().ok()).unwrap_or(0);
+            (e.file_name().to_string_lossy().to_string(), ver, at)
+        }).collect()).unwrap_or_default();
+        v.sort_by(|a, b| b.2.cmp(&a.2));
+        v
+    }
+    /// Goes back (or forward) to a kept version of one mod: the one in use now is kept as a version first.
+    pub fn use_version(&self, name: &str, folder: &str) -> Result<(), String> {
+        if folder.contains('/') || folder.contains("..") { return Err("That isn't a kept version.".into()); }
+        let from = self.versions_dir(name).join(folder);
+        if !from.is_dir() { return Err(format!("{name} has no kept version {folder}.")); }
+        if self.mods_dir.join(name).is_dir() { self.keep_version(name)?; }
+        std::fs::rename(&from, self.mods_dir.join(name)).map_err(|e| format!("Couldn't put {name} {folder} back ({e})"))?;
+        let _ = std::fs::remove_file(self.mods_dir.join(name).join(".hearth-kept"));
+        Ok(())
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn finish_install_as(&self, token: &str, dest: &Path, src_name: &str, enable: bool, files: usize, mut notes: Vec<String>, wanted: &str, mode: &str, was: Option<String>) -> Result<Value, String> {
+        let name = dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        if mode != "new" && was.as_deref() == Some(name.as_str()) {
+            // the same place in the list, its own state
+            let mut meta = Ini::read(&dest.join("meta.ini"));
+            meta.set("General", "installationFile", src_name);
+            meta.set_raw("General", "installedBy", "Hearth");
+            if meta.raw("General", "gameName").is_none() { meta.set("General", "gameName", if self.kind.is_generic() { &self.rec.title } else { self.kind.mo2_name() }); }
+            meta.write(&dest.join("meta.ini"))?;
+            let mut l = self.modlist();
+            if !l.iter().any(|m| m.name == name) { l.push(ModLine { name: name.clone(), state: if enable { '+' } else { '-' } }); self.save_modlist(&l)?; }
+            self.cancel_stage(token);
+            notes.push(if mode == "merge" { format!("The new files went into {name}; its place in the list stays.") } else { format!("{name} was replaced; the old one is kept (Updates & going back › go back one mod).") });
+            return Ok(json!({"ok": true, "installed": name, "files": files, "enabled": enable, "mode": mode, "notes": notes}));
+        }
+        let r = self.finish_install(token, dest, src_name, enable, files, notes)?;
+        if let Some(old) = was.filter(|o| *o != name && o == wanted) {
+            let _ = self.set_enabled(&old, false);
+        }
+        Ok(r)
     }
     fn new_mod_dir(&self, name: &str) -> PathBuf {
         let mut d = self.mods_dir.join(name);
@@ -870,7 +945,7 @@ pub fn command(ctx: &Ctx, args: &[String]) -> Result<Value, String> {
     let mut inst = ctx.open(first)?;
     let sub = pos.get(1).map(|s| s.as_str()).unwrap_or("summary");
     let arg = |i: usize, what: &str| pos.get(i).cloned().ok_or_else(|| format!("Say which {what}."));
-    let mutating = matches!(sub, "enable" | "disable" | "move" | "remove" | "hide" | "unhide" | "plugin-enable" | "plugin-disable" | "plugin-move" | "sort" | "profile" | "profile-create" | "profile-settings" | "install");
+    let mutating = matches!(sub, "enable" | "disable" | "move" | "remove" | "hide" | "unhide" | "plugin-enable" | "plugin-disable" | "plugin-move" | "sort" | "profile" | "profile-create" | "profile-settings" | "install" | "version-use");
     if mutating { inst.guard()?; }
     let mut extra = json!({});
     match sub {
@@ -913,7 +988,8 @@ pub fn command(ctx: &Ctx, args: &[String]) -> Result<Value, String> {
         "profile-settings" => inst.set_profile_settings(on_off(flag("--local-saves"))?, on_off(flag("--local-inis"))?)?,
         "install" => {
             let what = arg(2, "file, folder or token")?;
-            let r = inst.install(&what, flag("--name").as_deref(), json_arg(flag("--choices"))?.as_ref(), !util::has_arg(args, "--off"))?;
+            let mode = if util::has_arg(args, "--replace") { "replace" } else if util::has_arg(args, "--merge") { "merge" } else { "new" };
+            let r = inst.install_as(&what, flag("--name").as_deref(), json_arg(flag("--choices"))?.as_ref(), !util::has_arg(args, "--off"), mode)?;
             if r.get("needs").is_some() { return Ok(r); }
             extra = r;
         }
@@ -933,12 +1009,23 @@ pub fn command(ctx: &Ctx, args: &[String]) -> Result<Value, String> {
             return Ok(json!({"ok": true, "token": token, "evaluation": fomod::evaluate(&f, &ch, &fs)}));
         }
         "cancel" => { inst.cancel_stage(&arg(2, "token")?); return Ok(json!({"ok": true})); }
+        "versions" => {
+            let m = arg(2, "mod")?;
+            return Ok(json!({"ok": true, "mod": m, "versions": inst.versions(&m).into_iter().map(|(f, v, at)| json!({"folder": f, "version": v, "kept": at})).collect::<Vec<_>>()}));
+        }
+        "version-use" => inst.use_version(&arg(2, "mod")?, &arg(3, "version")?)?,
         "deploy" => {
             refuse_simple_list(ctx, &inst)?;
-            let a = vfs::deploy(&inst, 0, !util::has_arg(args, "--links"))?;
+            let a = vfs::deploy(&inst, 0, !util::has_arg(args, "--links") && !vfs::links_only(&inst))?;
             return Ok(json!({"ok": true, "deployed": vfs::status(&inst), "notes": a.notes}));
         }
         "undeploy" => return Ok(json!({"ok": true, "result": vfs::undeploy(&inst, false)?})),
+        "deploy-mode" => {
+            let m = arg(2, "mode (overlay or links)")?;
+            if m != "links" && m != "overlay" { return Err("Say overlay or links.".into()); }
+            vfs::set_mode(&inst, &m)?;
+            return Ok(json!({"ok": true, "mode": m, "notes": [if m == "links" { "The mods go in as links while the game runs (no layer)." } else { "The mods are a layer over the game while it runs (fuse-overlayfs; links when it isn't there)." }]}));
+        }
         "run" => {
             refuse_simple_list(ctx, &inst)?;
             let ex = inst.executable(flag("--exe").as_deref())?;

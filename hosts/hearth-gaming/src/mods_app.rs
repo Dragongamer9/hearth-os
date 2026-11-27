@@ -271,7 +271,7 @@ pub fn dispatch(name: &str, a: &Value) -> Result<Value, String> {
         "downloads_list" => { let mut v = downloads::list(); v["notices"] = json!(std::mem::take(&mut *NOTICES.lock().unwrap_or_else(|e| e.into_inner()))); Ok(v) }
         "status" => Ok(status()),
         "download_nxm" => downloads::add_nxm(&s(a, "link"), downloads::Want::default()).map(|i| i.public()),
-        "download_file" => downloads::add_file(&s(a, "domain"), u(a, "modId"), u(a, "fileId"), downloads::Want { game: s(a, "game"), ..Default::default() }).map(|i| i.public()),
+        "download_file" => downloads::add_file(&s(a, "domain"), u(a, "modId"), u(a, "fileId"), downloads::Want { game: s(a, "game"), dir: Some(s(a, "dir")).filter(|d| !d.is_empty()).map(PathBuf::from), ..Default::default() }).map(|i| i.public()),
         "download_pause" => { downloads::pause(&s(a, "id")); Ok(Value::Null) }
         "download_resume" => downloads::resume(&s(a, "id")).map(null),
         "download_remove" => { downloads::remove(&s(a, "id"), b(a, "deleteFile")); Ok(Value::Null) }

@@ -134,6 +134,15 @@ pub struct Detail {
     pub crashes: Vec<(PathBuf, logic::Crash, u64)>,
     pub saves: Vec<(PathBuf, logic::Save, u64)>,
     pub game_files: (usize, usize),
+    /// the script extender you have, and the mods that need a newer one
+    pub ext: (String, Vec<(String, String)>),
+    pub crash_logger: bool,
+    /// Proton's log (its name, its last lines)
+    pub proton: (String, String),
+    /// this device's fps from MangoHud's logs
+    pub measured: Value,
+    /// the versions kept per mod (Replace, Update): mod → [(folder, version)]
+    pub versions: Vec<(String, Vec<(String, String)>)>,
 }
 
 fn mtime(p: &Path) -> u64 {
@@ -239,6 +248,27 @@ pub fn load_detail(g: &Game) -> Detail {
         d.saves = saves;
         let dep = &d.s["deployed"];
         d.game_files = (dep["notes"].as_array().map(|a| a.len()).unwrap_or(0), 0);
+        let mods = d.s["mods"].as_array().cloned().unwrap_or_default();
+        let mods_dir = PathBuf::from(inst["modsDir"].as_str().unwrap_or(""));
+        d.ext = crate::more::extender_check(&inst, &mods, &mods_dir);
+        d.crash_logger = crate::more::has_crash_logger(&mods_dir, &mods);
+        d.proton = crate::more::proton_log(g.lib["steamApp"].as_u64().unwrap_or(0));
+        let exe = hearth_gaming::organizer::kinds::KINDS.iter().find(|k| k.id == kind).map(|k| k.exe).unwrap_or("");
+        d.measured = crate::sync::measured_here(exe, &d.saves);
+        if let Ok(rd) = std::fs::read_dir(dir.join(".hearth/versions")) {
+            for e in rd.flatten() {
+                let mut vs: Vec<(String, String, u64)> = std::fs::read_dir(e.path()).into_iter().flatten().flatten().filter(|x| x.path().is_dir()).map(|x| {
+                    let ini = std::fs::read_to_string(x.path().join("meta.ini")).unwrap_or_default();
+                    let v = ini.lines().find_map(|l| l.trim().strip_prefix("version=")).unwrap_or("").trim().to_string();
+                    let at = std::fs::read_to_string(x.path().join(".hearth-kept")).ok().and_then(|t| t.trim().parse().ok()).unwrap_or(0);
+                    (x.file_name().to_string_lossy().to_string(), v, at)
+                }).collect();
+                vs.sort_by(|a, b| b.2.cmp(&a.2));
+                if !vs.is_empty() {
+                    d.versions.push((e.file_name().to_string_lossy().to_string(), vs.into_iter().map(|x| (x.0, x.1)).collect()));
+                }
+            }
+        }
     } else if !g.key.is_empty() {
         d.s = mods_app::route("mods_of", &json!({"id": g.key})).unwrap_or_else(|e| json!({"error": e}));
     }

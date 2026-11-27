@@ -380,3 +380,42 @@ fn overlay_end_to_end() {
     assert_eq!(tree(&fx.game), game0, "the game folder was never changed");
     assert_eq!(read(&ctx.base().join("skyrimse/overwrite/SKSE/new.log")), "log");
 }
+
+#[test]
+fn replace_merge_and_one_mod_back() {
+    let fx = skyrim();
+    let ctx = &fx.ctx;
+    cmd(ctx, &["create", "steam:489830"]);
+    let z1 = fx.t.path().join("SkyUI.zip");
+    make_zip(&z1, &[("interface/skyui.swf", b"one"), ("interface/old.txt", b"old")]);
+    cmd(ctx, &["skyrimse", "install", z1.to_str().unwrap(), "--name", "SkyUI"]);
+    let inst = ctx.open("skyrimse").unwrap();
+    mo2::set_in_file(&inst.mods_dir.join("SkyUI/meta.ini"), "General", "version", "5.2").unwrap();
+    // Merge: new files go into the same folder, nothing else changes
+    let z2 = fx.t.path().join("SkyUI-extra.zip");
+    make_zip(&z2, &[("interface/extra.txt", b"extra")]);
+    let v = cmd(ctx, &["skyrimse", "install", z2.to_str().unwrap(), "--name", "SkyUI", "--merge"]);
+    assert_eq!(v["mode"], "merge");
+    assert_eq!(read(&inst.mods_dir.join("SkyUI/interface/old.txt")), "old");
+    assert_eq!(read(&inst.mods_dir.join("SkyUI/interface/extra.txt")), "extra");
+    // Replace: the old one is kept as a version
+    let z3 = fx.t.path().join("SkyUI-521.zip");
+    make_zip(&z3, &[("interface/skyui.swf", b"two")]);
+    cmd(ctx, &["skyrimse", "install", z3.to_str().unwrap(), "--name", "SkyUI", "--replace"]);
+    assert_eq!(read(&inst.mods_dir.join("SkyUI/interface/skyui.swf")), "two");
+    assert!(!inst.mods_dir.join("SkyUI/interface/old.txt").exists());
+    let vs = cmd(ctx, &["skyrimse", "versions", "SkyUI"]);
+    assert_eq!(vs["versions"][0]["version"], "5.2", "{vs}");
+    // Go back one mod only
+    let folder = vs["versions"][0]["folder"].as_str().unwrap().to_string();
+    cmd(ctx, &["skyrimse", "version-use", "SkyUI", &folder]);
+    assert_eq!(read(&inst.mods_dir.join("SkyUI/interface/skyui.swf")), "one");
+    assert_eq!(cmd(ctx, &["skyrimse", "versions", "SkyUI"])["versions"].as_array().unwrap().len(), 1, "the newer one is kept too");
+    // New version: the old one stays, off
+    let z4 = fx.t.path().join("SkyUI-6.zip");
+    make_zip(&z4, &[("interface/skyui.swf", b"six")]);
+    let v = cmd(ctx, &["skyrimse", "install", z4.to_str().unwrap(), "--name", "SkyUI"]);
+    assert_eq!(v["installed"], "SkyUI (2)");
+    let l = ctx.open("skyrimse").unwrap().modlist();
+    assert_eq!(l.iter().find(|m| m.name == "SkyUI").unwrap().state, '-');
+}

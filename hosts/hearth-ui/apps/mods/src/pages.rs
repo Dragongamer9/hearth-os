@@ -2,7 +2,7 @@
 //! (03), Updates and going back (04), Crashes (05), Describe it (06), the controller view (07) and Every game (08),
 //! with Modlists, Organizer instances, Accounts and Settings as Hearth Mods had them. Each card is a block.
 
-use crate::{back, logic, now, pad, sources, App, Msg, Page};
+use crate::{back, logic, more, now, pad, sources, App, Msg, Page};
 use hearth_oss_kit_a::{self as k, Ch, Sz, Tag, E};
 use hearth_ui::ui::{self, t, tb};
 use hearth_ui::Pal;
@@ -152,6 +152,12 @@ pub fn health(a: &App) -> (Vec<(Color, String, String, &'static str)>, usize, us
         let masters: Vec<String> = missing.iter().flat_map(|p| p["missing"].as_array().cloned().unwrap_or_default()).map(|x| s(&x)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
         v.push((k::RED, format!("{} plugin{} miss a master", missing.len(), if missing.len() == 1 { "" } else { "s" }), format!("{} need {}, which is off. Fix it turns it back on.", names.join(" and "), masters.join(", ")), "fix"));
     }
+    let (have, need) = &a.detail.ext;
+    if !need.is_empty() {
+        let (m, n2) = &need[0];
+        let more = if need.len() > 1 { format!(" (and {} more)", need.len() - 1) } else { String::new() };
+        v.push((k::YELLOW, format!("{} mod{} need{} a newer SKSE", need.len(), if need.len() == 1 { "" } else { "s" }, if need.len() == 1 { "s" } else { "" }), format!("{m} needs SKSE {n2}{more}; you have {have}. Hearth puts the new loader in the layer, not in the game folder."), "skse"));
+    }
     for w in logic::masterlist_warnings(&logic::plugins_of(&a.detail.s), &a.detail.rules).into_iter().take(2) {
         v.push((k::YELLOW, "LOOT's masterlist has a note".into(), w, ""));
     }
@@ -185,7 +191,7 @@ fn hero(a: &App) -> E<'static, Msg> {
     let total = mods.iter().filter(|m| m["kind"] == "mod").count();
     let on = mods.iter().filter(|m| m["kind"] == "mod" && m["enabled"] == true).count();
     let pl = a.plugins().len();
-    let ext = a.detail.s["executables"].as_array().and_then(|e| e.iter().find(|x| x["extender"] == true)).map(|x| s(&x["title"])).unwrap_or_default();
+    let ext = a.detail.s["executables"].as_array().and_then(|e| e.iter().find(|x| x["extender"] == true)).map(|x| if a.detail.ext.0.is_empty() { s(&x["title"]) } else { format!("{} {}", s(&x["title"]), a.detail.ext.0) }).unwrap_or_default();
     let since = a.detail.s["deployed"]["since"].as_i64().or(a.detail.s["deployedAt"].as_i64()).map(|t| format!(" · mods went in {}", hearth_ui::time::when(if t > 10_000_000_000 { t / 1000 } else { t }))).unwrap_or_default();
     let mut line = format!("{total} mods · {on} on");
     if pl > 0 {
@@ -401,6 +407,7 @@ fn health_card(a: &App) -> E<'static, Msg> {
         let btn: E<'static, Msg> = match act {
             "fix" => k::chip(&p, "Fix it", Ch::Acc, Sz::Sm, Some(Msg::FixMasters)),
             "show" => k::click(t("Show them", 11.0, p.accent), Some(Msg::ShowLosers)),
+            "skse" => k::chip(&p, "Update SKSE", Ch::Plain, Sz::Sm, Some(Msg::UpdateExt)),
             _ => none(),
         };
         let inner = column![row![k::dot(col, 8.0), tb(title, 12.0, p.text), k::fill(), btn].spacing(8.0).align_y(iced::Center), k::para(p.muted, words, 11.0)].spacing(4.0);
@@ -523,7 +530,8 @@ fn lens_card(a: &App) -> E<'static, Msg> {
     }
     let first_file = files.iter().find(|f| f["status"] == "wins").map(|f| s(&f["path"]));
     btns = btns.push(k::chip(&p, "Hide one file in this mod", Ch::Plain, Sz::Md, first_file.map(Msg::HideFile)));
-    c = c.push(btns).push(k::chip(&p, "Make a patch with the winners", Ch::Plain, Sz::Md, None)).push(k::mu(&p, "Hiding renames nothing in the game · undo any time", 11.0));
+    let can_patch = a.detail.organizer && a.inst()["plugins"] == true;
+    c = c.push(btns).push(k::chip(&p, "Make a patch with the winners", Ch::Plain, Sz::Md, can_patch.then_some(Msg::MakePatch))).push(k::mu(&p, "Hiding renames nothing in the game · undo any time", 11.0));
     if name.is_empty() {
         return k::card(&p, column![k::h2::<Msg>(&p, "Conflict lens"), k::mu(&p, "Pick a mod in the list: what it wins and loses, file by file.", 12.0)].spacing(8.0));
     }
@@ -548,7 +556,15 @@ fn folder_card(a: &App) -> E<'static, Msg> {
     let mode = dep["mode"].as_str().unwrap_or("overlay");
     let words = if mode == "overlay" || dep.is_null() { format!("While {g} runs the mods are a layer over its folder; when it closes the layer goes away. Steam's checks always pass.") } else { format!("{g}'s mods are linked in while it runs (no fuse-overlayfs here); every game file they replace is set aside and put back after.") };
     let ow = a.mods().iter().find(|m| m["kind"] == "overwrite").map(|m| n(&m["files"])).unwrap_or(0);
-    k::card_fit(&p, column![heading(&p, "The game folder", k::tag(&p, "Never touched", Tag::Ok)), k::para(p.muted, words, 11.0), kvl(&p, "Game files changed", "0", k::GREEN), kvl(&p, "Written by the game last time", format!("{ow} files → Overwrite"), p.muted)].spacing(6.0))
+    let modes: Vec<(String, bool, Msg)> = if a.detail.organizer {
+        let links = a.detail.s["deployMode"] == "links";
+        vec![("A layer".into(), !links, Msg::DeployMode("overlay")), ("Links".into(), links, Msg::DeployMode("links"))]
+    } else {
+        let m = a.detail.s["deploy"].as_str().unwrap_or("hardlink");
+        vec![("Links".into(), m == "hardlink", Msg::DeployMode("hardlink")), ("Copies".into(), m == "copy", Msg::DeployMode("copy")), ("A layer".into(), m == "overlay", Msg::DeployMode("overlay"))]
+    };
+    let modes = row![t("Mods go in as", 12.0, p.text), k::fill(), k::seg(&p, modes)].align_y(iced::Center);
+    k::card_fit(&p, column![heading(&p, "The game folder", k::tag(&p, "Never touched", Tag::Ok)), k::para(p.muted, words, 11.0), kvl(&p, "Game files changed", "0", k::GREEN), kvl(&p, "Written by the game last time", format!("{ow} files → Overwrite"), p.muted), modes].spacing(6.0))
 }
 
 fn game_page(a: &App) -> E<'_, Msg> {
@@ -608,7 +624,7 @@ fn install_page(a: &App) -> E<'_, Msg> {
     }
     wait = wait.push(k::mu(&p, "Your answers are kept: installing again asks only what's new.", 11.0));
     let server = match sources::home_server() {
-        Some(d) => box_note(&p, "Archives kept on your home server", format!("Each file is downloaded once into {}; the Ally and the laptop take it from there.", k::tilde(&d)), k::GREEN),
+        Some(d) => box_note(&p, "Archives kept on your home server", format!("Each file is downloaded once into {}; the Ally and the laptop take it from there (a file already there is never downloaded again).", k::tilde(&d)), k::GREEN),
         None => box_note(&p, "Archives kept on your home server", "Set up Hearth's home server (Settings › Home server) and every file is downloaded once; your other devices take it from there.", p.muted),
     };
     let wait = k::card(&p, column![wait, k::fill(), server].spacing(8.0));
@@ -698,7 +714,7 @@ fn installer(a: &App) -> E<'static, Msg> {
     let last = si + 1 >= steps.len();
     let nav = row![k::chip(&p, "‹ Back", Ch::Plain, Sz::Lg, (si > 0).then_some(Msg::FomodBack)), k::mu1::<Msg>(&p, "B back · A choose · RB next step", 11.0), k::fill(), k::chip(&p, "Cancel", Ch::Plain, Sz::Lg, Some(Msg::FomodCancel)), k::chip(&p, if last { "Install" } else { "Next ›" }, Ch::Acc, Sz::Lg, Some(Msg::FomodNext))].spacing(10.0).align_y(iced::Center);
     let info = &f["info"];
-    let head = container(column![row![k::tag::<Msg>(&p, "Installer (FOMOD) · done in Hearth", Tag::Dk), src_tag(&p, "nexus")].spacing(6.0), row![tb(format!("{} {}", s(&a.fomod["name"]), s(&info["version"])), 26.0, p.text), k::fill(), k::chip(&p, "Mod page", Ch::Plain, Sz::Md, (!s(&info["website"]).is_empty()).then(|| Msg::Open(s(&info["website"])))), k::chip(&p, "Read me", Ch::Plain, Sz::Md, None)].align_y(iced::Center).spacing(8.0), k::mu(&p, format!("by {} · {}", if s(&info["author"]).is_empty() { "its author".into() } else { s(&info["author"]) }, ui::fit(&s(&info["description"]), 70)), 11.0)].spacing(6.0))
+    let head = container(column![row![k::tag::<Msg>(&p, "Installer (FOMOD) · done in Hearth", Tag::Dk), src_tag(&p, "nexus")].spacing(6.0), row![tb(format!("{} {}", s(&a.fomod["name"]), s(&info["version"])), 26.0, p.text), k::fill(), k::chip(&p, "Mod page", Ch::Plain, Sz::Md, (!s(&info["website"]).is_empty()).then(|| Msg::Open(s(&info["website"])))), k::chip(&p, "Read me", Ch::Plain, Sz::Md, Some(Msg::ReadMe))].align_y(iced::Center).spacing(8.0), k::mu(&p, format!("by {} · {}", if s(&info["author"]).is_empty() { "its author".into() } else { s(&info["author"]) }, ui::fit(&s(&info["description"]), 70)), 11.0)].spacing(6.0))
         .padding(16.0)
         .width(Length::Fill)
         .style(ui::boxed(Pal::mix(p.panel, k::rgb("#c8803a"), 0.18), p.r(10.0), None));
@@ -707,15 +723,26 @@ fn installer(a: &App) -> E<'static, Msg> {
 
 fn before_card(a: &App) -> E<'static, Msg> {
     let p = a.p;
-    let files: Vec<Value> = a.fomod["evaluation"]["files"].as_array().cloned().unwrap_or_default();
+    let b = a.before.clone().unwrap_or_default();
+    let known = a.before.is_some();
     let tile = |l: &str, v: String, c: Color| -> E<'static, Msg> { container(column![k::cap::<Msg>(&p, l.to_string()), tb(v, 20.0, c)].spacing(2.0)).padding(10.0).width(Length::Fill).style(ui::boxed(p.panel2, p.r(8.0), Some((p.line, 1.0)))).into() };
-    let c = column![
-        heading(&p, "Before it goes in", k::mu1(&p, "with your choices so far", 11.0)),
-        row![tile("Files", commas(files.len() as u64), p.text), tile("New", "—".into(), k::GREEN), tile("Overwrites", "—".into(), k::YELLOW)].spacing(8.0),
-        k::cap(&p, "The game folder"),
-        kvl(&p, "Game files changed", "none · the layer only", k::GREEN)
-    ]
-    .spacing(8.0);
+    let num = |x: usize| if known { commas(x as u64) } else { "—".to_string() };
+    let mut c = Column::new().spacing(8.0).push(heading(&p, "Before it goes in", k::mu1(&p, "with your choices so far", 11.0))).push(row![tile("Files", num(b.files), p.text), tile("New", num(b.new), k::GREEN), tile("Overwrites", num(b.over), k::YELLOW)].spacing(8.0));
+    c = c.push(k::cap(&p, "It will win over"));
+    for (m, n2) in b.wins.iter().take(3) {
+        c = c.push(row![k::tag::<Msg>(&p, "+", Tag::Ok), t(ui::fit(m, 30), 12.0, p.text), k::fill(), t(format!("{} files", commas(*n2 as u64)), 11.0, p.muted)].spacing(8.0).align_y(iced::Center));
+    }
+    if b.wins.is_empty() {
+        c = c.push(k::mu(&p, if known { "nothing: every file is new" } else { "worked out when the installer opens" }, 11.0));
+    }
+    c = c.push(k::cap(&p, "It will lose to"));
+    for (m, n2) in b.loses.iter().take(2) {
+        c = c.push(row![k::tag::<Msg>(&p, "−", Tag::Bad), t(ui::fit(m, 30), 12.0, p.text), k::fill(), t(format!("{} files", commas(*n2 as u64)), 11.0, p.muted)].spacing(8.0).align_y(iced::Center));
+    }
+    if b.loses.is_empty() {
+        c = c.push(k::mu(&p, "nothing: it goes in at the bottom, so it wins", 11.0));
+    }
+    c = c.push(k::cap(&p, "The game folder")).push(kvl(&p, "Game files changed", "none · the layer only", k::GREEN));
     k::card_fit(&p, c)
 }
 
@@ -723,13 +750,17 @@ fn where_card(a: &App) -> E<'static, Msg> {
     let p = a.p;
     let pl: Vec<String> = a.fomod["evaluation"]["files"].as_array().cloned().unwrap_or_default().iter().map(|f| s(&f["destination"])).filter(|d| d.to_lowercase().ends_with(".esp") || d.to_lowercase().ends_with(".esm") || d.to_lowercase().ends_with(".esl")).collect();
     let free = hearth_gaming::wabbajack::free_space(&a.mods_dir());
-    k::card_fit(&p, column![k::h2::<Msg>(&p, "Where it goes"), kvl(&p, "In the list", "at the bottom (it wins); move it after", p.muted), kvl(&p, "Plugins added", if pl.is_empty() { "none".into() } else { pl.join(" + ") }, p.muted), kvl(&p, "Load order", "placed by Sort's rules", p.muted), kvl(&p, "Space", free.map(|f| format!("{} free", k::size_words(f))).unwrap_or_default(), p.muted)].spacing(6.0))
+    let b = a.before.clone().unwrap_or_default();
+    let missing = b.needs.iter().filter(|x| !x.1).count();
+    let needs = if b.needs.is_empty() { "nothing else".to_string() } else { b.needs.iter().map(|(n2, ok)| format!("{} {}", n2.trim_end_matches(".esm").trim_end_matches(".esp"), if *ok { "✓" } else { "✗ missing" })).collect::<Vec<_>>().join(" · ") };
+    let space = format!("{}{}", if b.size > 0 { format!("{} unpacked · ", k::size_words(b.size)) } else { String::new() }, free.map(|f| format!("{} free", k::size_words(f))).unwrap_or_default());
+    k::card_fit(&p, column![k::h2::<Msg>(&p, "Where it goes"), kvl(&p, "In the list", if a.if_in == 0 { "at the bottom (it wins); move it after" } else { "where the old one is" }, p.muted), kvl(&p, "Plugins added", if pl.is_empty() { "none".into() } else { pl.join(" + ") }, p.muted), kvl(&p, "Load order", format!("placed by Sort's rules · {missing} missing masters"), p.muted), kvl(&p, "Needs", ui::fit(&needs, 46), if missing > 0 { k::RED } else { k::GREEN }), kvl(&p, "Space", space, p.muted)].spacing(6.0))
 }
 
 fn already_card(a: &App) -> E<'static, Msg> {
     let p = a.p;
     let opt = |i: u8, title: &str, words: &str| -> E<'static, Msg> { k::click(row![tb(if a.if_in == i { "◉" } else { "○" }, 14.0, if a.if_in == i { p.accent } else { p.muted }), column![t(title.to_string(), 13.0, p.text), k::mu(&p, words.to_string(), 11.0)]].spacing(8.0), Some(Msg::IfIn(i))) };
-    k::card(&p, column![k::h2::<Msg>(&p, "If the mod is already in"), opt(0, "Install as a new version", "the old one stays, off, until you remove it"), opt(1, "Replace it", "a snapshot is made first"), opt(2, "Merge the files in", ""), gap(6.0), k::cap(&p, "Safe either way"), k::para(p.muted, "A snapshot of the whole setup is made before it goes in. Removing it later takes every file back out; Updates & going back can return to tonight's setup in one step.", 11.0)].spacing(8.0))
+    k::card(&p, column![k::h2::<Msg>(&p, "If the mod is already in"), opt(0, "Install as a new version", "the old one stays, off, until you remove it"), opt(1, "Replace it", "a snapshot is made first · the old one is kept as a version"), opt(2, "Merge the files in", "its new files go into the old one's folder; its place stays"), gap(6.0), k::cap(&p, "Safe either way"), k::para(p.muted, "A snapshot of the whole setup is made before it goes in. Removing it later takes every file back out; Updates & going back can return to tonight's setup in one step.", 11.0)].spacing(8.0))
 }
 
 // ================================================================== board 3: Find mods
@@ -742,13 +773,30 @@ pub fn shown_hits(a: &App) -> Vec<sources::Hit> {
         4 => "modio",
         _ => "",
     };
-    a.hits.iter().filter(|h| src.is_empty() || h.source == src).filter(|h| !a.find_flags[1] || !h.adult).filter(|h| !a.find_flags[0] || !h.check.starts_with("! needs")).cloned().collect()
+    let mut v: Vec<sources::Hit> = a.hits.iter().filter(|h| src.is_empty() || h.source == src).filter(|h| a.find_game.is_empty() || h.game == a.find_game).filter(|h| !a.find_flags[1] || !h.adult).filter(|h| !a.find_flags[0] || !h.check.starts_with("! needs")).filter(|h| !a.find_flags[2] || fits_ally(h)).cloned().collect();
+    match a.find_order {
+        1 => v.sort_by(|x, y| y.downloads.cmp(&x.downloads)),
+        2 => v.sort_by(|x, y| y.updated.cmp(&x.updated)),
+        3 => v.sort_by(|x, y| x.name.to_lowercase().cmp(&y.name.to_lowercase())),
+        _ => {}
+    }
+    v
+}
+
+pub const ORDERS: [&str; 4] = ["Most endorsed", "Most downloaded", "Newest", "By name"];
+
+/// Fits the Ally: no 4K / 8K texture packs, ENB presets or "ultra" packs, and nothing that measured under 50 fps there
+/// (its own words, and the Ally's numbers when there are some).
+pub fn fits_ally(h: &sources::Hit) -> bool {
+    let t = format!("{} {}", h.name, h.summary).to_lowercase();
+    let heavy = ["4k", "8k", "2048x", "4096", "enb", "ultra", "high poly", "hd textures", "16k", "raytrac", "path trac", "parallax"];
+    !heavy.iter().any(|w| t.contains(w)) || t.contains("2k") || t.contains("handheld") || t.contains("performance") || t.contains("steam deck")
 }
 
 fn find_page(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let total: usize = a.counts.iter().filter_map(|c| c.1.as_ref().ok()).sum();
-    let search = row![container(row![k::input(&p, "⌕ Search every source", &a.find_q, Msg::FindQ).on_submit(Msg::FindGo), k::mu1::<Msg>(&p, format!("one search across every source · for all {} of your games", a.games.len()), 11.0)].spacing(10.0).align_y(iced::Center)).width(Length::Fill), k::field(&p, "All your games ▾", 170.0, None::<Msg>), k::field(&p, "Most endorsed ▾", 170.0, None::<Msg>)].spacing(10.0).align_y(iced::Center);
+    let search = row![container(row![k::input(&p, "⌕ Search every source", &a.find_q, Msg::FindQ).on_submit(Msg::FindGo), k::mu1::<Msg>(&p, format!("one search across every source · for all {} of your games", a.games.len()), 11.0)].spacing(10.0).align_y(iced::Center)).width(Length::Fill), k::field(&p, format!("{} ▾", if a.find_game.is_empty() { "All your games".to_string() } else { ui::fit(&a.find_game, 18) }), 170.0, Some(Msg::FindPop("games"))), k::field(&p, format!("{} ▾", ORDERS[a.find_order as usize % 4]), 170.0, Some(Msg::FindPop("order")))].spacing(10.0).align_y(iced::Center);
     let mut tabs = vec![(format!("All sources · {}", commas(total as u64)), a.find_src == 0, Msg::FindSrc(0))];
     for (i, (id, label)) in sources::SOURCES.iter().enumerate() {
         let c = a.counts.iter().find(|c| c.0 == *id).map(|c| match &c.1 {
@@ -816,6 +864,19 @@ fn find_page(a: &App) -> E<'_, Msg> {
     )
 }
 
+/// Another result doing the same job: the same game and the same kind (Nexus Mods' category when known), with the
+/// same main words in its name (a map, a weather, a lighting mod…).
+pub fn same_job(hits: &[sources::Hit], h: &sources::Hit) -> Option<String> {
+    const STOP: &[&str] = &["the", "and", "for", "mod", "mods", "of", "a", "se", "ae", "sse", "skyrim", "fallout", "edition", "special", "patch", "fix", "fixes", "with", "-", "·"];
+    let words = |n: &str| -> Vec<String> { n.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 2 && !STOP.contains(w)).map(str::to_string).collect() };
+    let mine = words(&h.name);
+    hits.iter().filter(|x| x.name != h.name && x.game == h.game && (h.category.is_empty() || x.category.is_empty() || x.category == h.category)).find(|x| {
+        let w = words(&x.name);
+        let shared = w.iter().filter(|z| mine.contains(z)).count();
+        shared >= 1 && (shared * 2 >= mine.len().min(w.len()).max(1))
+    }).map(|x| x.name.clone())
+}
+
 fn picked_card(a: &App, hits: &[sources::Hit]) -> E<'static, Msg> {
     let p = a.p;
     let Some(h) = hits.get(a.find_pick).cloned() else {
@@ -825,23 +886,32 @@ fn picked_card(a: &App, hits: &[sources::Hit]) -> E<'static, Msg> {
     let top = stack![banner(&h.game, 0.0, 160.0, 10.0), container(column![row![src_tag(&p, h.source), k::tag::<Msg>(&p, h.game.clone(), Tag::Dk)].spacing(6.0), tb(ui::fit(&h.name, 30), 24.0, Color::WHITE)].spacing(6.0)).padding(16.0).align_y(iced::alignment::Vertical::Bottom).height(Length::Fixed(160.0))];
     let mut c = Column::new().spacing(8.0).push(top).push(row![stat("Endorsed", commas(h.endorsed)), stat("Downloads", commas(h.downloads)), stat("Version", h.version.clone()), stat("Updated", h.updated.clone())].spacing(18.0)).push(k::para(p.muted, ui::fit(&h.summary, 200), 11.0));
     c = c.push(k::cap(&p, "Needs · pulled in by themselves"));
+    let mine: Vec<String> = a.mods().iter().filter_map(|m| m["name"].as_str().map(|x| x.to_lowercase())).collect();
     if h.needs.is_empty() {
-        c = c.push(k::mu(&p, "Nothing else.", 11.0));
+        c = c.push(k::mu(&p, if h.preview.is_empty() && h.source == "nexus" { "Reading its page's requirements…" } else { "Nothing else." }, 11.0));
     }
     for nd in &h.needs {
-        c = c.push(kvl(&p, nd.clone(), "you have it", p.muted));
+        let l = nd.to_lowercase();
+        let have = mine.iter().any(|m| m.contains(&l) || (l.contains(m.as_str()) && m.len() > 4));
+        c = c.push(kvl(&p, nd.clone(), if have { "you have it" } else { "gets it too" }, if have { p.muted } else { k::BLUE }));
     }
     c = c.push(k::cap(&p, "Works with your other mods?"));
     let total = a.mods().iter().filter(|m| m["kind"] == "mod").count();
-    c = c.push(if h.check.starts_with('!') { box_note(&p, "Not yet", h.check.clone(), k::YELLOW) } else { box_note(&p, format!("Yes, checked against your {total} mods"), "No missing masters. Clashes with nothing you have on.", k::GREEN) });
-    let same = hits.iter().filter(|x| x.name != h.name && x.game == h.game && x.name.split_whitespace().last() == h.name.split_whitespace().last()).map(|x| x.name.clone()).next();
-    if let Some(o) = same {
+    let files_words = if h.clash.is_empty() { "No missing requirements.".to_string() } else { format!("No missing requirements · {}.", h.clash) };
+    c = c.push(if h.check.starts_with('!') { box_note(&p, "Not yet", h.check.clone(), k::YELLOW) } else { box_note(&p, format!("Yes, checked against your {total} mods"), files_words, k::GREEN) });
+    if let Some(o) = same_job(hits, &h) {
         c = c.push(box_note(&p, "One to choose", format!("{o} (in results) does the same job: have one or the other."), k::YELLOW));
+    }
+    let also = crate::sync::with_game(&a.devices, &h.game);
+    if !also.is_empty() {
+        let names = also.iter().filter_map(|d| d["name"].as_str()).map(|n| format!("the {}", n.trim_start_matches("the "))).collect::<Vec<_>>().join(", ");
+        c = c.push(row![k::mu1::<Msg>(&p, format!("Also on: {names} ({} there too) ·", crate::sync::short(&h.game)), 11.0), k::click(t(" Add there as well", 11.0, p.accent), Some(Msg::AlsoAdd))].align_y(iced::Center));
     }
     if !h.files.is_empty() {
         c = c.push(k::cap(&p, "Which file")).push(k::seg(&p, h.files.iter().enumerate().take(4).map(|(i, f)| (ui::fit(&f.0, 22), i == a.find_file, Msg::FindFile(i))).collect()));
     }
-    let install_words = if h.needs.is_empty() { "Install".to_string() } else { format!("Install · {} more mod{} with it", h.needs.len(), if h.needs.len() == 1 { "" } else { "s" }) };
+    let more_mods = h.needs.iter().filter(|nd| { let l = nd.to_lowercase(); !mine.iter().any(|m| m.contains(&l) || (l.contains(m.as_str()) && m.len() > 4)) }).count();
+    let install_words = if more_mods == 0 { "Install".to_string() } else { format!("Install · {more_mods} more mod{} with it", if more_mods == 1 { "" } else { "s" }) };
     c = c.push(k::fill()).push(row![k::chip(&p, install_words, Ch::Acc, Sz::Lg, Some(Msg::FindInstall)), k::chip(&p, "Endorse", Ch::Plain, Sz::Lg, (h.source == "nexus").then_some(Msg::Endorse)), k::chip(&p, "Page", Ch::Plain, Sz::Lg, Some(Msg::Open(h.page.clone())))].spacing(8.0));
     c = c.push(k::mu(&p, "Free account: one click on \"Mod Manager Download\" · Premium: straight in", 11.0));
     k::card(&p, scrollable(c).height(Length::Fill))
@@ -916,14 +986,16 @@ fn updates_card(a: &App) -> E<'static, Msg> {
         c = c.push(k::mu(&p, if a.upd_tab == 2 { "Nothing pinned." } else { "Nothing new on the mods' pages. Check now asks again." }, 12.0));
     }
     for gone in a.updates["gone"].as_array().cloned().unwrap_or_default().iter().take(1) {
-        c = c.push(k::cap(&p, "Gone from its site")).push(box_note(&p, format!("{} was taken down", s(&gone["mod"])), "Your copy stays on the home server, so this setup and its snapshots still work.", k::BLUE));
+        c = c.push(k::cap(&p, "Gone from its site")).push(box_note(&p, format!("{} was taken down", s(&gone["mod"])), "Your copy stays on the home server, so this setup and its snapshots still work.", k::BLUE)).push(k::click(t("Find one like it ›", 11.0, p.accent), Some(Msg::FindLike(s(&gone["mod"])))));
     }
-    let d = back::read_own("devices.json");
-    let devs = d["devices"].as_array().cloned().unwrap_or_default();
+    let devs = crate::sync::with_game(&a.devices, &game);
     if !devs.is_empty() {
         c = c.push(k::cap(&p, "Same updates on your other devices"));
         for x in devs.iter().take(3) {
-            c = c.push(kvl(&p, format!("{} · {}", s(&x["name"]), s(&x["profile"])), "gets them when you pick them here", p.muted));
+            let prof = x["games"].as_array().and_then(|g| g.iter().find(|y| y["title"].as_str() == Some(game.as_str()))).map(|y| s(&y["profile"])).unwrap_or_default();
+            let theirs: Vec<String> = x["updates"].as_array().cloned().unwrap_or_default().iter().filter(|u| s(&u["game"]) == game).map(|u| s(&u["mod"])).collect();
+            let words = if x["state"] == "away" { "away: gets them when it's back".to_string() } else if theirs.is_empty() { "up to date there".to_string() } else { format!("waiting there too: {}", theirs.join(", ")) };
+            c = c.push(kvl(&p, format!("{} · {}", s(&x["name"]), prof), ui::fit(&words, 40), p.muted));
         }
     }
     if !pinned.is_empty() {
@@ -1005,12 +1077,21 @@ fn how_card(a: &App) -> E<'static, Msg> {
     let mut c = Column::new().spacing(8.0).push(k::h2::<Msg>(&p, "How updates work"));
     c = c.push(row![t("Check for updates", 12.0, p.text), k::fill(), k::seg(&p, vec![("Never".into(), every == 0, Msg::CheckEvery(0)), ("Every night".into(), every == 1, Msg::CheckEvery(1)), ("When I open it".into(), every == 2, Msg::CheckEvery(2))])].align_y(iced::Center));
     c = c.push(sw("Install updates by themselves", "autoInstall", false)).push(sw("Tell me on the Ally and the TV", "tellDevices", true));
-    c = c.push(kvl(&p, "Keep snapshots", "60 days · up to 20 GB", p.muted)).push(sw("Old versions kept on the home server", "keepOld", true));
+    let days = a.settings["keepSnapshots"].as_u64().unwrap_or(60);
+    c = c.push(row![t("Keep snapshots", 12.0, p.text), k::fill(), k::seg(&p, vec![("30 days".into(), days == 30, Msg::KeepSnaps(0)), ("60 days".into(), days == 60, Msg::KeepSnaps(1)), ("90 days".into(), days == 90, Msg::KeepSnaps(2))]), k::mu1::<Msg>(&p, " · up to 20 GB", 11.0)].align_y(iced::Center)).push(sw("Old versions kept on the home server", "keepOld", true));
     c = c.push(k::para(p.muted, "Snapshots are tiny: they note what's on and where; mod files are kept once.", 11.0));
     c = c.push(k::cap(&p, "Or go back one mod only"));
     let mods = a.mods();
-    for m in mods.iter().filter(|m| m["kind"] == "mod").filter(|m| a.updates["updates"].as_array().map(|u| u.iter().any(|x| x["mod"] == m["name"])).unwrap_or(false)).take(2) {
-        c = c.push(row![tb(s(&m["name"]), 12.0, p.text), k::mu1::<Msg>(&p, " · versions kept", 11.0), k::fill(), k::seg(&p, vec![(format!("{} now", s(&m["version"])), true, Msg::Tick)])].align_y(iced::Center));
+    for (m, vs) in a.detail.versions.iter().take(4) {
+        let now_v = mods.iter().find(|x| s(&x["id"]) == *m).map(|x| s(&x["version"])).unwrap_or_default();
+        let mut seg = vec![(format!("{} now", if now_v.is_empty() { "this".to_string() } else { now_v }), true, Msg::Tick)];
+        for (f, v) in vs.iter().take(3) {
+            seg.push((if v.is_empty() { f.clone() } else { v.clone() }, false, Msg::UseVersion(m.clone(), f.clone())));
+        }
+        c = c.push(row![tb(ui::fit(m, 22), 12.0, p.text), k::mu1::<Msg>(&p, " · versions kept", 11.0), k::fill(), k::seg(&p, seg)].align_y(iced::Center));
+    }
+    if a.detail.versions.is_empty() {
+        c = c.push(k::mu(&p, "Each mod's older versions are kept when an update replaces it (Replace it, Update): then one mod can go back alone.", 11.0));
     }
     k::card(&p, scrollable(c).height(Length::Fill))
 }
@@ -1034,6 +1115,11 @@ fn crash_page(a: &App) -> E<'_, Msg> {
         None => format!("Crashed in {place}"),
     };
     let ver = a.mods().iter().find(|m| s(&m["name"]).eq_ignore_ascii_case(&first)).map(|m| s(&m["version"])).unwrap_or_default();
+    let play = more::play_before(at as i64);
+    let into_play = match &play {
+        Some(pl) => format!("{} min into play · {}", ((at as i64 - pl["at"].as_i64().unwrap_or(0)) / 60).max(0), pl["profile"].as_str().unwrap_or("")),
+        None => a.profile(),
+    };
     let mut words = format!("{} {} while {}. The crash log points at {first} {ver}", a.game().map(|g| g.short()).unwrap_or_default(), logic::exception_words(&c.exception), if objects.is_empty() { "it ran".into() } else { format!("{} was open", objects) });
     if let Some(u) = &fix {
         words.push_str(&format!(", and its own changelog for {} is out.", s(&u["to"])));
@@ -1041,7 +1127,7 @@ fn crash_page(a: &App) -> E<'_, Msg> {
         words.push('.');
     }
     let head = container(column![
-        row![k::tag::<Msg>(&p, format!("Crashed {}", hearth_ui::time::when(at as i64)), Tag::Bad), k::tag::<Msg>(&p, a.profile(), Tag::Dk), k::tag::<Msg>(&p, "Crash log read", Tag::Dk)].spacing(6.0),
+        row![k::tag::<Msg>(&p, format!("Crashed {}", hearth_ui::time::when(at as i64)), Tag::Bad), k::tag::<Msg>(&p, into_play, Tag::Dk), k::tag::<Msg>(&p, "Crash log read", Tag::Dk)].spacing(6.0),
         row![column![tb(title, 28.0, p.text), k::para(p.muted, words, 13.0)].spacing(6.0).width(Length::Fill), k::chip(&p, if fix.is_some() { "Update and play" } else { "Test start without it" }, Ch::Acc, Sz::Lg, Some(Msg::FixStep(if fix.is_some() { 1 } else { 2 }))), k::chip(&p, "Send logs", Ch::Plain, Sz::Lg, Some(Msg::SendLogs))].spacing(10.0).align_y(iced::Center)
     ]
     .spacing(8.0))
@@ -1077,30 +1163,58 @@ fn crash_page(a: &App) -> E<'_, Msg> {
     if suspects.is_empty() {
         which = which.push(k::mu(&p, "The log names no mod's code: it stopped in the game's own. Find it by halves narrows it down.", 11.0));
     }
-    let which = k::card(&p, which);
+    let others = more::others_had(&c, &a.devices);
+    which = which.push(gap(6.0)).push(k::cap(&p, "Others had it too"));
+    if others.is_empty() {
+        which = which.push(k::mu(&p, "Not on Hearth's known crashes list, and none of your other devices had this one.", 11.0));
+    }
+    for o in others.into_iter().take(2) {
+        which = which.push(k::para(p.muted, o, 11.0));
+    }
+    let which = k::card(&p, scrollable(which).height(Length::Fill));
     // the log
     let mut lines = Column::new().spacing(2.0);
-    let shown: Vec<(usize, String)> = c.lines.iter().cloned().enumerate().take(90).collect();
+    let (pname, ptext) = a.detail.proton.clone();
+    let other: Vec<String> = match a.crash_tab {
+        1 if ptext.is_empty() => vec!["Proton's own log isn't there: start the game with PROTON_LOG=1 (Steam › the game › Properties › Launch options: PROTON_LOG=1 %command%) and it's read here.".into()],
+        1 => ptext.lines().map(str::to_string).collect(),
+        2 => more::what_ran(&play, &c),
+        _ => Vec::new(),
+    };
+    let shown: Vec<(usize, String)> = if a.crash_tab == 0 { c.lines.iter().cloned().enumerate().take(90).collect() } else { other.into_iter().enumerate().map(|(i, l)| (usize::MAX - i, l)).collect() };
     for (i, l) in shown {
         let mk = c.marked.contains(&i);
         let col = if l.contains("Unhandled") { k::RED } else if mk { k::YELLOW } else { k::rgb("#cfc5bc") };
         lines = lines.push(container(t(l, 11.0, col).font(MONO).wrapping(Wrapping::None)).style(ui::boxed(if mk { Pal::mix(p.bg, k::YELLOW, 0.12) } else { Color::TRANSPARENT }, 2.0, None)));
     }
-    let what = box_note(&p, "What happened", format!("{} {} inside {}.", a.game().map(|g| g.short()).unwrap_or_default(), logic::exception_words(&c.exception), if c.at.is_empty() { first.clone() } else { c.at.clone() }), p.muted);
+    let what = box_note(&p, "What happened", format!("{} {} inside {}.", a.game().map(|g| g.short()).unwrap_or_default(), logic::exception_words(&c.exception), if suspects.is_empty() { if c.at.is_empty() { first.clone() } else { c.at.clone() } } else { format!("{first}'s code") }), p.muted);
+    let nc = more::not_cause(&c);
+    let not_cause = box_note(&p, "Not the cause", if nc.is_empty() { "The log doesn't say how memory and the graphics card were doing.".to_string() } else { nc.join(" ") }, k::GREEN);
     let logc = k::card(
         &p,
         column![
             row![k::h2::<Msg>(&p, "The crash log"), k::gap(8.0, 1.0), k::tabs(&p, vec![("Crash Logger's log".into(), a.crash_tab == 0, Msg::CrashTab(0)), ("Proton's log".into(), a.crash_tab == 1, Msg::CrashTab(1)), ("What ran".into(), a.crash_tab == 2, Msg::CrashTab(2))]), k::fill(), k::chip(&p, "Copy", Ch::Plain, Sz::Sm, Some(Msg::CopyLog))].spacing(6.0).align_y(iced::Center),
-            what,
+            row![container(what).width(Length::FillPortion(1)), container(not_cause).width(Length::FillPortion(1))].spacing(8.0),
             container(scrollable(lines).height(Length::Fill).direction(scrollable::Direction::Both { vertical: scrollable::Scrollbar::default(), horizontal: scrollable::Scrollbar::default() })).padding(10.0).height(Length::Fill).width(Length::Fill).style(ui::boxed(p.bg, p.r(8.0), Some((p.line, 1.0)))),
-            k::mu(&p, format!("Read from the log {} writes · lines that matter are marked · {}", if c.logger.is_empty() { "the crash logger" } else { "Crash Logger" }, file.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_default()), 11.0)
+            k::mu(&p, match a.crash_tab { 1 => format!("Proton's own log · {pname}"), 2 => "What ran in that start: the program, the profile, the script extender's plugins".to_string(), _ => format!("Read from the log {} writes · lines that matter are marked · {}", if c.logger.is_empty() { "the crash logger" } else { "Crash Logger" }, file.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_default()) }, 11.0)
         ]
         .spacing(8.0),
     );
-    let mut lately = Column::new().spacing(6.0).push(heading(&p, "Crashes lately", k::mu1(&p, format!("{}", a.detail.crashes.len()), 11.0)));
-    for (i, (_, cc, t2)) in a.detail.crashes.iter().enumerate().take(4) {
-        let m = cc.suspects.first().cloned().unwrap_or_else(|| "the game".into());
-        lately = lately.push(k::click(row![k::dot(if i == 0 { k::RED } else { p.muted }, 7.0), column![tb(format!("{} · {}", hearth_ui::time::when(*t2 as i64), m), 12.0, p.text), k::mu(&p, a.game().map(|g| g.short()).unwrap_or_default(), 10.0)].width(Length::Fill), k::tag::<Msg>(&p, if i == 0 { "Fix ready" } else { "Seen" }, if i == 0 { Tag::Warn } else { Tag::Ok })].spacing(8.0).align_y(iced::Center), Some(Msg::CrashPick(i))));
+    let week = now() - 7 * 86400;
+    let fx = more::fixes();
+    let mine_n = a.detail.crashes.iter().filter(|x| x.2 as i64 > week).count();
+    let theirs: Vec<(String, Value)> = a.devices.iter().flat_map(|d| d["crashes"].as_array().cloned().unwrap_or_default().into_iter().map(move |x| (s(&d["name"]), x))).filter(|(_, x)| x["at"].as_i64().unwrap_or(0) > week).collect();
+    let mut lately = Column::new().spacing(6.0).push(heading(&p, "Crashes lately", k::mu1(&p, format!("this week · {}", mine_n + theirs.len()), 11.0)));
+    let here = crate::sync::here();
+    for (i, (f, cc, t2)) in a.detail.crashes.iter().enumerate().take(3) {
+        let m = cc.suspects.first().map(|x| x.trim_end_matches(".dll").to_string()).unwrap_or_else(|| "the game".into());
+        let fixed = fx[f.to_string_lossy().as_ref()]["state"] == "fixed";
+        let ready = !fixed && ups.iter().any(|u| cc.suspects.iter().any(|x| logic::mod_with_file(&mods_dir, x).map(|mm| mm.eq_ignore_ascii_case(&s(&u["mod"]))).unwrap_or(false)));
+        let (tg, kind) = if fixed { ("Fixed", Tag::Ok) } else if ready { ("Fix ready", Tag::Warn) } else { ("Seen", Tag::Dk) };
+        lately = lately.push(k::click(row![k::dot(if i == 0 && !fixed { k::RED } else { p.muted }, 7.0), column![tb(format!("{} · {}", hearth_ui::time::when(*t2 as i64), m), 12.0, p.text), k::mu(&p, format!("{} · the {here}", a.game().map(|g| g.short()).unwrap_or_default()), 10.0)].width(Length::Fill), k::tag::<Msg>(&p, tg, kind)].spacing(8.0).align_y(iced::Center), Some(Msg::CrashPick(i))));
+    }
+    for (dn, x) in theirs.iter().take(2) {
+        lately = lately.push(row![k::dot(p.muted, 7.0), column![tb(format!("{} · {}", hearth_ui::time::when(x["at"].as_i64().unwrap_or(0)), if s(&x["what"]).is_empty() { s(&x["module"]) } else { s(&x["what"]) }), 12.0, p.text), k::mu(&p, format!("{} · the {dn}", crate::sync::short(&s(&x["game"]))), 10.0)].width(Length::Fill), k::tag::<Msg>(&p, if x["fixed"] == true { "Fixed" } else { "Seen" }, if x["fixed"] == true { Tag::Ok } else { Tag::Dk })].spacing(8.0).align_y(iced::Center));
     }
     let lately = k::card_fit(&p, lately);
     let send = k::card_fit(&p, column![k::h2::<Msg>(&p, "Send logs"), k::para(p.muted, "Sends this crash log, Proton's log, the mod list and load order, so it can be looked at. Nothing else from the PC.", 11.0), k::input(&p, "Note: what you were doing", &a.note, Msg::Note), k::chip(&p, "Send logs", Ch::Acc, Sz::Lg, Some(Msg::SendLogs))].spacing(8.0));
@@ -1108,7 +1222,13 @@ fn crash_page(a: &App) -> E<'_, Msg> {
         let on = a.setting(key, d);
         row![t(label.to_string(), 12.0, p.text), k::fill(), k::switch(&p, on, Some(Msg::Setting(key, !on)))].align_y(iced::Center).into()
     };
-    let when = k::card(&p, column![k::h2::<Msg>(&p, "When a game crashes"), sw("Read the crash log and tell me", "readCrash", true), sw("Show it in Game Mode too", "crashGameMode", true), sw("Get Crash Logger for games that need it", "getCrashLogger", true), sw("Fix things by itself", "autoFix", false), k::mu(&p, "Off: every fix waits for you", 11.0), k::cap(&p, "After a fix"), k::para(p.muted, "A test start: to the main menu, loads your last save, opens the menu it crashed in, 60 seconds. Passes → you're told it's fixed.", 11.0)].spacing(8.0));
+    let kind = a.inst()["game"].as_str().unwrap_or("").to_string();
+    let get_logger: E<'static, Msg> = match more::crash_logger_page(&kind) {
+        Some((_, _, name)) if a.detail.crash_logger => k::mu(&p, format!("{name} is in"), 11.0),
+        Some((_, _, name)) if a.setting("getCrashLogger", true) => row![k::mu1::<Msg>(&p, format!("{name} isn't in yet ·"), 11.0), k::click(t(" Get it", 11.0, p.accent), Some(Msg::GetCrashLogger))].into(),
+        _ => none(),
+    };
+    let when = k::card(&p, column![k::h2::<Msg>(&p, "When a game crashes"), sw("Read the crash log and tell me", "readCrash", true), sw("Show it in Game Mode too", "crashGameMode", true), sw("Get Crash Logger for games that need it", "getCrashLogger", true), get_logger, sw("Fix things by itself", "autoFix", false), k::mu(&p, "Off: every fix waits for you", 11.0), k::cap(&p, "After a fix"), k::para(p.muted, "A test start: the game starts with the mods for 60 seconds; still running and no new crash log → you're told it's fixed.", 11.0), k::chip(&p, if a.testing { "Testing… 60 seconds" } else { "Test start now" }, Ch::Plain, Sz::Md, (!a.testing).then_some(Msg::TestStart))].spacing(8.0));
     let items: Vec<(&'static str, E<'_, Msg>)> = vec![("head", head.into()), ("fix", fixc), ("which", which), ("log", logc), ("lately", lately), ("send", send), ("when", when)];
     hearth_ui::arrange::parts(
         &a.describe,
@@ -1238,21 +1358,45 @@ fn describe_page(a: &App) -> E<'_, Msg> {
             why = why.push(t(s(&w), 12.0, p.text));
         }
         sc = sc.push(gap(6.0)).push(container(why).padding(12.0).width(Length::Fill).style(ui::boxed(p.panel2, p.r(9.0), Some((p.line, 1.0)))));
-        sc = sc.push(k::fill()).push(row![k::mu1::<Msg>(&p, format!("All in: {fps} fps · {count} mods"), 11.0), k::fill(), k::click(t("Every file it changes ›", 11.0, p.accent), None)]);
+        let all: Vec<Value> = groups.iter().flat_map(|g| g["mods"].as_array().cloned().unwrap_or_default()).collect();
+        let size: f64 = all.iter().map(|m| size_of(&s(&m["size"]))).sum();
+        let home = all.iter().filter(|m| s(&m["source"]).eq_ignore_ascii_case("Home server")).count();
+        let nexus = all.iter().filter(|m| s(&m["source"]).eq_ignore_ascii_case("Nexus Mods")).count();
+        let fps_w = if fps < 0 { format!("−{} fps", -fps) } else { format!("+{fps} fps") };
+        sc = sc.push(k::fill()).push(row![k::mu1::<Msg>(&p, format!("All in: {fps_w} · {} · {nexus} from Nexus Mods, {home} already on the home server", k::size_words(size as u64)), 11.0), k::fill(), k::click(t("Every file it changes ›", 11.0, p.muted), None)]);
     }
     let set_card = k::card(&p, scrollable(sc).height(Length::Fill));
-    let m = back::read_own("measured.json");
-    let mut ally = Column::new().spacing(5.0).push(heading(&p, format!("On {}", dev.trim_start_matches("the ")), k::mu1(&p, s(&m["settings"]), 11.0)));
+    let devname = dev.trim_start_matches("the ").to_string();
+    let rec = a.devices.iter().find(|d| s(&d["name"]).eq_ignore_ascii_case(&devname)).cloned().unwrap_or(Value::Null);
+    let m = if rec["measured"].is_object() { rec["measured"].clone() } else { Value::Null };
+    let mut ally = Column::new().spacing(5.0).push(heading(&p, format!("On the {devname}"), k::mu1(&p, s(&m["settings"]), 11.0)));
     for pl in m["places"].as_array().cloned().unwrap_or_default() {
         let f = pl["fps"].as_f64().unwrap_or(0.0);
-        ally = ally.push(row![container(t(s(&pl["name"]), 12.0, p.text)).width(Length::Fixed(110.0)), k::bar(&p, (f / 90.0) as f32, 8.0, Length::Fill), tb(format!("{f:.0} fps"), 12.0, p.text)].spacing(8.0).align_y(iced::Center));
+        let bar = stack![k::bar(&p, (f / 90.0) as f32, 8.0, Length::Fill), row![Space::new().width(Length::FillPortion(60)), container(Space::new()).width(Length::Fixed(2.0)).height(Length::Fixed(10.0)).style(ui::boxed(Color::WHITE, 0.0, None)), Space::new().width(Length::FillPortion(30))]];
+        ally = ally.push(row![container(t(s(&pl["name"]), 12.0, p.text)).width(Length::Fixed(110.0)), bar, tb(format!("{f:.0} fps"), 12.0, p.text)].spacing(8.0).align_y(iced::Center));
     }
     if m["places"].as_array().map(|x| x.is_empty()).unwrap_or(true) {
-        ally = ally.push(k::mu(&p, "Not measured on the device yet: Measure it first starts the game there with the set and counts fps in a few places.", 11.0));
+        ally = ally.push(k::mu(&p, format!("Not measured on the {devname} yet: Measure it first asks it to log fps (MangoHud) for 60 seconds the next time it plays, and the numbers come back here."), 11.0));
+    } else {
+        ally = ally.push(k::mu(&p, format!("white line: 60 fps · measured {}", hearth_ui::time::when(m["at"].as_i64().unwrap_or(0))), 11.0));
     }
-    ally = ally.push(k::chip(&p, format!("Measure it on {} first", dev.trim_start_matches("the ")), Ch::Plain, Sz::Md, None));
+    if let Some(mem) = rec["memory"].as_object() {
+        ally = ally.push(kvl(&p, format!("Memory (of {} shared)", k::size_words(mem.get("total").and_then(|x| x.as_u64()).unwrap_or(0))), format!("{} · {}", k::size_words(mem.get("used").and_then(|x| x.as_u64()).unwrap_or(0)), if mem.get("used").and_then(|x| x.as_u64()).unwrap_or(0) * 10 < mem.get("total").and_then(|x| x.as_u64()).unwrap_or(1) * 9 { "fine" } else { "tight" }), p.muted));
+    }
+    if let Some(free) = rec["free"].as_u64() {
+        ally = ally.push(kvl(&p, format!("Space on the {devname}"), format!("{} free", k::size_words(free)), p.muted));
+    }
+    ally = ally.push(k::chip(&p, format!("Measure it on the {devname} first"), Ch::Plain, Sz::Md, Some(Msg::Measure)));
     let ally = k::card_fit(&p, ally);
-    let looks = k::card_fit(&p, column![heading(&p, "How it looks", k::mu1(&p, "from the mods' pages", 11.0)), row![stack![banner(&a.game().map(|g| g.title.clone()).unwrap_or_default(), 0.0, 130.0, 8.0), container(k::tag::<Msg>(&p, "Now", Tag::Dk)).padding(8.0)], stack![banner("valheim", 0.0, 130.0, 8.0), container(k::tag::<Msg>(&p, "With the set", Tag::Dk)).padding(8.0)]].spacing(8.0)].spacing(8.0));
+    let pic = |f: &std::path::Path, fallback: &str| -> E<'static, Msg> {
+        if f.is_file() {
+            iced::widget::image(iced::widget::image::Handle::from_path(f)).width(Length::Fill).height(Length::Fixed(130.0)).content_fit(iced::ContentFit::Cover).into()
+        } else {
+            banner(fallback, 0.0, 130.0, 8.0)
+        }
+    };
+    let pics = back::own_dir().join("pictures");
+    let looks = k::card_fit(&p, column![heading(&p, "How it looks", k::mu1(&p, "from the mods' pages", 11.0)), row![stack![pic(&pics.join("now.jpg"), &a.game().map(|g| g.title.clone()).unwrap_or_default()), container(k::tag::<Msg>(&p, "Now", Tag::Dk)).padding(8.0)], stack![pic(&pics.join("set.jpg"), "valheim"), container(k::tag::<Msg>(&p, "With the set", Tag::Dk)).padding(8.0)]].spacing(8.0)].spacing(8.0));
     let profile = s(&set["profile"]);
     let go = k::card(
         &p,
@@ -1274,6 +1418,19 @@ fn describe_page(a: &App) -> E<'_, Msg> {
         |ps| container(row![container(ps.take("say")).width(Length::FillPortion(4)), container(ps.take("set")).width(Length::FillPortion(5)), column![ps.take("ally"), ps.take("looks"), container(ps.take("go")).height(Length::Fill)].spacing(12.0).width(Length::FillPortion(4))].spacing(14.0)).padding(k::pad(14.0, 16.0, 8.0, 16.0)).into(),
         Msg::Describe,
     )
+}
+
+/// "3.8 GB", "420 MB" in bytes.
+fn size_of(w: &str) -> f64 {
+    let w = w.trim().replace(',', ".");
+    let n: f64 = w.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+    match w.split_whitespace().nth(1).unwrap_or("").to_uppercase().as_str() {
+        "TB" => n * 1_099_511_627_776.0,
+        "GB" => n * 1_073_741_824.0,
+        "MB" => n * 1_048_576.0,
+        "KB" => n * 1024.0,
+        _ => 0.0,
+    }
 }
 
 /// Install the set: a snapshot, a new profile from this one, then each mod found on Nexus Mods queued (nothing
@@ -1317,7 +1474,10 @@ fn every_page(a: &App) -> E<'_, Msg> {
             let (state, kind) = if u > 0 { ("Updates", Tag::Bl) } else if g.dot == 1 { ("Needs a look", Tag::Warn) } else { ("Healthy", Tag::Ok) };
             let health = if u > 0 { (k::BLUE, format!("{u} updates")) } else if g.dot == 1 { (k::YELLOW, "needs a look".to_string()) } else { (k::GREEN, "healthy".to_string()) };
             let top = stack![banner(&g.title, 0.0, 100.0, 10.0), container(column![k::tag::<Msg>(&p, state, kind), k::fill(), tb(ui::fit(&g.title, 26), 16.0, Color::WHITE)]).padding(12.0).height(Length::Fixed(100.0))];
-            let devs = row![k::tag::<Msg>(&p, "PC", Tag::Dk)].spacing(4.0);
+            let mut devs = Row::new().spacing(4.0).push(k::tag::<Msg>(&p, crate::sync::kind(), Tag::Dk));
+            for d in crate::sync::with_game(&a.devices, &g.title).into_iter().take(3) {
+                devs = devs.push(k::tag::<Msg>(&p, crate::sync::tag_of(d), Tag::Dk));
+            }
             let card = column![
                 top,
                 container(column![row![tb(format!("{} mods", g.mods), 16.0, p.text), k::fill(), devs].align_y(iced::Center), row![k::dot(health.0, 7.0), t(health.1, 11.0, p.muted)].spacing(6.0).align_y(iced::Center), k::mu(&p, g.how(), 11.0), row![k::chip(&p, "▶ Play modded", Ch::Acc, Sz::Md, Some(Msg::PickGame(g.key.clone()))), k::chip(&p, "Mods", Ch::Plain, Sz::Md, Some(Msg::PickGame(g.key.clone())))].spacing(6.0)].spacing(5.0)).padding(12.0)
@@ -1342,19 +1502,22 @@ fn every_page(a: &App) -> E<'_, Msg> {
     found = found.push(row![k::mu1::<Msg>(&p, "Scans Steam, Heroic, Lutris, Hearth's library and Beacon each start ·", 11.0), k::click(t(" Not a game? Hide it", 11.0, p.accent), games.iter().find(|g| g.mods == 0).map(|g| Msg::HideGame(g.key.clone())))]);
     found = found.push(container(row![hearth_oss_kit_a::mark::<Msg>("MM", k::rgb("#ffb36b"), k::rgb("#ff7a2e"), 18.0), tb("Updates in the Hearth Store", 12.0, p.text), k::mu1::<Msg>(&p, "· Mod Manager is its own Store app · up to date", 11.0)].spacing(8.0).align_y(iced::Center)).padding(10.0).width(Length::Fill).style(ui::boxed(p.panel2, p.r(8.0), Some((p.line, 1.0)))));
     let found = k::card(&p, found);
-    let d = back::read_own("devices.json");
     let mut dev = Column::new().spacing(4.0).push(heading(&p, "On your other devices", k::mu1(&p, "same mods, each download once", 11.0)));
     dev = dev.push(row![container(k::cap::<Msg>(&p, "Device")).width(Length::FillPortion(2)), container(k::cap::<Msg>(&p, "Games modded")).width(Length::FillPortion(3)), container(k::cap::<Msg>(&p, "Profile")).width(Length::FillPortion(2)), container(k::cap::<Msg>(&p, "State")).width(Length::FillPortion(1))].spacing(6.0));
-    let here = s(&d["here"]);
-    dev = dev.push(row![container(tb(format!("{} · here", if here.is_empty() { "This PC".into() } else { here }), 12.0, p.text)).width(Length::FillPortion(2)), container(t(format!("all {}", modded.len()), 12.0, p.text)).width(Length::FillPortion(3)), container(t(a.profile(), 12.0, p.muted)).width(Length::FillPortion(2)), container(k::dot(k::GREEN, 7.0)).width(Length::FillPortion(1))].spacing(6.0));
-    for x in d["devices"].as_array().cloned().unwrap_or_default() {
+    let here = crate::sync::here();
+    dev = dev.push(row![container(tb(format!("{here} · here"), 12.0, p.text)).width(Length::FillPortion(2)), container(t(format!("all {}", modded.len()), 12.0, p.text)).width(Length::FillPortion(3)), container(t(a.profile(), 12.0, p.muted)).width(Length::FillPortion(2)), container(k::dot(k::GREEN, 7.0)).width(Length::FillPortion(1))].spacing(6.0));
+    for x in a.devices.iter() {
         let st = s(&x["state"]);
-        dev = dev.push(row![container(tb(s(&x["name"]), 12.0, p.text)).width(Length::FillPortion(2)), container(t(s(&x["games"]), 12.0, p.text)).width(Length::FillPortion(3)), container(t(s(&x["profile"]), 12.0, p.muted)).width(Length::FillPortion(2)), container(row![k::dot(if st == "away" { p.muted } else if st.is_empty() { k::GREEN } else { k::YELLOW }, 7.0), t(st, 11.0, p.muted)].spacing(4.0)).width(Length::FillPortion(1))].spacing(6.0));
+        let prof = x["games"].as_array().and_then(|g| g.first()).map(|g| s(&g["profile"])).unwrap_or_default();
+        dev = dev.push(row![container(tb(s(&x["name"]), 12.0, p.text)).width(Length::FillPortion(2)), container(t(ui::fit(&s(&x["gamesWords"]), 30), 12.0, p.text)).width(Length::FillPortion(3)), container(t(prof, 12.0, p.muted)).width(Length::FillPortion(2)), container(row![k::dot(if st == "away" { p.muted } else if st.is_empty() { k::GREEN } else { k::YELLOW }, 7.0), t(st, 11.0, p.muted)].spacing(4.0)).width(Length::FillPortion(1))].spacing(6.0));
     }
-    dev = dev.push(gap(6.0)).push(row![t("Send a game's mods to a device", 12.0, p.text), k::fill(), k::chip(&p, "Choose…", Ch::Plain, Sz::Sm, None)].align_y(iced::Center)).push(k::mu(&p, "Saves made with mods go along with the profile · settings stay each device's own", 11.0));
+    if a.devices.is_empty() {
+        dev = dev.push(k::mu(&p, if crate::sync::root().is_some() { "None of your other devices has opened the Mod Manager yet: they show here once they have." } else { "Your devices meet in your home server's Mods folder: set up Hearth's home server (Settings › Home server)." }, 11.0));
+    }
+    dev = dev.push(gap(6.0)).push(row![t("Send a game's mods to a device", 12.0, p.text), k::fill(), k::chip(&p, "Choose…", Ch::Plain, Sz::Sm, (!a.devices.is_empty()).then_some(Msg::FindPop("send")))].align_y(iced::Center)).push(k::mu(&p, "Saves made with mods go along with the profile · settings stay each device's own", 11.0));
     let dev = k::card(&p, dev);
     let srv = sources::home_server();
-    let kept = srv.as_ref().map(|d| k::folder_size(d)).unwrap_or(0);
+    let kept = a.server.0;
     let tile = |l: &str, v: String, sub: &str, c: Color| -> E<'static, Msg> { container(column![k::cap::<Msg>(&p, l.to_string()), tb(v, 22.0, c), k::mu(&p, sub.to_string(), 11.0)].spacing(2.0)).padding(10.0).width(Length::Fill).style(ui::boxed(p.panel2, p.r(8.0), Some((p.line, 1.0)))).into() };
     let saved = back::read_own("server.json")["savedThisMonth"].as_u64().unwrap_or(0);
     let server = k::card_fit(&p, column![k::h2::<Msg>(&p, "Kept on your home server"), row![tile("Mod files", if srv.is_some() { k::size_words(kept) } else { "—".into() }, "every version kept", p.text), tile("Saved this month", k::size_words(saved), "not downloaded twice", k::GREEN)].spacing(8.0), k::mu(&p, if srv.is_some() { "Taken-down mods stay here · in Backups each night" } else { "Set up Hearth's home server and each mod file is downloaded once for every device." }, 11.0)].spacing(8.0));
@@ -1390,7 +1553,15 @@ fn modlists_page(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let mut c = Column::new().spacing(8.0).push(k::h1::<Msg>(&p, "Modlists & collections")).push(k::mu(&p, "Wabbajack lists through jackify-engine (GPL-3); each installs into a new instance. Nexus Collections and Thunderstore packs install the same way, into a new profile.", 12.0));
     for j in a.modlists["jobs"].as_array().cloned().unwrap_or_default() {
-        c = c.push(kvl(&p, s(&j["title"]), s(&j["state"]), p.accent));
+        let (done, all) = (j["step"][0].as_u64().or(j["count"][0].as_u64()).unwrap_or(0), j["step"][1].as_u64().or(j["count"][1].as_u64()).unwrap_or(0));
+        let frac = if all > 0 { done as f32 / all as f32 } else { 0.0 };
+        let words = match s(&j["state"]).as_str() {
+            "manual" => format!("waiting for {} files you fetch by hand", j["manual"].as_array().map(|m| m.len()).unwrap_or(0)),
+            "done" => "installed".into(),
+            "failed" => format!("stopped: {}", s(&j["error"])),
+            _ => format!("{} · {}", s(&j["phase"]), s(&j["status"])),
+        };
+        c = c.push(k::card_fit(&p, column![row![tb(s(&j["title"]), 13.0, p.text), k::fill(), k::mu1::<Msg>(&p, if all > 0 { format!("{}%", (frac * 100.0) as u32) } else { String::new() }, 11.0)], k::bar(&p, frac, 6.0, Length::Fill), k::mu(&p, ui::fit(&words, 120), 11.0)].spacing(6.0)));
     }
     let lists = a.modlists["gallery"]["lists"].as_array().or(a.modlists["gallery"].as_array()).cloned().unwrap_or_default();
     for (i, l) in lists.iter().enumerate().take(40) {
@@ -1437,7 +1608,24 @@ fn accounts_page(a: &App) -> E<'_, Msg> {
         }
         c = c.push(k::card_fit(&p, r));
     }
-    c = c.push(k::mu(&p, "LoversLab, MEGA and Google for Wabbajack lists: as before (docs/MODS.md › Accounts).", 12.0));
+    c = c.push(k::h2::<Msg>(&p, "For modlists (Wabbajack)"));
+    for (id, name, words) in [("loverslab", "LoversLab", "Some modlists take files from LoversLab: sign in there in your browser (its own page); the sign-in is kept for you only."), ("mega", "MEGA", "Some modlists take files from MEGA: your MEGA email and password, used once to sign in; only MEGA's answer is kept, readable by you only."), ("google", "Google", "Some modlists take files from Google Drive: sign in with Google in your browser; only its answer is kept.")] {
+        let st = a.accounts.as_array().and_then(|l| l.iter().find(|x| x["id"] == id)).cloned().unwrap_or(Value::Null);
+        let signed = st["signedIn"] == true;
+        let mut r = Column::new().spacing(6.0).push(row![tb(name.to_string(), 14.0, p.text), k::fill(), k::tag::<Msg>(&p, if signed { "Signed in" } else { "Not yet" }, if signed { Tag::Ok } else { Tag::Warn })].spacing(8.0).align_y(iced::Center)).push(k::para(p.muted, words.to_string(), 12.0));
+        if let Some(e) = st["error"].as_str().or(st["pending"].as_str()).filter(|e| !e.is_empty() && *e != "done") {
+            r = r.push(k::mu(&p, e.to_string(), 11.0));
+        }
+        let pid: &'static str = match id { "loverslab" => "loverslab", "mega" => "mega", _ => "google" };
+        if signed {
+            r = r.push(k::chip(&p, "Sign out", Ch::Plain, Sz::Md, Some(Msg::SignOut(pid))));
+        } else if id == "mega" {
+            r = r.push(row![container(k::input(&p, "MEGA email", &a.mega.0, Msg::MegaEmail)).width(Length::Fill), container(hearth_oss::w::secret_input(&p, "MEGA password", &a.mega.1, Msg::MegaPass, Msg::MegaGo)).width(Length::Fill), k::chip(&p, "Sign in", Ch::Acc, Sz::Md, Some(Msg::MegaGo))].spacing(8.0));
+        } else {
+            r = r.push(k::chip(&p, format!("Sign in to {name}"), Ch::Plain, Sz::Md, Some(Msg::SignIn(pid))));
+        }
+        c = c.push(k::card_fit(&p, r));
+    }
     container(scrollable(c).height(Length::Fill)).padding(20.0).max_width(900.0).into()
 }
 
@@ -1494,6 +1682,7 @@ pub fn tv(a: &App) -> iced::Element<'_, Msg> {
     let moving = container(column![
         k::cap::<Msg>(&p, format!("Moving {}", s(&picked["name"]))),
         t(format!("Now at {} · wins {} files · loses {}", n(&picked["priority"]), commas(n(&picked["conflicts"]["winning"])), commas(n(&picked["conflicts"]["losing"]))), 16.0, p.text),
+        t(move_line(a, &picked), 14.0, p.muted),
         t(format!("beats {}", picked["conflicts"]["winsOver"].as_array().map(|x| x.iter().take(2).map(s).collect::<Vec<_>>().join(", ")).unwrap_or_default()), 14.0, k::GREEN),
         t(format!("loses to {}", picked["conflicts"]["losesTo"].as_array().map(|x| x.iter().take(2).map(s).collect::<Vec<_>>().join(", ")).unwrap_or_default()), 14.0, k::RED),
         k::fill(),
@@ -1525,10 +1714,44 @@ pub fn tv(a: &App) -> iced::Element<'_, Msg> {
     container(all).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into()
 }
 
+/// While a mod is carried: what one more step would do (the next mod it conflicts with, above or below).
+fn move_line(a: &App, picked: &Value) -> String {
+    let prio = picked["priority"].as_i64().unwrap_or(0);
+    let files: Vec<Value> = a.lens["files"].as_array().cloned().unwrap_or_default();
+    let mods = a.mods();
+    let conflicting: Vec<&Value> = mods.iter().filter(|m| m["kind"] == "mod" && m["enabled"] == true && m["id"] != picked["id"]).collect();
+    let near = |up: bool| -> Option<(String, usize)> {
+        let mut c: Vec<&&Value> = conflicting.iter().filter(|m| if up { m["priority"].as_i64().unwrap_or(0) < prio } else { m["priority"].as_i64().unwrap_or(0) > prio }).collect();
+        c.sort_by_key(|m| (m["priority"].as_i64().unwrap_or(0) - prio).abs());
+        for m in c {
+            let n2 = s(&m["name"]);
+            let cnt = if up { files.iter().filter(|f| f["status"] == "wins" && f["over"].as_array().map(|o| o.iter().any(|x| s(x) == n2)).unwrap_or(false)).count() } else { files.iter().filter(|f| f["status"] == "loses" && s(&f["to"]) == n2).count() };
+            if cnt > 0 {
+                return Some((n2, cnt));
+            }
+        }
+        None
+    };
+    let first = |n: &str| n.split_whitespace().last().unwrap_or(n).to_string();
+    let mut v = Vec::new();
+    if let Some((m, c)) = near(false) {
+        v.push(format!("Below {}: would win {} more files", first(&m), commas(c as u64)));
+    }
+    if let Some((m, c)) = near(true) {
+        v.push(format!("Above {}: would lose {} more files", first(&m), commas(c as u64)));
+    }
+    v.join(" · ")
+}
+
 fn downloads_mini(a: &App) -> E<'static, Msg> {
     let p = a.p;
     let mut c = Column::new().spacing(6.0);
     let mut any = false;
+    for j in a.modlists["jobs"].as_array().cloned().unwrap_or_default().iter().filter(|j| j["state"] == "manual").take(1) {
+        any = true;
+        let n2 = j["manual"].as_array().map(|m| m.len()).unwrap_or(0);
+        c = c.push(row![t(format!("{} modlist", s(&j["title"])), 13.0, p.text), k::fill(), t(format!("{n2} file{} to fetch", if n2 == 1 { "" } else { "s" }), 13.0, k::YELLOW)]);
+    }
     for i in a.downloads["items"].as_array().cloned().unwrap_or_default().into_iter().filter(|i| i["state"] != "done").take(3) {
         let frac = n(&i["done"]) as f32 / n(&i["size"]).max(1) as f32;
         any = true;

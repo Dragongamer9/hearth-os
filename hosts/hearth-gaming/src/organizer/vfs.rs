@@ -514,6 +514,15 @@ fn game_processes(dir: &Path) -> Vec<u32> { crate::launch::processes_in(dir) }
 
 /// Mounts the view, starts the program and waits for it (and anything it started in the game's folder) to end,
 /// then takes the view away again. Used by `hearth-mods --organizer <instance> run` (the library's Play).
+/// The instance's deploy mode: links (no fuse-overlayfs layer) when `.hearth/deploy-links` is there.
+pub fn links_only(inst: &Instance) -> bool { inst.hearth_dir().join("deploy-links").is_file() }
+/// Sets the deploy mode: "links" or "overlay" (the default, with links when fuse-overlayfs isn't there).
+pub fn set_mode(inst: &Instance, mode: &str) -> Result<(), String> {
+    let f = inst.hearth_dir().join("deploy-links");
+    if mode == "links" { std::fs::create_dir_all(inst.hearth_dir()).map_err(|e| e.to_string())?; crate::util::write_atomic(&f, b"links\n").map_err(|e| e.to_string()) }
+    else { match std::fs::remove_file(&f) { Ok(()) => Ok(()), Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), Err(e) => Err(e.to_string()) } }
+}
+
 pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
     use crate::launch::log;
     let t = format!("organizer {}", inst.rec.title);
@@ -529,7 +538,8 @@ pub fn run(inst: &Instance, ex: &Executable) -> Result<Value, String> {
     // A Steam game started with Proton needs the regular Steam running (Steam DRM), before the mods go on.
     #[cfg(target_os = "linux")]
     if planned.is_ok() && ex.windows() && app.is_some() { crate::launch::ensure_reachable_steam(&t)?; }
-    let a = deploy(inst, std::process::id(), true).map_err(|e| { log(&format!("{t}: couldn't lay the mods over the game: {e}")); e })?;
+    // The deploy-mode switch (Mod Manager › the game folder): links instead of the layer when it says so.
+    let a = deploy(inst, std::process::id(), !links_only(inst)).map_err(|e| { log(&format!("{t}: couldn't lay the mods over the game: {e}")); e })?;
     log(&format!("{t}: the mods are laid over the game ({})", a.mode));
     let game_dir = inst.game_dir.clone().unwrap_or_else(|| a.target.clone());
     let mut result = json!({"ok": true, "title": ex.title, "mode": a.mode, "notes": a.notes});

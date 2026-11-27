@@ -30,16 +30,21 @@ pub struct Hit {
     /// (file name, file id, download address)
     pub files: Vec<(String, u64, String)>,
     pub needs: Vec<String>,
+    /// the files in its archive (Nexus Mods' file preview), lower-case paths
+    pub preview: Vec<String>,
+    pub category: String,
     /// "works" or "! …" (board 3's line under each result)
     pub check: String,
     pub have: bool,
+    /// what its files would do to yours ("wins 12 files over SkyUI · 3 new plugins")
+    pub clash: String,
 }
 
 impl Hit {
     pub fn check(&mut self, mine: &[String]) {
         let n = self.name.to_lowercase();
         self.have = mine.iter().any(|m| *m == n);
-        let missing: Vec<&String> = self.needs.iter().filter(|x| !mine.iter().any(|m| m.contains(&x.to_lowercase()))).collect();
+        let missing: Vec<&String> = self.needs.iter().filter(|x| !mine.iter().any(|m| m.contains(&x.to_lowercase()) || x.to_lowercase().contains(m.as_str()) && m.len() > 4)).collect();
         self.check = if self.have {
             "you have it".into()
         } else if missing.is_empty() {
@@ -51,6 +56,98 @@ impl Hit {
     pub fn label(&self) -> &'static str {
         SOURCES.iter().find(|s| s.0 == self.source).map(|s| s.1).unwrap_or("")
     }
+}
+
+/// What a result needs (its page's requirements) and what's in it (Nexus Mods' file preview), read when it's picked:
+/// (needs, files, what its files do to yours).
+pub fn details(h: Hit, key: String, own: std::collections::BTreeMap<String, String>) -> (Vec<String>, Vec<String>, String) {
+    let mut needs: Vec<String> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+    match h.source {
+        "thunderstore" => {
+            let (ns, name) = h.id.split_once('-').unwrap_or(("", ""));
+            if let Ok(v) = get(&format!("https://thunderstore.io/api/experimental/package/{ns}/{name}/"), &[("Accept", "application/json")]) {
+                for d in v["latest"]["dependencies"].as_array().cloned().unwrap_or_default() {
+                    let d = d.as_str().unwrap_or("");
+                    // Namespace-Name-1.2.3
+                    let mut parts: Vec<&str> = d.split('-').collect();
+                    if parts.len() >= 3 {
+                        parts.pop();
+                        needs.push(parts[1..].join("-").replace('_', " "));
+                    }
+                }
+            }
+        }
+        "modio" if !key.is_empty() => {
+            if let Ok(v) = get(&format!("https://api.mod.io/v1/games/{}/mods/{}/dependencies?api_key={}", h.domain, h.id, enc(&key)), &[]) {
+                needs.extend(v["data"].as_array().cloned().unwrap_or_default().iter().filter_map(|d| d["name"].as_str().map(str::to_string)));
+            }
+        }
+        "nexus" => {
+            if let Some(acct) = nexus::account() {
+                let q = format!("{{\"query\": \"query {{ legacyModsByDomain(ids: [{{domainName: \\\"{}\\\", modId: {}}}]) {{ nodes {{ modRequirements {{ nexusRequirements {{ nodes {{ modName }} }} }} }} }} }}\"}}", h.domain, h.id);
+                if let Ok((200, body)) = hearth_gaming::accounts::curl_post(nexus::API2, &[("apikey", acct.key.as_str()), ("Content-Type", "application/json")], &q, 20) {
+                    let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                    for n in v["data"]["legacyModsByDomain"]["nodes"][0]["modRequirements"]["nexusRequirements"]["nodes"].as_array().cloned().unwrap_or_default() {
+                        if let Some(m) = n["modName"].as_str() {
+                            needs.push(m.to_string());
+                        }
+                    }
+                }
+                let id = h.id.parse::<u64>().unwrap_or(0);
+                let fl = nexus::files(&acct.key, &h.domain, id).unwrap_or(Value::Null);
+                let want = h.files.first().map(|f| f.1).unwrap_or(0);
+                let f = fl["files"].as_array().and_then(|a| a.iter().find(|x| x["file_id"].as_u64() == Some(want)).or_else(|| a.iter().filter(|x| x["category_name"] == "MAIN").max_by_key(|x| x["uploaded_timestamp"].as_u64().unwrap_or(0)))).cloned().unwrap_or(Value::Null);
+                if let Some(url) = f["content_preview_link"].as_str() {
+                    if let Ok(t) = get(url, &[]) {
+                        fn walk(v: &Value, out: &mut Vec<String>) {
+                            for c in v["children"].as_array().cloned().unwrap_or_default() {
+                                if c["type"] == "directory" {
+                                    walk(&c, out);
+                                } else if let Some(p) = c["path"].as_str() {
+                                    out.push(p.replace('\\', "/").to_lowercase());
+                                }
+                            }
+                        }
+                        walk(&t, &mut files);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    // what its files would do: the data folder found by the folders it has (as the organizer does)
+    let strip = |p: &str| -> String {
+        let l = p.trim_start_matches('/');
+        for marker in ["data/", "meshes/", "textures/", "skse/", "interface/", "scripts/", "sound/", "f4se/"] {
+            if let Some(i) = l.find(marker) {
+                return if marker == "data/" { l[i + 5..].to_string() } else { l[i..].to_string() };
+            }
+        }
+        l.to_string()
+    };
+    let mut over: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut new = 0usize;
+    let mut plugins = 0usize;
+    for f in &files {
+        let r = strip(f);
+        if hearth_gaming::organizer::plugins::is_plugin(&r) {
+            plugins += 1;
+        }
+        match own.get(&r) {
+            Some(m) => *over.entry(if m.is_empty() { "the game's own files".into() } else { m.clone() }).or_default() += 1,
+            None => new += 1,
+        }
+    }
+    let clash = if files.is_empty() {
+        String::new()
+    } else {
+        let mut o: Vec<(String, usize)> = over.into_iter().collect();
+        o.sort_by(|a, b| b.1.cmp(&a.1));
+        let top = o.iter().take(2).map(|(m, n)| format!("wins {n} files over {m}")).collect::<Vec<_>>().join(" · ");
+        format!("{new} new files{}{}", if top.is_empty() { String::new() } else { format!(" · {top}") }, if plugins > 0 { format!(" · {plugins} plugin{}", if plugins == 1 { "" } else { "s" }) } else { String::new() })
+    };
+    (needs, files, clash)
 }
 
 fn get(url: &str, headers: &[(&str, &str)]) -> Result<Value, String> {
@@ -127,6 +224,7 @@ fn search_now(src: &'static str, q: &str, games: &[(String, String)], key: &str)
                         picture: m["pictureUrl"].as_str().or(m["picture_url"].as_str()).unwrap_or("").into(),
                         page: format!("{}/{domain}/mods/{id}", nexus::SITE),
                         adult: m["adultContent"].as_bool().or(m["contains_adult_content"].as_bool()).unwrap_or(false),
+                        category: m["modCategory"]["name"].as_str().or(m["category"]["name"].as_str()).map(str::to_string).or(m["category_id"].as_u64().map(|c| c.to_string())).unwrap_or_default(),
                         ..Default::default()
                     });
                 }
@@ -267,11 +365,12 @@ pub fn downloads_dir() -> std::path::PathBuf {
     home_server().unwrap_or_else(|| hearth_gaming::util::data_dir().join("mods").join("downloads"))
 }
 
-pub fn sync_words() -> String {
-    let d = crate::back::read_own("devices.json");
-    match d["devices"].as_array().map(|a| a.len()).unwrap_or(0) {
-        0 => "This PC".into(),
-        _ => format!("{} · synced with {}", d["here"].as_str().unwrap_or("This PC"), d["devices"][0]["name"].as_str().unwrap_or("your devices")),
+/// The status pill: this device, and the device it's synced with (the one seen most lately).
+pub fn sync_words(devs: &[Value]) -> String {
+    let here = crate::sync::here();
+    match devs.iter().find(|d| d["state"] != "away").or(devs.first()) {
+        None => here,
+        Some(d) => format!("{here} · synced with the {}", d["name"].as_str().unwrap_or("your devices").trim_start_matches("the ")),
     }
 }
 

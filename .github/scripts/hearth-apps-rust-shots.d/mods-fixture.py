@@ -48,8 +48,43 @@ def esp(flags, masters, author="Dragongamer9"):
 w(os.path.join(data, "desktop.json"), json.dumps({"look": "hearth", "mode": "dark"}) + "\n")
 
 # ---- the game folder (never changed) and its prefix
-for f in ["SkyrimSE.exe", "SkyrimSELauncher.exe", "skse64_loader.exe"]:
+def fixed_info(ver):
+    """A program's VS_FIXEDFILEINFO (what Windows shows as its version), in a small file."""
+    a, b, c, d = ver
+    return b"MZ" + b"\0" * 62 + b"\xbd\x04\xef\xfe" + struct.pack("<IIIII", 0x10000, (a << 16) | b, (c << 16) | d, (a << 16) | b, (c << 16) | d)
+
+
+def skse_plugin(name, needs):
+    """A 64-bit DLL with SKSE's SKSEPlugin_Version export (its seVersionRequired: the SKSE version it needs)."""
+    pe = 0x80
+    sec_raw, sec_rva = 0x400, 0x1000
+    exp = bytearray(40)
+    names_rva, funcs_rva, ords_rva, str_rva, data_rva = sec_rva + 40, sec_rva + 44, sec_rva + 48, sec_rva + 52, sec_rva + 80
+    struct.pack_into("<IIIIIIIIII", exp, 0, 0, 0, 0, 0, 1, 1, 1, funcs_rva, names_rva, ords_rva)
+    body = bytes(exp) + struct.pack("<I", str_rva) + struct.pack("<I", data_rva) + struct.pack("<H", 0) + b"\0\0" + b"SKSEPlugin_Version\0".ljust(28, b"\0")
+    a, b, c = needs
+    data = bytearray(848)
+    struct.pack_into("<II", data, 0, 1, 1)
+    data[8:8 + len(name)] = name.encode()
+    struct.pack_into("<I", data, 844, (a << 24) | (b << 16) | (c << 4))
+    body += bytes(data)
+    out = bytearray(sec_raw)
+    out[0:2] = b"MZ"
+    struct.pack_into("<I", out, 0x3C, pe)
+    out[pe:pe + 4] = b"PE\0\0"
+    struct.pack_into("<HHIIIHH", out, pe + 4, 0x8664, 1, 0, 0, 0, 240, 0x2022)
+    opt = pe + 24
+    struct.pack_into("<H", out, opt, 0x20B)
+    struct.pack_into("<II", out, opt + 112, sec_rva, len(exp))
+    sec = opt + 240
+    out[sec:sec + 8] = b".edata\0\0"
+    struct.pack_into("<IIII", out, sec + 8, len(body), sec_rva, len(body), sec_raw)
+    return bytes(out) + body
+
+
+for f in ["SkyrimSE.exe", "SkyrimSELauncher.exe"]:
     w(os.path.join(game, f), "MZ", "w")
+w(os.path.join(game, "skse64_loader.exe"), fixed_info((0, 2, 2, 3)), "wb")
 for m in ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"]:
     w(os.path.join(game, "Data", m), esp(1, [] if m == "Skyrim.esm" else ["Skyrim.esm"], "Bethesda"), "wb")
 w(os.path.join(game, "Data/ccBGSSSE001-Fish.esm"), esp(0x201, ["Skyrim.esm"], "Bethesda"), "wb")
@@ -108,7 +143,10 @@ for m in mods:
         meta += "modid=%d\ngameName=SkyrimSE\n" % nid
     w(os.path.join(d, "meta.ini"), meta)
     for f in files:
-        w(os.path.join(d, f), name)
+        if f.endswith(".dll"):
+            w(os.path.join(d, f), skse_plugin(name, (2, 2, 6) if name == "Community Shaders" else (2, 2, 0)), "wb")
+        else:
+            w(os.path.join(d, f), name)
     if plugin:
         pn, flags, masters = plugin
         w(os.path.join(d, pn), esp(flags, masters), "wb")
@@ -170,6 +208,12 @@ REGISTERS:
 \tRAX 0x0
 \tRCX 0x2A1F3C80 (GFxValue)
 \tRDX 0x86
+
+SYSTEM SPECS:
+\tOS: Microsoft Windows 10 Pro v10.0.19045 (Proton)
+\tGPU #1: Nvidia GeForce RTX 5070
+\tPHYSICAL MEMORY: 9.80 GB/32.00 GB
+\tGPU MEMORY: 6.10/12.00 GB
 
 POSSIBLE RELEVANT OBJECTS:
 \tMagicMenu (open) · 134 spells in the list
@@ -273,11 +317,38 @@ w(os.path.join(own, "updates.json"), json.dumps({"checked": T - 1200, "updates":
     {"id": "u3", "game": "Skyrim Special Edition", "mod": "Ordinator - Perks of Skyrim", "from": "9.31", "to": "10.0", "source": "nexus", "date": "2026-11-20", "tag": "new-game", "changelog": ["New perks"]},
     {"id": "u4", "game": "Skyrim Special Edition", "mod": "Community Shaders", "from": "1.1", "to": "1.2", "source": "nexus", "date": "2026-11-19", "tag": "safe", "changelog": []},
 ], "gone": [{"mod": "Rally's Fences", "date": "2026-11-20"}]}))
-w(os.path.join(own, "devices.json"), json.dumps({"here": "Nvidia PC", "devices": [
-    {"name": "ROG Ally", "games": "Skyrim SE, Stardew, BFME II", "profile": "Vanilla+ (Ally)", "state": "1 update"},
-    {"name": "Laptop", "games": "Skyrim SE, Minecraft", "profile": "Survival playthrough", "state": ""},
-    {"name": "Truck laptop", "games": "Stardew Valley", "profile": "Default", "state": "away"}]}))
-w(os.path.join(own, "measured.json"), json.dumps({"settings": "1080p · 15 W · FSR on", "places": [{"name": "Whiterun", "fps": 62}, {"name": "Falkreath forest", "fps": 58}, {"name": "Markarth", "fps": 65}, {"name": "Interiors", "fps": 78}]}))
+# ---- the home server's shared Mods folder, where your devices meet (sync.rs): each other device's own note
+share = os.path.join(home, "HomeServer/Games")
+w(os.path.join(home, ".config/nimbus/home-server.json"), json.dumps({"sharedFolder": share}))
+w(os.path.join(own, "device.json"), json.dumps({"name": "Nvidia PC"}))
+mods_share = os.path.join(share, "Mods")
+for i in range(3):
+    w(os.path.join(mods_share, "skyrimspecialedition/kept-%d.7z" % i), "x" * 4096)
+w(os.path.join(own, "server.json"), json.dumps({"month": "Nov", "savedThisMonth": 229780750336}))
+G = lambda t, n, p: {"title": t, "mods": n, "profile": p}
+notes = {
+    "rog-ally": {"name": "ROG Ally", "kind": "ALLY", "at": T - 300, "games": [G("Skyrim Special Edition", 147, "Vanilla+ (Ally)"), G("Stardew Valley", 38, "Default"), G("The Battle for Middle-earth II", 2, "Edain")],
+                 "updates": [{"game": "Skyrim Special Edition", "mod": "SkyUI", "to": "5.2.1"}],
+                 "crashes": [{"at": T - 430000, "game": "Skyrim Special Edition", "module": "EngineFixes.dll", "what": "out of memory in Riften", "fixed": True}],
+                 "measured": {"settings": "1080p · 15 W · FSR on", "at": T - 4000, "places": [{"name": "Whiterun", "fps": 62}, {"name": "Falkreath forest", "fps": 58}, {"name": "Markarth", "fps": 65}, {"name": "Interiors", "fps": 78}]},
+                 "memory": {"total": 17179869184, "used": 12240656384}, "free": 15247757312},
+    "laptop": {"name": "Laptop", "kind": "LAPTOP", "at": T - 7200, "games": [G("Skyrim Special Edition", 412, "Survival playthrough"), G("Minecraft", 220, "All the Mods 10")], "updates": [], "crashes": []},
+    "truck-laptop": {"name": "Truck laptop", "kind": "LAPTOP", "at": T - 900000, "games": [G("Stardew Valley", 38, "Default")], "updates": [], "crashes": []},
+}
+for k_, v_ in notes.items():
+    w(os.path.join(mods_share, ".hearth/devices/%s.json" % k_), json.dumps(v_))
+
+# ---- each start of Play modded (the crash came 2 minutes into one), Proton's log, a fix that held
+w(os.path.join(own, "plays.json"), json.dumps({"plays": [{"at": T + 600, "game": "Skyrim Special Edition", "profile": "Survival playthrough", "exe": "SKSE", "modsOn": 388, "device": "Nvidia PC"}]}))
+w(os.path.join(home, "steam-489830.log"), "".join("%d.%03d:0108:fixme:dxgi:DXGI_SetPrivateData Ignoring\n" % (i, i * 7) for i in range(30)) + "120.480:0108:err:seh:NtRaiseException Unhandled exception code c0000005 flags 0 addr 0x7ff6a41c2d10\n")
+w(os.path.join(own, "fixes.json"), json.dumps({os.path.join(docs, "SKSE/crash-2026-11-21-02-10-40.log"): {"state": "fixed", "how": "a test start passed", "at": T - 420000}}))
+
+# ---- versions kept per mod (when an update replaced them): going back one mod at a time
+for m_, vs in [("SkyUI", ["5.1", "5.0"]), ("Ordinator - Perks of Skyrim", ["9.30"])]:
+    for n_, v_ in enumerate(vs):
+        vd = os.path.join(inst, ".hearth/versions", m_, v_)
+        w(os.path.join(vd, "meta.ini"), "[General]\nversion=%s\n" % v_)
+        w(os.path.join(vd, ".hearth-kept"), str((T - 100000 * (n_ + 1)) * 1000))
 w(os.path.join(own, "describe.json"), json.dumps({"talk": [
     {"you": "Make Skyrim look realistic but keep 60 fps on my Ally"},
     {"ai": "Here's a set of 18 mods for the Ally. It swaps your 4K textures for 2K ones made for handhelds, adds Community Shaders with only the cheap effects on, real-looking grass that stops at a shorter distance, and a calmer weather mod. About 62 fps in Whiterun (you have 71 now) and 58 in the busiest forest, so I left the 60 fps cap on. It goes into a new profile; your Survival playthrough stays as it is."},

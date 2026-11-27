@@ -14,9 +14,12 @@
 
 mod back;
 mod logic;
+mod more;
 mod pad;
 mod pages;
+mod patch;
 mod sources;
+mod sync;
 
 use back::{Detail, Game};
 use hearth_oss_kit_a::{self as k, Ch, Sz, E};
@@ -179,6 +182,49 @@ pub enum Msg {
     SaveKey,
     Keys(Vec<(&'static str, bool)>),
     Modlists(Result<Value, String>),
+    // your other devices and the home server
+    Devices(Vec<Value>),
+    Inbox(Vec<Value>),
+    SendGame(String),
+    AlsoAdd,
+    Measure,
+    // the side's search
+    SideMod(String, String),
+    // the old window's parts: sign-ins, the deploy mode, Wabbajack's progress
+    Accounts(Result<Value, String>),
+    SignIn(&'static str),
+    SignOut(&'static str),
+    MegaEmail(String),
+    MegaPass(String),
+    MegaGo,
+    DeployMode(&'static str),
+    WjTick,
+    // Health, the lens
+    UpdateExt,
+    MakePatch,
+    Patched(Result<String, String>),
+    // board 2
+    ReadMe,
+    Before(Box<Option<more::Before>>),
+    // board 3
+    FindPop(&'static str),
+    FindGame(String),
+    FindOrder(u8),
+    Needs(String, Vec<String>, Vec<String>, String),
+    Endorsed(Result<Value, String>),
+    FindLike(String),
+    // board 4
+    KeepSnaps(u8),
+    Versions(String, Result<Value, String>),
+    UseVersion(String, String),
+    // board 5
+    TestStart,
+    Tested(Result<String, String>),
+    GetCrashLogger,
+    Heard(Result<String, String>),
+    Server((u64, usize)),
+    Pictures,
+    // board 7
     Drag,
     Max,
     Min,
@@ -247,6 +293,16 @@ pub struct App {
     pub key_text: String,
     pub keys: Vec<(&'static str, bool)>,
     pub modlists: Value,
+    pub devices: Vec<Value>,
+    pub accounts: Value,
+    pub mega: (String, String),
+    pub before: Option<more::Before>,
+    pub find_game: String,
+    pub find_order: u8,
+    pub versions: std::collections::BTreeMap<String, Vec<Value>>,
+    pub testing: bool,
+    pub moved_up: bool,
+    pub server: (u64, usize),
 }
 
 pub fn now() -> i64 {
@@ -302,7 +358,7 @@ impl App {
             upd_pick: String::new(),
             snap_pick: app::arg("--snap").and_then(|x| x.parse().ok()).unwrap_or(0),
             crash_pick: 0,
-            crash_tab: 0,
+            crash_tab: app::arg("--crash-tab").and_then(|x| x.parse().ok()).unwrap_or(0),
             note: String::new(),
             ask: String::new(),
             talk: back::read_own("describe.json"),
@@ -311,8 +367,21 @@ impl App {
             key_text: String::new(),
             keys: Vec::new(),
             modlists: Value::Null,
+            devices: Vec::new(),
+            accounts: Value::Null,
+            mega: (String::new(), String::new()),
+            before: None,
+            find_game: String::new(),
+            find_order: 0,
+            versions: std::collections::BTreeMap::new(),
+            testing: false,
+            moved_up: true,
+            server: (0, 0),
         };
-        let mut t = vec![Task::perform(back::work(back::load_world), Msg::World), Task::perform(back::call("downloads_list", Value::Null), Msg::Downloads), Task::perform(sources::have_keys(), Msg::Keys)];
+        let mut t = vec![Task::perform(back::work(back::load_world), Msg::World), Task::perform(back::call("downloads_list", Value::Null), Msg::Downloads), Task::perform(sources::have_keys(), Msg::Keys), Task::perform(back::work(sync::others), Msg::Devices), Task::perform(back::work(sync::take_inbox), Msg::Inbox), Task::perform(back::call("accounts_list", Value::Null), Msg::Accounts)];
+        if a.settings["checkUpdates"].as_str() == Some("open") || a.settings["checkUpdates"].as_str().unwrap_or("night") == "night" && a.updates["checked"].as_i64().map(|c| now() - c > 20 * 3600).unwrap_or(false) {
+            t.push(Task::perform(back::work(more::check_all), |_| Msg::Reload));
+        }
         if !a.find_q.is_empty() {
             t.push(Task::done(Msg::FindGo));
         }
@@ -372,7 +441,10 @@ impl App {
             return true;
         }
         match logic::take(&self.inst_dir(), &self.profile_dir(), &self.mods_dir(), why, "", false, now()) {
-            Ok(_) => true,
+            Ok(_) => {
+                more::prune(&self.inst_dir(), self.settings["keepSnapshots"].as_i64().unwrap_or(60), 20);
+                true
+            }
             Err(e) => {
                 self.said = format!("Nothing was changed: the snapshot couldn't be made ({e}).");
                 false
@@ -401,6 +473,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Pad(b) => return pages::pad(a, b),
         Msg::Tick => {
+            if a.page == Page::Modlists {
+                return update(a, Msg::WjTick);
+            }
             if a.page == Page::Downloads || a.tv {
                 return Task::perform(back::call("downloads_list", Value::Null), Msg::Downloads);
             }
@@ -449,6 +524,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     a.starts = a.detail.s["executables"].as_array().and_then(|e| e.first()).and_then(|e| e["title"].as_str()).unwrap_or("").to_string();
                 }
                 let sort = if app::flag("--sort") && a.sort.is_none() { update(a, Msg::Sort) } else { Task::none() };
+                let sort = Task::batch([sort, publish(a), preview(a)]);
                 if let Some(id) = a.inst_id() {
                     if !a.picked.is_empty() {
                         return Task::batch([sort, Task::perform(back::organizer(vec![id, "conflicts".into(), a.picked.clone()]), Msg::Lens)]);
@@ -463,6 +539,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 Page::Find if a.sets.is_null() => return Task::perform(back::call("wj_gallery", json!({"refresh": false})), Msg::Sets),
                 Page::Modlists => return Task::batch([Task::perform(back::call("wj_gallery", json!({"refresh": false})), Msg::Modlists), Task::perform(back::call("wj_jobs", Value::Null), Msg::Sets)]),
                 Page::Downloads => return Task::perform(back::call("downloads_list", Value::Null), Msg::Downloads),
+                Page::Every => return Task::batch([Task::perform(back::work(sync::server_files), Msg::Server), Task::perform(back::work(sync::others), Msg::Devices)]),
+                Page::Describe => return pictures(a),
                 _ => {}
             }
         }
@@ -557,6 +635,19 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Starts(s) => a.starts = s,
         Msg::Play => {
             let Some(g) = a.game().cloned() else { return Task::none() };
+            let on = a.mods().iter().filter(|m| m["kind"] == "mod" && m["enabled"] == true).count();
+            more::note_play(&g.title, &a.profile(), &a.starts, on);
+            // a measuring start another device asked for: MangoHud logs its first 60 seconds
+            let m = back::read_own("measure.json");
+            if m["game"].as_str() == Some(g.title.as_str()) {
+                for (k2, v) in sync::measure_env() {
+                    std::env::set_var(k2, v);
+                }
+                let _ = back::write_own("measure.json", &json!({}));
+                a.said = format!("Measuring this start for {} (MangoHud's log, 60 seconds).", m["from"].as_str().unwrap_or("your other device"));
+            } else {
+                std::env::remove_var("MANGOHUD_CONFIG");
+            }
             if let Some(id) = g.inst_id() {
                 let exe = a.starts.clone();
                 return Task::perform(back::call("organizer_run", json!({"id": id, "exe": exe})), Msg::Said);
@@ -651,6 +742,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let mut args = vec![id, "install".into(), path];
             if a.if_in == 1 {
                 args.push("--replace".into());
+            } else if a.if_in == 2 {
+                args.push("--merge".into());
             }
             return Task::perform(back::organizer(args), Msg::Installed);
         }
@@ -673,12 +766,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             Ok(v) if v["needs"] == "fomod-eval" => {
                 a.fomod["evaluation"] = v["evaluation"].clone();
                 a.choices = serde_json::from_value(v["evaluation"]["choices"].clone()).unwrap_or_default();
+                return preview(a);
             }
             Ok(v) if v["needs"] == "fomod" => {
                 a.fomod = v;
                 a.fomod_step = 0;
                 a.choices = serde_json::from_value(a.fomod["evaluation"]["choices"].clone()).unwrap_or_default();
                 let _ = back::write_own("fomod-open.json", &a.fomod);
+                return preview(a);
             }
             Ok(v) => {
                 a.fomod = Value::Null;
@@ -720,7 +815,13 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 let (id, tok, ch) = (a.inst_id().unwrap_or_default(), a.fomod["token"].as_str().unwrap_or("").to_string(), serde_json::to_string(&a.choices).unwrap_or_default());
                 let name = a.fomod["name"].as_str().unwrap_or("").to_string();
                 let _ = a.snapshot(&format!("before {name} went in"));
-                return Task::perform(back::organizer(vec![id, "install".into(), tok, "--choices".into(), ch, "--name".into(), name]), Msg::Installed);
+                let mut args = vec![id, "install".into(), tok, "--choices".into(), ch, "--name".into(), name];
+                if a.if_in == 1 {
+                    args.push("--replace".into());
+                } else if a.if_in == 2 {
+                    args.push("--merge".into());
+                }
+                return Task::perform(back::organizer(args), Msg::Installed);
             }
         }
         Msg::FomodBack => a.fomod_step = a.fomod_step.saturating_sub(1),
@@ -730,7 +831,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let _ = back::write_own("fomod-open.json", &json!({}));
             return Task::perform(back::organizer(vec![id, "cancel".into(), tok]), |_| Msg::Tick);
         }
-        Msg::IfIn(i) => a.if_in = i,
+        Msg::IfIn(i) => {
+            a.if_in = i;
+            return preview(a);
+        }
         Msg::InstallAll => {
             let w = a.waiting.clone();
             return Task::batch(w.into_iter().map(|p| Task::done(Msg::Install(p))));
@@ -779,6 +883,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 h.check(&mine);
             }
             a.hits.sort_by(|x, y| y.endorsed.max(y.downloads / 50).cmp(&x.endorsed.max(x.downloads / 50)));
+            if a.counts.len() == sources::SOURCES.len() {
+                return details(a);
+            }
         }
         Msg::FindSrc(i) => {
             a.find_src = i;
@@ -788,18 +895,22 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::FindPick(i) => {
             a.find_pick = i;
             a.find_file = 0;
+            return details(a);
         }
         Msg::FindFile(i) => a.find_file = i,
         Msg::FindInstall => {
             let Some(h) = pages::shown_hits(a).get(a.find_pick).cloned() else { return Task::none() };
             return match h.source {
-                "nexus" => Task::perform(back::call("download_file", json!({"domain": h.domain, "modId": h.id.parse::<u64>().unwrap_or(0), "fileId": h.files.get(a.find_file).map(|f| f.1).unwrap_or(0), "game": a.pick})), Msg::Said),
+                "nexus" => {
+                    let (d, m, f, g) = (h.domain.clone(), h.id.parse::<u64>().unwrap_or(0), h.files.get(a.find_file).map(|f| f.1).unwrap_or(0), a.pick.clone());
+                    Task::perform(back::work(move || if f == 0 { more::newest_main(&d, m).and_then(|f| sync::nexus_get(d, m, f, g)) } else { sync::nexus_get(d, m, f, g) }), Msg::Said)
+                }
                 _ => Task::perform(sources::fetch(h, a.find_file), Msg::Picked),
             };
         }
         Msg::Endorse => {
-            if let Some(h) = pages::shown_hits(a).get(a.find_pick) {
-                run_open(&h.page);
+            if let Some(h) = pages::shown_hits(a).get(a.find_pick).cloned() {
+                return Task::perform(back::work(move || endorse(&h)), Msg::Endorsed);
             }
         }
         Msg::Open(u) => run_open(&u),
@@ -868,9 +979,13 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let t: Vec<Task<Msg>> = picked
                 .into_iter()
                 .filter(|u| u["source"] == "nexus")
-                .map(|u| Task::perform(back::call("download_file", json!({"domain": u["domain"], "modId": u["modId"], "fileId": u["fileId"], "game": a.pick})), Msg::Said))
+                .map(|u| {
+                    let (d, m, f, g) = (u["domain"].as_str().unwrap_or("").to_string(), u["modId"].as_u64().unwrap_or(0), u["fileId"].as_u64().unwrap_or(0), a.pick.clone());
+                    Task::perform(back::work(move || sync::nexus_get(d, m, f, g)), Msg::Said)
+                })
                 .collect();
-            a.said = "The new files are downloading; each goes in from Downloads (Install as a new version keeps the old one).".into();
+            a.said = "The new files are downloading; each goes in from Downloads, replacing the old one, which is kept as a version (go back one mod any time).".into();
+            a.if_in = 1;
             return Task::batch(t);
         }
         Msg::SnapPick(i) => a.snap_pick = i,
@@ -892,7 +1007,12 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return a.reload_detail();
             }
         }
-        Msg::CheckEvery(i) => a.save_setting("checkUpdates", json!(["never", "night", "open"][i as usize])),
+        Msg::CheckEvery(i) => {
+            a.save_setting("checkUpdates", json!(["never", "night", "open"][i as usize]));
+            if let Err(e) = more::nightly(i == 1) {
+                a.said = format!("The nightly check couldn't be set up: {e}");
+            }
+        }
         Msg::Setting(key, on) => a.save_setting(key, json!(on)),
         Msg::CrashPick(i) => a.crash_pick = i,
         Msg::CrashTab(i) => a.crash_tab = i,
@@ -943,7 +1063,23 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 Err(e) => a.said = e,
             }
         }
-        Msg::Speak => run_open("hearth-voice:"),
+        Msg::Speak => {
+            if more::listening() {
+                a.said = "Turning your words into text…".into();
+                return Task::perform(back::work(more::speak_stop), Msg::Heard);
+            }
+            match more::speak_start() {
+                Ok(()) => a.said = "Listening… press Speak again when you're done.".into(),
+                Err(e) => a.said = e,
+            }
+        }
+        Msg::Heard(r) => match r {
+            Ok(w) => {
+                a.ask = w;
+                a.said.clear();
+            }
+            Err(e) => a.said = e,
+        },
         Msg::InstallSet => return pages::install_set(a),
         Msg::SaveLater => match back::write_own("describe.json", &a.talk) {
             Ok(()) => a.said = "Kept: it's here when you come back, nothing installed.".into(),
@@ -979,6 +1115,161 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 a.modlists["gallery"] = v;
             }
         }
+        Msg::Devices(d) => a.devices = d,
+        Msg::Server(x) => a.server = x,
+        Msg::Pictures => {}
+        Msg::Inbox(reqs) => return inbox(a, reqs),
+        Msg::SendGame(to) => {
+            a.pop = None;
+            let Some(g) = a.game().cloned() else { return Task::none() };
+            let read = |f: &str| std::fs::read_to_string(a.profile_dir().join(f)).unwrap_or_default();
+            let files: Vec<Value> = a.mods().iter().filter(|m| m["kind"] == "mod" && m["enabled"] == true).map(|m| json!({"mod": m["id"], "file": m["installedFrom"], "nexusId": m["nexusId"], "version": m["version"]})).collect();
+            let req = json!({"kind": "profile", "game": g.title, "profile": a.profile(), "modlist": read("modlist.txt"), "plugins": read("plugins.txt"), "loadorder": read("loadorder.txt"), "mods": files});
+            a.said = sync::send(&to, req).unwrap_or_else(|e| e);
+        }
+        Msg::AlsoAdd => {
+            let Some(h) = pages::shown_hits(a).get(a.find_pick).cloned() else { return Task::none() };
+            let devs: Vec<String> = sync::with_game(&a.devices, &h.game).iter().filter_map(|d| d["name"].as_str().map(str::to_string)).collect();
+            let mut said = Vec::new();
+            for d in &devs {
+                let req = json!({"kind": "add", "game": h.game, "source": h.source, "id": h.id, "domain": h.domain, "name": h.name, "fileId": h.files.get(a.find_file).map(|f| f.1).unwrap_or(0), "url": h.files.get(a.find_file).map(|f| f.2.clone()).unwrap_or_default()});
+                said.push(sync::send(d, req).unwrap_or_else(|e| e));
+            }
+            a.said = if said.is_empty() { "None of your other devices has this game modded.".into() } else { said.join(" ") };
+        }
+        Msg::Measure => {
+            let Some(g) = a.game().cloned() else { return Task::none() };
+            let to = a.settings["describeFor"].as_str().unwrap_or("the ROG Ally").trim_start_matches("the ").to_string();
+            a.said = sync::send(&to, json!({"kind": "measure", "game": g.title, "profile": a.profile()})).unwrap_or_else(|e| e);
+        }
+        Msg::SideMod(game, m) => {
+            a.search.clear();
+            if a.pick != game {
+                a.picked = m;
+                a.pick = game;
+                a.page = Page::Game;
+                return a.reload_detail();
+            }
+            a.page = Page::Game;
+            return update(a, Msg::Pick(m));
+        }
+        Msg::Accounts(r) => match r {
+            Ok(v) if v.is_array() => a.accounts = v,
+            Ok(_) => return Task::perform(back::call("accounts_list", Value::Null), Msg::Accounts),
+            Err(e) => a.said = e,
+        },
+        Msg::SignIn(p) => {
+            a.said = format!("Sign in to {} in the browser that opened; the Mod Manager waits for it.", hearth_gaming::accounts::label(p));
+            return Task::perform(back::call("account_begin", json!({"id": p})), Msg::Accounts);
+        }
+        Msg::SignOut(p) => return Task::perform(back::call("account_sign_out", json!({"id": p})), |_| Msg::WjTick),
+        Msg::MegaEmail(s2) => a.mega.0 = s2,
+        Msg::MegaPass(s2) => a.mega.1 = s2,
+        Msg::MegaGo => {
+            let (e, pw) = (a.mega.0.trim().to_string(), std::mem::take(&mut a.mega.1));
+            return Task::perform(back::call("mega_sign_in", json!({"email": e, "password": pw})), Msg::Accounts);
+        }
+        Msg::DeployMode(m) => {
+            if a.detail.organizer {
+                return a.org(&["deploy-mode", m]);
+            }
+            let g = a.pick.clone();
+            return Task::perform(back::call("set_deploy", json!({"id": g, "mode": m})), Msg::Said);
+        }
+        Msg::WjTick => return Task::batch([Task::perform(back::call("wj_jobs", Value::Null), Msg::Sets), Task::perform(back::call("accounts_list", Value::Null), Msg::Accounts)]),
+        Msg::UpdateExt => {
+            let kind = a.inst()["game"].as_str().unwrap_or("").to_string();
+            let Some((d, m)) = more::extender_page(&kind) else { return Task::none() };
+            if !a.snapshot("before SKSE was updated") {
+                return Task::none();
+            }
+            let g = a.pick.clone();
+            a.said = "The new script extender is coming from its page: it goes in as a mod (Downloads › Install).".into();
+            return Task::perform(back::work(move || more::newest_main(d, m).and_then(|f| sync::nexus_get(d.to_string(), m, f, g))), Msg::Said);
+        }
+        Msg::MakePatch => return make_patch(a),
+        Msg::Patched(r) => match r {
+            Ok(w) => {
+                a.said = w;
+                return Task::batch([a.reload_detail(), Task::perform(back::work(back::load_world), Msg::World)]);
+            }
+            Err(e) => a.said = e,
+        },
+        Msg::ReadMe => {
+            let tok = a.fomod["token"].as_str().unwrap_or("").to_string();
+            match more::readme(&a.inst_dir().join(".hearth/staging").join(tok).join("x")) {
+                Some(f) => run_open(&f.to_string_lossy()),
+                None => a.said = "This mod has no read me in it: its page has the author's words (Mod page).".into(),
+            }
+        }
+        Msg::Before(b) => a.before = *b,
+        Msg::FindPop(w) => a.pop = if a.pop == Some(w) { None } else { Some(w) },
+        Msg::FindGame(g) => {
+            a.pop = None;
+            a.find_game = g;
+            a.find_pick = 0;
+        }
+        Msg::FindOrder(i) => {
+            a.pop = None;
+            a.find_order = i;
+            a.find_pick = 0;
+        }
+        Msg::Needs(id, needs, files, clash) => {
+            let mine: Vec<String> = a.mods().iter().filter_map(|m| m["name"].as_str().map(|s| s.to_lowercase())).collect();
+            for h in a.hits.iter_mut().filter(|h| h.id == id) {
+                h.needs = needs.clone();
+                h.preview = files.clone();
+                h.clash = clash.clone();
+                h.check(&mine);
+            }
+        }
+        Msg::Endorsed(r) => a.said = match r {
+            Ok(v) => v["message"].as_str().map(str::to_string).unwrap_or_else(|| "Endorsed: thank you sent to its author.".into()),
+            Err(e) => e,
+        },
+        Msg::FindLike(name) => {
+            a.page = Page::Find;
+            a.find_q = name.split_whitespace().filter(|w| w.len() > 3).take(2).collect::<Vec<_>>().join(" ");
+            return update(a, Msg::FindGo);
+        }
+        Msg::KeepSnaps(i) => a.save_setting("keepSnapshots", json!([30, 60, 90][i as usize])),
+        Msg::Versions(m, r) => {
+            if let Ok(v) = r {
+                a.versions.insert(m, v["versions"].as_array().cloned().unwrap_or_default());
+            }
+        }
+        Msg::UseVersion(m, f) => {
+            if !a.snapshot(&format!("before {m} went back to {f}")) {
+                return Task::none();
+            }
+            a.versions.remove(&m);
+            return a.org(&["version-use", &m, &f]);
+        }
+        Msg::TestStart => {
+            let Some(id) = a.inst_id() else { return Task::none() };
+            a.testing = true;
+            a.said = "Test start: the game starts with the mods; in 60 seconds you're told whether it held.".into();
+            let roots = back::crash_roots(a.inst());
+            let since = now();
+            return Task::batch([update(a, Msg::Play), Task::perform(back::work(move || more::test_start_result(&id, since, &roots)), Msg::Tested)]);
+        }
+        Msg::Tested(r) => {
+            a.testing = false;
+            if let (Ok(_), Some((f, _, _))) = (&r, a.detail.crashes.get(a.crash_pick)) {
+                more::mark_fix(f, "fixed", "a test start passed");
+            }
+            a.said = r.unwrap_or_else(|e| e);
+        }
+        Msg::GetCrashLogger => {
+            let kind = a.inst()["game"].as_str().unwrap_or("").to_string();
+            let Some((d, m, name)) = more::crash_logger_page(&kind) else {
+                a.said = "This game has no crash logger Hearth knows.".into();
+                return Task::none();
+            };
+            let g = a.pick.clone();
+            a.said = format!("Getting {name} from its page: it waits in Downloads to go in.");
+            return Task::perform(back::work(move || more::newest_main(d, m).and_then(|f| sync::nexus_get(d.to_string(), m, f, g))), Msg::Said);
+        }
         Msg::Drag => return win::drag(),
         Msg::Max => return win::toggle_maximize(),
         Msg::Min => return win::minimize(),
@@ -986,6 +1277,231 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Resize(d) => return win::resize(d),
     }
     Task::none()
+}
+
+/// Describe it's pictures: the game's own (Now) and the set's first mod's from its Nexus Mods page (With the set).
+fn pictures(a: &App) -> Task<Msg> {
+    let first = a.talk["set"]["groups"][0]["mods"][0]["name"].as_str().unwrap_or("").to_string();
+    let g = a.game().cloned();
+    let Some(g) = g else { return Task::none() };
+    Task::perform(
+        back::work(move || {
+            let dir = back::own_dir().join("pictures");
+            let _ = std::fs::create_dir_all(&dir);
+            let get = |url: &str, to: &std::path::Path| {
+                let _ = std::process::Command::new("curl").args(["-fsSL", "-m", "30", "-o"]).arg(to).arg(url).status();
+            };
+            if let Ok(Value::String(art)) = hearth_gaming::mods_app::route("art", &json!({"id": g.key, "kind": "hero"})) {
+                if let Some(b64) = art.split_once("base64,").map(|x| x.1) {
+                    use std::io::Write;
+                    let out = std::process::Command::new("base64").arg("-d").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).spawn().and_then(|mut c| {
+                        if let Some(mut i) = c.stdin.take() {
+                            let _ = i.write_all(b64.as_bytes());
+                        }
+                        c.wait_with_output()
+                    });
+                    if let Ok(o) = out {
+                        let _ = std::fs::write(dir.join("now.jpg"), o.stdout);
+                    }
+                } else if art.starts_with("http") {
+                    get(&art, &dir.join("now.jpg"));
+                }
+            }
+            let domain = hearth_gaming::nexus::STEAM_DOMAINS.iter().find(|d| Some(d.0) == g.lib["steamApp"].as_u64()).map(|d| d.1);
+            if let (Some(acct), Some(domain), false) = (hearth_gaming::nexus::account(), domain, first.is_empty()) {
+                let v = hearth_gaming::nexus::search(&acct.key, domain, &first).unwrap_or(Value::Null);
+                let pic = v["mods"].as_array().or(v.as_array()).and_then(|m| m.first()).and_then(|m| m["pictureUrl"].as_str().or(m["picture_url"].as_str())).unwrap_or("").to_string();
+                if !pic.is_empty() {
+                    get(&pic, &dir.join("set.jpg"));
+                }
+            }
+        }),
+        |_| Msg::Pictures,
+    )
+}
+
+/// The picked result's requirements and files, read from its page.
+fn details(a: &App) -> Task<Msg> {
+    let Some(h) = pages::shown_hits(a).get(a.find_pick).cloned() else { return Task::none() };
+    if !h.preview.is_empty() || !h.needs.is_empty() {
+        return Task::none();
+    }
+    let (inst, mods, mods_dir) = (a.inst().clone(), a.mods(), a.mods_dir());
+    let mine = a.game().map(|g| g.title == h.game).unwrap_or(false);
+    Task::perform(
+        async move {
+            let key = if h.source == "modio" { hearth_oss::secret::lookup("hearth-mods", "modio").await } else { String::new() };
+            back::work(move || {
+                let own = if mine { more::owners(&inst, &mods, &mods_dir).0 } else { Default::default() };
+                let id = h.id.clone();
+                let (n, f, c) = sources::details(h, key, own);
+                (id, n, f, c)
+            })
+            .await
+        },
+        |(id, n, f, c)| Msg::Needs(id, n, f, c),
+    )
+}
+
+/// This device's note for your other devices (its games, updates waiting, crashes, fps).
+fn publish(a: &App) -> Task<Msg> {
+    let games: Vec<Value> = a
+        .games
+        .iter()
+        .filter(|g| g.mods > 0)
+        .map(|g| {
+            let profile = if a.game().map(|x| x.key == g.key).unwrap_or(false) { a.profile() } else { g.inst.as_ref().and_then(|i| i["profile"].as_str()).unwrap_or("").to_string() };
+            json!({"title": g.title, "key": g.key, "mods": g.mods, "on": g.on, "profile": profile})
+        })
+        .collect();
+    let ups: Vec<Value> = a.updates["updates"].as_array().cloned().unwrap_or_default().iter().map(|u| json!({"game": u["game"], "mod": u["mod"], "to": u["to"]})).collect();
+    let fx = more::fixes();
+    let crashes: Vec<Value> = a.detail.crashes.iter().take(6).map(|(f, c, t)| json!({"at": t, "game": a.game().map(|g| g.title.clone()).unwrap_or_default(), "module": c.suspects.first().cloned().unwrap_or_default(), "what": c.objects.first().cloned().unwrap_or_default(), "fixed": fx[f.to_string_lossy().as_ref()]["state"] == "fixed"})).collect();
+    let measured = a.detail.measured.clone();
+    Task::perform(back::work(move || sync::publish(json!(games), json!(ups), json!(crashes), measured)), |_| Msg::Pictures)
+}
+
+/// What an install would change (board 2's Before it goes in and Needs), worked out off the window's thread.
+fn preview(a: &App) -> Task<Msg> {
+    if a.fomod["evaluation"].is_null() || !a.detail.organizer {
+        return Task::none();
+    }
+    let staged = a.inst_dir().join(".hearth/staging").join(a.fomod["token"].as_str().unwrap_or("")).join("x");
+    let (ev, inst, mods, mods_dir) = (a.fomod["evaluation"].clone(), a.inst().clone(), a.mods(), a.mods_dir());
+    let name = a.fomod["name"].as_str().unwrap_or("").to_string();
+    let at = if a.if_in != 0 { mods.iter().find(|m| m["name"].as_str() == Some(name.as_str())).and_then(|m| m["priority"].as_i64()) } else { None };
+    let have: Vec<String> = a.plugins().iter().filter(|p| p["active"] == true).filter_map(|p| p["name"].as_str().map(str::to_string)).collect();
+    let ext = a.detail.ext.0.clone();
+    Task::perform(
+        back::work(move || {
+            let files = more::fomod_files(&staged, &ev);
+            let (own, prio) = more::owners(&inst, &mods, &mods_dir);
+            Some(more::before(&files, &own, &prio, at, &have, &ext))
+        }),
+        |b| Msg::Before(Box::new(b)),
+    )
+}
+
+/// What the other devices asked of this one.
+fn inbox(a: &mut App, reqs: Vec<Value>) -> Task<Msg> {
+    let mut t = Vec::new();
+    let mut said = Vec::new();
+    for r in reqs {
+        let from = r["from"].as_str().unwrap_or("your other device").to_string();
+        match r["kind"].as_str().unwrap_or("") {
+            "add" => {
+                let Some(g) = a.games.iter().find(|g| g.title.eq_ignore_ascii_case(r["game"].as_str().unwrap_or(""))).map(|g| g.key.clone()) else { continue };
+                said.push(format!("{from} asked to add {} here too: it's downloading (once, from the home server when it's there).", r["name"].as_str().unwrap_or("a mod")));
+                if r["source"] == "nexus" {
+                    let (d, m, f) = (r["domain"].as_str().unwrap_or("").to_string(), r["id"].as_str().and_then(|x| x.parse().ok()).unwrap_or(0u64), r["fileId"].as_u64().unwrap_or(0));
+                    t.push(Task::perform(back::work(move || if f == 0 { more::newest_main(&d, m).and_then(|f| sync::nexus_get(d, m, f, g)) } else { sync::nexus_get(d, m, f, g) }), Msg::Said));
+                } else {
+                    let h = sources::Hit { source: if r["source"] == "thunderstore" { "thunderstore" } else { "modio" }, id: r["id"].as_str().unwrap_or("").into(), files: vec![(r["name"].as_str().unwrap_or("").to_string(), r["fileId"].as_u64().unwrap_or(0), r["url"].as_str().unwrap_or("").to_string())], ..Default::default() };
+                    t.push(Task::perform(sources::fetch(h, 0), |p| Msg::Downloads(Ok(json!({"items": p.map(|f| vec![json!({"state": "done", "path": f})]).unwrap_or_default()})))));
+                }
+            }
+            "profile" => {
+                let game = r["game"].as_str().unwrap_or("").to_string();
+                let Some(g) = a.games.iter().find(|g| g.title.eq_ignore_ascii_case(&game)).cloned() else {
+                    said.push(format!("{from} sent {game}'s mods, but {game} isn't on this device."));
+                    continue;
+                };
+                let Some(id) = g.inst_id() else {
+                    said.push(format!("{from} sent {game}'s mods: set up mods for it here first (Every game › Set up mods), then ask again."));
+                    continue;
+                };
+                let name = format!("{} (from {from})", r["profile"].as_str().unwrap_or("Profile"));
+                let r2 = r.clone();
+                said.push(format!("{from} sent {game}'s mods: they're in a new profile, \"{name}\"; the mods this device doesn't have yet are named in it."));
+                t.push(Task::perform(
+                    back::work(move || {
+                        let v = hearth_gaming::mods_app::route("organizer", &json!({"args": [id.clone(), "profile-create", name.clone()]}))?;
+                        let dir = std::path::PathBuf::from(v["summary"]["instance"]["dir"].as_str().unwrap_or("")).join("profiles").join(v["created"].as_str().unwrap_or(&name));
+                        let mods_dir = std::path::PathBuf::from(v["summary"]["instance"]["modsDir"].as_str().unwrap_or(""));
+                        for (f, k2) in [("modlist.txt", "modlist"), ("plugins.txt", "plugins"), ("loadorder.txt", "loadorder")] {
+                            if let Some(text) = r2[k2].as_str().filter(|x| !x.is_empty()) {
+                                hearth_ui::settings_file::write_text(&dir.join(f), text).map_err(|e| e.to_string())?;
+                            }
+                        }
+                        let missing: Vec<String> = r2["mods"].as_array().cloned().unwrap_or_default().iter().filter_map(|m| m["mod"].as_str()).filter(|m| !mods_dir.join(m).is_dir()).map(str::to_string).collect();
+                        Ok(json!({"ok": true, "notes": [if missing.is_empty() { "Every mod it needs is here.".to_string() } else { format!("Still to get here: {}", missing.join(", ")) }]}))
+                    }),
+                    Msg::Said,
+                ));
+            }
+            "measure" => {
+                let _ = back::write_own("measure.json", &r);
+                said.push(format!("{from} asked to measure {} here: the next Play modded logs its fps (MangoHud, 60 seconds) and sends it back.", r["game"].as_str().unwrap_or("a game")));
+            }
+            _ => {}
+        }
+    }
+    if !said.is_empty() {
+        a.said = said.join(" ");
+    }
+    Task::batch(t)
+}
+
+/// Board 1's Make a patch with the winners: every plugin that's on, read; the patch made; put in as its own mod, last.
+fn make_patch(a: &mut App) -> Task<Msg> {
+    let Some(id) = a.inst_id() else { return Task::none() };
+    let picked = a.mods().iter().find(|m| m["id"].as_str() == Some(a.picked.as_str())).cloned().unwrap_or(Value::Null);
+    let name = picked["name"].as_str().unwrap_or("your mods").to_string();
+    let only: Vec<String> = picked["plugins"].as_array().cloned().unwrap_or_default().iter().filter_map(|x| x.as_str().map(str::to_string)).collect();
+    let plugins: Vec<(String, std::path::PathBuf)> = a
+        .plugins()
+        .iter()
+        .filter(|p| p["active"] == true)
+        .map(|p| {
+            let n = p["name"].as_str().unwrap_or("").to_string();
+            let from = p["mod"].as_str().or(p["from"].as_str()).unwrap_or("").to_string();
+            let path = if from.is_empty() { std::path::PathBuf::from(a.inst()["dataDir"].as_str().unwrap_or("")).join(&n) } else { a.mods_dir().join(&from).join(&n) };
+            (n, path)
+        })
+        .collect();
+    let light = hearth_gaming::organizer::kinds::KINDS.iter().find(|k| Some(k.id) == a.inst()["game"].as_str()).map(|k| k.light).unwrap_or(0);
+    if !a.snapshot(&format!("before a patch was made for {name}")) {
+        return Task::none();
+    }
+    a.said = "Reading every plugin that's on…".into();
+    let work_dir = back::own_dir().join("patch");
+    Task::perform(
+        back::work(move || {
+            let mut ps = Vec::new();
+            for (n, p) in &plugins {
+                let b = std::fs::read(p).map_err(|e| format!("{n} couldn't be read ({e})"))?;
+                ps.push(patch::read(n, &b)?);
+            }
+            let m = patch::make(&ps, &only, light)?;
+            let file = format!("Hearth Patch - {}.esp", hearth_gaming::util::safe_name(&name));
+            let _ = std::fs::remove_dir_all(&work_dir);
+            std::fs::create_dir_all(&work_dir).map_err(|e| e.to_string())?;
+            std::fs::write(work_dir.join(&file), &m.bytes).map_err(|e| e.to_string())?;
+            let mod_name = format!("Hearth patch · {name}");
+            let v = hearth_gaming::mods_app::route("organizer", &json!({"args": [id.clone(), "install", work_dir.to_string_lossy(), "--name", mod_name.clone(), "--replace"]}))?;
+            if v["ok"] == false {
+                return Err(v["error"].as_str().unwrap_or("The patch couldn't go in.").to_string());
+            }
+            let _ = hearth_gaming::mods_app::route("organizer", &json!({"args": [id, "plugin-enable", file.clone()]}));
+            Ok(format!("{file} is in, last: {} records with both sides' changes ({} parts brought back{}), from {} plugins. Undo: turn \"{mod_name}\" off.", m.records, m.parts, if m.kept > 0 { format!(", {} left as the winner has them", m.kept) } else { String::new() }, m.masters.len()))
+        }),
+        Msg::Patched,
+    )
+}
+
+/// Endorse on Nexus Mods (its own API, your key): thanks its author, as the button on its page does.
+fn endorse(h: &sources::Hit) -> Result<Value, String> {
+    if h.source != "nexus" {
+        return Err("Only Nexus Mods has endorsements: this one's page has its own way to thank the author.".into());
+    }
+    let acct = hearth_gaming::nexus::account().ok_or("Sign in to Nexus Mods (Accounts) first.")?;
+    let url = format!("{}/games/{}/mods/{}/endorse.json", hearth_gaming::nexus::API, h.domain, h.id);
+    let (code, body) = hearth_gaming::accounts::curl_post(&url, &[("apikey", acct.key.as_str()), ("Application-Name", "Hearth Mods"), ("Content-Type", "application/x-www-form-urlencoded")], &format!("version={}", hearth_gaming::nexus::urlencode(&h.version)), 20)?;
+    let v: Value = serde_json::from_str(&body).unwrap_or(json!({"message": body}));
+    if code >= 400 {
+        return Err(v["message"].as_str().map(|m| format!("Nexus Mods said: {m}")).unwrap_or_else(|| format!("Nexus Mods said no (HTTP {code}).")));
+    }
+    Ok(json!({"message": format!("Endorsed {} on Nexus Mods.", h.name)}))
 }
 
 fn run_open(url: &str) {
@@ -1029,6 +1545,26 @@ fn side(a: &App) -> E<'_, Msg> {
     }
     if a.loading {
         games = games.push(k::mu(&p, "Looking for your games…", 12.0));
+    }
+    if q.len() >= 2 {
+        let key = a.game().map(|g| g.key.clone()).unwrap_or_default();
+        let found: Vec<Value> = a.mods().into_iter().filter(|m| m["kind"] == "mod" && m["name"].as_str().map(|n| n.to_lowercase().contains(&q)).unwrap_or(false)).take(6).collect();
+        if !found.is_empty() {
+            games = games.push(k::gap(1.0, 6.0)).push(k::cap(&p, format!("Mods in {}", a.game().map(|g| g.short()).unwrap_or_default())));
+            for m in found {
+                let id = m["id"].as_str().unwrap_or("").to_string();
+                games = games.push(k::side_row(&p, row![t(ui::fit(m["name"].as_str().unwrap_or(""), 26), 12.0, p.text), k::fill(), t(m["version"].as_str().unwrap_or("").to_string(), 10.0, p.muted)].spacing(6.0), false, 22.0, Msg::SideMod(key.clone(), id)));
+            }
+        }
+        let files: Vec<(String, String)> = a.lens["files"].as_array().cloned().unwrap_or_default().iter().filter_map(|f| f["path"].as_str().map(str::to_string)).filter(|f| f.to_lowercase().contains(&q)).take(4).map(|f| (f, a.picked.clone())).chain(a.waiting.iter().filter(|w| w.to_lowercase().contains(&q)).take(3).map(|w| (w.clone(), String::new()))).collect();
+        if !files.is_empty() {
+            games = games.push(k::gap(1.0, 6.0)).push(k::cap(&p, "Files"));
+            for (f, m) in files {
+                let name = f.rsplit('/').next().unwrap_or(&f).to_string();
+                let go = if m.is_empty() { Msg::Go(Page::Downloads) } else { Msg::SideMod(key.clone(), m) };
+                games = games.push(k::side_row(&p, row![t(ui::fit(&name, 30), 11.0, p.text)], false, 20.0, go));
+            }
+        }
     }
     let store = column![row![k::dot(p.accent, 7.0), t("Updates in the Hearth Store", 12.0, p.text)].spacing(6.0).align_y(iced::Center), k::mu(&p, "our Mod Manager is its own Store app", 11.0)].spacing(2.0);
     let edit = row![k::mu1::<Msg>(&p, "Made of blocks ·", 11.0), k::click(t("Edit layout", 11.0, p.accent), Some(Msg::Describe(hearth_ui::arrange::edit_layout())))].spacing(4.0).align_y(iced::Center);
@@ -1097,10 +1633,29 @@ fn view(a: &App) -> Element<'_, Msg> {
         ];
         body = ui::dialog(body, k::chooser(&p, a.game().map(|g| g.title.clone()).unwrap_or_default(), opts, Msg::More), Some(Msg::More));
     }
+    match a.pop {
+        Some("games") => {
+            let mut opts = vec![("All your games".to_string(), a.find_game.is_empty(), Msg::FindGame(String::new()))];
+            for g in a.games.iter().filter(|g| g.mods > 0 || g.inst.is_some()) {
+                opts.push((g.title.clone(), a.find_game == g.title, Msg::FindGame(g.title.clone())));
+            }
+            body = ui::dialog(body, k::chooser(&p, "Search for", opts, Msg::FindPop("games")), Some(Msg::FindPop("games")));
+        }
+        Some("order") => {
+            let opts = pages::ORDERS.iter().enumerate().map(|(i, o)| (o.to_string(), a.find_order == i as u8, Msg::FindOrder(i as u8))).collect();
+            body = ui::dialog(body, k::chooser(&p, "Order", opts, Msg::FindPop("order")), Some(Msg::FindPop("order")));
+        }
+        Some("send") => {
+            let g = a.game().map(|g| g.title.clone()).unwrap_or_default();
+            let opts = a.devices.iter().filter_map(|d| d["name"].as_str()).map(|n| (format!("{n}: {g}'s {} profile", a.profile()), false, Msg::SendGame(n.to_string()))).collect();
+            body = ui::dialog(body, k::chooser(&p, format!("Send {g}'s mods to"), opts, Msg::FindPop("send")), Some(Msg::FindPop("send")));
+        }
+        _ => {}
+    }
     let pill: Option<E<'_, Msg>> = match a.page {
         Page::Describe => Some(k::tag(&p, "Hearth AI · on your Nvidia PC", hearth_oss_kit_a::Tag::Ok)),
         Page::Every => Some(k::tag(&p, if sources::home_server().is_some() { "Home server · connected" } else { "Home server · not set up" }, hearth_oss_kit_a::Tag::Ok)),
-        Page::Game => Some(k::tag(&p, sources::sync_words(), hearth_oss_kit_a::Tag::Ok)),
+        Page::Game => Some(k::tag(&p, sources::sync_words(&a.devices), hearth_oss_kit_a::Tag::Ok)),
         _ => None,
     };
     let bar = k::Bar {
@@ -1182,7 +1737,7 @@ fn studio_values(a: &App) {
 
 fn subscription(a: &App) -> Subscription<Msg> {
     let mut s = vec![Subscription::run(hearth_ui::theme::watch).map(|_| Msg::Theme), Subscription::run(pad::presses).map(Msg::Pad)];
-    if a.page == Page::Downloads || a.tv {
+    if a.page == Page::Downloads || a.page == Page::Modlists || a.tv {
         s.push(Subscription::run(sources::ticks).map(|_| Msg::Tick));
     }
     Subscription::batch(s)
@@ -1192,6 +1747,9 @@ fn main() -> iced::Result {
     let args: Vec<String> = std::env::args().collect();
     // Everything the old hearth-mods did without a window (the nxm handler, Play modded, the Steam shortcuts' commands,
     // Game Mode's worker): the same code, the same answers.
+    if args.iter().any(|x| x == "--check-updates") {
+        std::process::exit(more::check_all());
+    }
     if args.iter().any(|x| x == "--serve") {
         std::process::exit(hearth_gaming::mods_app::serve_headless());
     }

@@ -25,6 +25,9 @@ except Exception as e: print("not JSON:", str(e)[:200])' 2>&1 | cut -c1-900)"
 env HOME="$MH" XDG_CONFIG_HOME="$MH/.config" XDG_DATA_HOME="$MH/.local/share" "$MM" --organizer skyrimse fomod "$MH/Downloads/Lux - Lighting" > "$MH/.local/share/nimbus/mods/manager/fomod-open.json" 2>/tmp/mods-fomod.err \
   || echo "::warning title=mods fomod::$(head -c 600 /tmp/mods-fomod.err) $(head -c 600 "$MH/.local/share/nimbus/mods/manager/fomod-open.json")"
 
+# The devices' notes on the pretend home server, as the Mod Manager reads them
+echo "::notice title=mods devices::$(ls "$MH/HomeServer/Games/Mods/.hearth/devices" 2>&1 | tr '\n' ' ')"
+
 # LOOT's masterlist to pin (its commit and SHA-256), and Thunderstore's search, as CI sees them
 for r in skyrimse fallout4; do
   c=$(curl -fsS -m 20 "https://api.github.com/repos/loot/$r/commits/v0.26" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])' 2>/dev/null)
@@ -39,10 +42,17 @@ mm mods-02-install "$MM" --game steam:489830 --page downloads --step 1
 SHOT_WAIT=8 mm mods-03-find "$MM" --game steam:489830 --page find --find map
 mm mods-04-updates "$MM" --game steam:489830 --page updates --snap 2
 mm mods-05-crash "$MM" --game steam:489830 --page crashes
+mm mods-05b-crash-proton "$MM" --game steam:489830 --page crashes --crash-tab 1
+mm mods-05c-crash-what-ran "$MM" --game steam:489830 --page crashes --crash-tab 2
 mm mods-06-describe "$MM" --game steam:489830 --page describe
 mm mods-07-game-mode "$MM" --game steam:489830 --mod "Noble Skyrim" --fullscreen --lift
 mm mods-08-every-game "$MM" --page every
+mm mods-10-accounts "$MM" --page accounts
+mm mods-11-modlists "$MM" --page modlists
 SHOT_WAIT=4.5 mm mods-09-editing env HEARTH_ARRANGE_OPEN=mods:game HEARTH_STUDIO_STAGE=mods:none "$MM" --game steam:489830
+
+# This PC's own note was written to the home server for the other devices (sync.rs)
+[ -f "$MH/HomeServer/Games/Mods/.hearth/devices/nvidia-pc.json" ] && echo "::notice title=mods sync::$(head -c 700 "$MH/HomeServer/Games/Mods/.hearth/devices/nvidia-pc.json" | tr '\n' ' ')" || echo "::warning title=mods sync::this PC's note wasn't written to the home server"
 
 # The game folder is never touched, and opening it wrote no setting (red flag 9)
 after=$(cd "$MH/.local/share/Steam/steamapps/common" && find . -type f -exec md5sum {} + | sort | md5sum)
