@@ -44,6 +44,7 @@ if [ "$MODE" = plain ]; then
     install -Dm644 /src/os-bases/peppermint/system_files/usr/share/hearth/unlock/apt.conf /etc/apt/apt.conf.d/50-hearth-unlock
     install -Dm644 /src/os-bases/peppermint/system_files/usr/share/hearth/unlock/dpkg.cfg /etc/dpkg/dpkg.cfg.d/hearth-unlock
     install -Dm644 /src/os-bases/peppermint/system_files/usr/share/hearth/unlock/boot-chain.pref /etc/apt/preferences.d/hearth-boot-chain
+    install -Dm644 /src/os-bases/peppermint/system_files/usr/share/hearth/unlock/boot-chain.pref /usr/share/hearth/unlock/boot-chain.pref
     mv /var/lib/dpkg /usr/lib/sysimage/dpkg && ln -s /usr/lib/sysimage/dpkg /var/lib/dpkg' \
     || { echo "::error title=hearth-unlock::setting up the plain container failed"; exit 1; }
 else
@@ -234,6 +235,10 @@ r=$(U "$A" '/usr/bin/hearth-unlock --upgrade-system 2>&1 | tail -n1')
 s=$(U "$A" '/usr/bin/hearth-unlock --upgradable 2>/dev/null | tail -n1')
 [ "$(field "$s" "len(d['packages'])")" = 0 ] && ok "nothing left to update" || err "still on offer after updating: $s"
 U "$A" '[ -z "$(ls -A /boot 2>/dev/null)" ]' && ok "/boot untouched by the update" || err "the update wrote /boot"
+# Hearth came up at the start before (hearth-unlock-good.service's job), then a restart with the updated packages
+ic 'python3 - <<EOF
+import json; p="/var/lib/hearth/unlock/layers/'"$A"'/layer.json"; d=json.load(open(p)); d["pending"]=0; json.dump(d,open(p,"w"))
+EOF'
 start "$A"
 s=$(st "$A"); [ "$(field "$s" "d['state']")" = unlocked ] && ok "the next start keeps them (the layer is on)" || err "after the update, the next start: $s"
 U "$A" 'test -x /usr/games/sl' && ok "your own packages are still there" || err "the update took your packages"
