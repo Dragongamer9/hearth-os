@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 57,
+  "serial": 58,
   "apps": [
     {
       "id": "command-center",
@@ -438,15 +438,16 @@
       "open": "hearth-reliability-history",
       "part": {
         "id": "hearth-reliability-history",
-        "version": "1.18.1",
+        "version": "1.18.2",
         "os": "1.18",
         "path": "hearth-reliability-history",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-reliability-history-1.18.1/hearth-reliability-history-1.18.1.tar.gz",
-        "sha256": "ee035b8899ac99b7154f37509f52ff3147780d207b8fd5f18f4808dce9576f3b",
-        "size": 6919485,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-reliability-history-1.18.2/hearth-reliability-history-1.18.2.tar.gz",
+        "sha256": "34d7324fbd1f3d51b01e538b1ded14b222e29fe61765332b54a0066c5a66408b",
+        "size": 7200355,
         "notes": [
-          "Edit layout: move, resize or hide any part of the app, right on it",
-          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+          "Drag and drop: move, size and customize any part of the app, right on it (Customize: look, what it shows, what it does)",
+          "Your own blocks: buttons that run anything, counts, words",
+          "Nothing is kept until Keep this; Cancel and Esc change nothing"
         ]
       }
     },
