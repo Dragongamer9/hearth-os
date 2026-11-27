@@ -246,7 +246,9 @@ fn live(a: &App) -> E<'_> {
     let p = a.p;
     let state = if a.up { tag("CONNECTED", hexc(0x21361b), GREEN, hexc(0x3b5a2e)) } else { tag("NOT CONNECTED", hexc(0x3d1717), RED, hexc(0x6a2a2a)) };
     let mut where_ = Row::new().spacing(6.0);
-    for s in &a.services {
+    // two places or more: all of them at once (Hearth's relay, relay.rs); else the one OBS has
+    let places = a.places();
+    for s in if places.len() >= 2 { &places } else { &a.services } {
         where_ = where_.push(chip(&p, s.clone(), Ck::Acc, 28.0, Some(Msg::Open(Dlg::Where))));
     }
     where_ = where_.push(chip(&p, "+", Ck::Normal, 28.0, Some(Msg::Open(Dlg::Where))));
@@ -289,7 +291,7 @@ fn health(a: &App) -> E<'_> {
     } else if !a.stream.active {
         "not live".to_string()
     } else if good && a.stream.congestion < 0.2 {
-        if a.services.len() > 1 { "both look good".into() } else { "looks good".into() }
+        if a.places().len() > 1 || a.services.len() > 1 { "both look good".into() } else { "looks good".into() }
     } else {
         "dropping frames: lower the quality".into()
     };
@@ -584,8 +586,9 @@ fn dialog(a: &App) -> Option<E<'_>> {
             }
             column![
                 ts("Where you go live", 17.0, p.text),
-                t("OBS goes live to one place at a time; this sets it in OBS. Your stream key is given to OBS and kept there, not by Hearth.", 13.0, p.muted),
+                t("One place: it's set in OBS. Two or more at once: OBS streams to Hearth Studio's relay on this PC, which sends the same stream to each. Your stream key is kept in your keyring.", 13.0, p.muted),
                 svc,
+                row![t(format!("Also go live to {} at the same time", a.service_pick), 13.0, p.text), Space::new().width(Length::Fill), switch(&p, a.places().iter().any(|x| x == a.service_pick), Msg::TogglePlace(a.service_pick))].align_y(iced::Center),
                 field("Your stream key (empty: keep the one OBS has)", &a.key_edit, Msg::Key, true),
                 buttons("Set it", Msg::SaveService)
             ]

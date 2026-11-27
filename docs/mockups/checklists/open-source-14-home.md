@@ -32,7 +32,7 @@ Pictures: hearth-apps-rust.yml, home.sh (home-1-board, home-2-edit-board, home-0
 ### Cameras
 - [x] CAMERAS and ALL QUIET (its motion sensors) — hosts/hearth-ui/apps/home/src/main.rs: "if quiet { \"All quiet\" } else { \"Movement now\" }"
 - [x] Driveway and Front door, each with ● LIVE and its name (Home Assistant's camera pictures, again every 10 s) — hosts/hearth-ui/apps/home/src/main.rs: "format!(\"/api/camera_proxy/{id}\")"
-- [ ] Moving video in the camera tiles: they show each camera's picture again every 10 seconds (Home Assistant's still), not its moving stream yet
+- [x] Moving video in the camera tiles: Home Assistant's camera_proxy_stream (MJPEG) read while the tile is shown, 8 pictures a second (CI pictures home-3-moving-a and -b, a second apart, differ; needs testing on a device) — hosts/hearth-ui/apps/home/src/mjpeg.rs: "pub fn frames(c: &Cam) -> Frames"
 - [x] "Last movement: Driveway · 12:52 AM · a cat" — hosts/hearth-ui/apps/home/src/main.rs: "format!(\"Last movement: {} · {}{what}\""
 
 ### Plugs and energy

@@ -44,7 +44,7 @@ The board's top bar and wallpaper are the desktop's. Pictures: hearth-apps-rust.
 - [x] WEBSITE github.com with ↗ — hosts/hearth-ui/apps/passwords/src/main.rs: "fl(&p, \"Website\""
 - [x] NOTES — hosts/hearth-ui/apps/passwords/src/main.rs: "tb(\"NOTES\", 11.0, p.muted)"
 - [x] Filling it in: "Fill in by itself in browsers" (off), "Ask before filling" (on), "Also for apps (Hearth AI, Store)" (on), kept — hosts/hearth-ui/apps/passwords/src/main.rs: "w::kv(&p, \"Also for apps (Hearth AI, Store)\""
-- [ ] Filling in browsers and apps itself: the three choices are kept, but Hearth Passwords can't type into other programs' pages yet (Vaultwarden works with Bitwarden's own browser extension pointed at your server; a Hearth way for browsers and Hearth's apps to ask the vault is still to be made)
+- [x] Filling in browsers and apps itself: Super + Alt + P asks the open vault (its own socket) for the logins that fit the window in front and types the user name and password (wtype); Ask before filling shows them first; Fill in by itself offers it when a page that fits comes to the front (CI picture passwords-7-fill-ask; needs testing on a device) — hosts/hearth-ui/apps/passwords/src/fill.rs: "pub fn type_login(id: &str) -> Result<(), String>"
 - [x] History: "Password changed · Nov 15", "Code added · Oct 2", "Made · Aug 19" (the server's history and dates; a code added here is noted here) — hosts/hearth-ui/apps/passwords/src/main.rs: "hist.push(format!(\"Made · {}\", day_of(&i.made)));"
 
 ### Where your vault is

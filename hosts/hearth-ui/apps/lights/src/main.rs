@@ -14,6 +14,8 @@
 
 #[path = "../../oss-kit/kit.rs"]
 mod kit;
+#[path = "../../oss-kit/debs.rs"]
+mod debs;
 mod fx;
 mod orgb;
 mod stage;
@@ -506,11 +508,18 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::GetIt => {
             a.link = Link::Busy;
-            a.said = "Getting OpenRGB from Flathub…".into();
+            a.said = "Getting Debian's OpenRGB…".into();
             return Task::perform(
                 kit::bg(|| {
-                    let o = hearth_ui::run::blocking(&hearth_ui::run::args(&["flatpak", "install", "--system", "--noninteractive", "-y", "flathub", "org.openrgb.OpenRGB"]));
-                    if o.ok { Ok(()) } else { Err(o.why()) }
+                    // Debian's own (debs.rs); Flathub's when Debian's can't be had
+                    match debs::openrgb() {
+                        Ok(()) => Ok(()),
+                        Err(e) if e.contains("password") => Err(e),
+                        Err(_) => {
+                            let o = hearth_ui::run::blocking(&hearth_ui::run::args(&["flatpak", "install", "--system", "--noninteractive", "-y", "flathub", "org.openrgb.OpenRGB"]));
+                            if o.ok { Ok(()) } else { Err(o.why()) }
+                        }
+                    }
                 }),
                 |r| Msg::Done(r.unwrap_or_else(|| Err("stopped".into()))),
             );
@@ -754,7 +763,7 @@ fn missing_block(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let busy = a.link == Link::Busy;
     match a.link {
-        Link::Missing => kit::missing(&p, "OpenRGB isn't on this PC yet", "Hearth Lights is built on OpenRGB (GPL-2), which talks to every light. Get it from Flathub (it's free and open source), then Hearth starts it for you, only while you use your lights.", Some(("Get OpenRGB".into(), Msg::GetIt)), busy),
+        Link::Missing => kit::missing(&p, "OpenRGB isn't on this PC yet", "Hearth Lights is built on OpenRGB (GPL-2), which talks to every light. Install Debian's own OpenRGB from here (it asks for the administrator's password once; Flathub's is used when Debian's can't be had), then Hearth starts it for you, only while you use your lights.", Some(("Get OpenRGB".into(), Msg::GetIt)), busy),
         Link::Looking => kit::missing(&p, "Looking for your lights…", "Asking OpenRGB which lights this PC has.", None, true),
         _ => kit::missing(&p, "OpenRGB isn't running", "Start it and Hearth keeps it running in the background for your lights (never part of starting the PC: if it fails, nothing else waits for it).", Some(("Start OpenRGB".into(), Msg::StartIt)), busy),
     }

@@ -3,13 +3,15 @@
 //! Remapper (GPL-3): every change is an Input Remapper preset (ir.rs) on its device, its service does the remapping,
 //! and Hearth's runner (run.rs, `--run`) turns each profile on when its game or app is in front.
 //!
-//! Input Remapper not on this PC: it comes with Hearth OS (Fedora edition) from the update that has Hearth Remap; its
+//! Input Remapper not on this PC: Install Input Remapper gets Debian's own package (debs.rs, hearth-admin deb-install); its
 //! service not running: the app turns it on (one OK as administrator). Neither is part of starting the PC.
 //!
 //! $HEARTH_REMAP_FIXTURE (a JSON file: devices, state): CI's pictures; nothing is started or stopped then.
 
 #[path = "../../oss-kit/kit.rs"]
 mod kit;
+#[path = "../../oss-kit/debs.rs"]
+mod debs;
 mod ir;
 mod pad;
 mod run;
@@ -66,6 +68,8 @@ pub enum Msg {
     NewMacro,
     TryIt,
     StartService,
+    /// Debian's own Input Remapper, installed from here (debs.rs)
+    InstallIt,
     Done(Result<String, String>),
     Refresh,
     Drag,
@@ -287,6 +291,13 @@ impl App {
         self.settings["profiles"] = profiles.clone();
         if let Err(e) = kit::save(ir::APP, vec![("profiles", profiles)]) {
             self.said = format!("Couldn't keep that: {e}");
+        }
+    }
+    /// The run slot for step `i` of the macro being changed: the one it has, else the first free one.
+    fn slot_for(&self, i: usize) -> u8 {
+        match self.sel_macro().and_then(|m| m.steps.get(i)) {
+            Some(Step::Run(k, _)) => *k,
+            _ => ir::free_slot(&self.macros).unwrap_or(ir::RUN_SLOTS),
         }
     }
     fn keep_macros(&mut self) {
@@ -629,8 +640,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::StepKind(k) => {
             let (sel, i) = (a.macro_sel.clone(), a.step.unwrap_or(usize::MAX));
             let txt = a.step_text.clone();
+            let slot = a.slot_for(i);
             if let Some(s) = a.macros.iter_mut().find(|m| m.id == sel).and_then(|m| m.steps.get_mut(i)) {
-                *s = make_step(k, &txt);
+                *s = make_step(k, &txt, slot);
             }
             a.keep_macros();
             return a.write_all_using();
@@ -639,8 +651,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.step_text = v;
             let (sel, i) = (a.macro_sel.clone(), a.step.unwrap_or(usize::MAX));
             let txt = a.step_text.clone();
+            let slot = a.slot_for(i);
             if let Some(s) = a.macros.iter_mut().find(|m| m.id == sel).and_then(|m| m.steps.get_mut(i)) {
-                *s = make_step(s.kind(), &txt);
+                *s = make_step(s.kind(), &txt, slot);
             }
         }
         Msg::StepDelete => {
@@ -688,6 +701,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 a.on = p.clone();
                 return Task::perform(kit::bg(move || ir::start(&d, &p).map(|_| String::new())), |r| Msg::Done(r.unwrap_or(Err("stopped".into()))));
             }
+        }
+        Msg::InstallIt => {
+            a.said = "Getting Debian's Input Remapper…".into();
+            return Task::perform(kit::bg(|| debs::input_remapper().map(|_| "Input Remapper is on this PC now.".to_string()).map_err(|e| format!("It couldn't be installed: {e}"))), |r| Msg::Done(r.unwrap_or(Err("stopped".into()))));
         }
         Msg::StartService => {
             a.said = "Turning Input Remapper on…".into();
@@ -766,11 +783,13 @@ fn step_value(s: &Step) -> String {
         Step::Move(d, n) => format!("{d} {n}"),
         Step::Scroll(d) => d.to_string(),
         Step::Wait(ms) => ms.to_string(),
+        Step::Run(_, c) => c.clone(),
     }
 }
-fn make_step(kind: &str, v: &str) -> Step {
+fn make_step(kind: &str, v: &str, slot: u8) -> Step {
     let v = v.trim();
     match kind {
+        "run a command" => Step::Run(slot, v.to_string()),
         "press" => Step::Press(sym_of(if v.is_empty() { "a" } else { v })),
         "hold" => Step::Hold(sym_of(if v.is_empty() { "shift" } else { v })),
         "let go" => Step::LetGo(sym_of(if v.is_empty() { "shift" } else { v })),
@@ -851,7 +870,7 @@ fn new_profile(a: &App) -> E<'_, Msg> {
 fn missing(a: &App) -> Option<E<'_, Msg>> {
     let p = a.p;
     if !a.installed {
-        return Some(kit::missing(&p, "Input Remapper isn't on this PC yet", "Hearth Remap is built on Input Remapper (GPL-3), which does the remapping. It comes with Hearth OS's Fedora edition from the update that brings Hearth Remap, so update Hearth OS and it's here.", None, false));
+        return Some(kit::missing(&p, "Input Remapper isn't on this PC yet", "Hearth Remap is built on Input Remapper (GPL-3), which does the remapping. Install Debian's own Input Remapper from here (it asks for the administrator's password once; Hearth OS keeps it through its updates).", Some(("Install Input Remapper".into(), Msg::InstallIt)), false));
     }
     if !a.running {
         return Some(kit::missing(&p, "Input Remapper is off", "Turn it on and your profiles work (it asks once, as administrator). It never holds up starting the PC: if it fails, nothing else waits for it.", Some(("Turn Input Remapper on".into(), Msg::StartService)), false));
@@ -991,7 +1010,7 @@ fn macro_block(a: &App) -> E<'_, Msg> {
         grid = grid.push(r);
     }
     c = c.push(grid);
-    c = c.push(row![t("Steps can be: press, hold, let go, type words, click, move the pointer, scroll, wait", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "Try it", Some(Msg::TryIt))].spacing(16.0).align_y(iced::Center));
+    c = c.push(row![t("Steps can be: press, hold, let go, type words, click, move the pointer, scroll, wait, run a command", 12.0, p.muted), Space::new().width(Length::Fill), chip(&p, "Try it", Some(Msg::TryIt))].spacing(16.0).align_y(iced::Center));
     card(&p, scrollable(c).height(Length::Fill)).height(Length::Fill).into()
 }
 
@@ -1300,10 +1319,13 @@ fn shown(a: &App) -> Element<'_, Msg> {
 }
 
 fn main() -> iced::Result {
+    if let Some(n) = app::arg("--run-step") {
+        std::process::exit(run::run_step(n.parse().unwrap_or(0)));
+    }
     if app::flag("--run") {
         std::process::exit(run::run_forever());
     }
-    if app::handle_cli("hearth-remap-app", "Hearth Remap: any key, mouse or controller button, your way (built on Input Remapper).\n  --run              turn profiles on when their game or app is in front (hearth-remap.service)\n  --device NAME      open with that device\n  --profile NAME     and that profile") {
+    if app::handle_cli("hearth-remap-app", "Hearth Remap: any key, mouse or controller button, your way (built on Input Remapper).\n  --run-step N       run the command of a macro's step N (labwc's keybind for Super+Ctrl+Alt+F12+N)\n  --run              turn profiles on when their game or app is in front (hearth-remap.service)\n  --device NAME      open with that device\n  --profile NAME     and that profile") {
         return Ok(());
     }
     let w = app::window("hearth-remap", (1840.0, 970.0), (1100.0, 700.0));

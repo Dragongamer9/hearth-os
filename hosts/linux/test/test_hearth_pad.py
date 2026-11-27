@@ -320,6 +320,37 @@ class Keyboard(unittest.TestCase):
         self.assertEqual(out.rumbled, [(0.5, 20)])
 
 
+
+class OverlayChord(unittest.TestCase):
+    """Menu + R3: Hearth Overlay's show-and-hide (MangoHud's toggle_hud keys), over a paused (fullscreen) game too."""
+
+    def test_menu_r3_presses_mangohuds_keys_and_lets_go(self):
+        import os, tempfile
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, 'MangoHud'))
+        with open(os.path.join(d, 'MangoHud', 'MangoHud.conf'), 'w') as f:
+            f.write('fps\ntoggle_hud=Control_L+F11\n')
+        old = os.environ.get('XDG_CONFIG_HOME')
+        os.environ['XDG_CONFIG_HOME'] = d
+        try:
+            pad, out = make()
+            pad.fs_pause = True
+            self.assertTrue(pad.paused)
+            pad.button('menu', True, 1.0)
+            pad.button('r3', True, 1.05)
+            self.assertEqual(out.log[-2:], [('KEY_LEFTCTRL', True), ('KEY_F11', True)])
+            pad.tick(1.10, 0.01)
+            self.assertNotIn(('KEY_F11', False), out.log)
+            pad.tick(1.2, 0.01)
+            self.assertEqual(out.log[-2:], [('KEY_F11', False), ('KEY_LEFTCTRL', False)])
+        finally:
+            if old is None:
+                os.environ.pop('XDG_CONFIG_HOME', None)
+            else:
+                os.environ['XDG_CONFIG_HOME'] = old
+        self.assertEqual(hp.mangohud_toggle_keys('/nonexistent'), ['KEY_RIGHTSHIFT', 'KEY_F12'])
+        self.assertTrue(set(hp.mangohud_toggle_keys('/nonexistent')) <= set(hp.KEYS_USED))
+
 if __name__ == '__main__':
     unittest.main()
 

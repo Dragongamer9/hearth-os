@@ -483,8 +483,12 @@ mod tests {
     #[test]
     fn dragging_stays_on_the_grid() {
         let s = Placed::of(&PAGE.blocks[1]);
+        let mut short = s.clone();
+        short.h = 6;
+        let m = drag(&short, Grip::Move, (5, 5), (1, 7));
+        assert_eq!((m.x, m.y, m.w, m.h), (0, 2, 10, 6), "moved left as far as it goes, down 2");
         let m = drag(&s, Grip::Move, (5, 5), (1, 7));
-        assert_eq!((m.x, m.y), (0, 2), "moved left as far as it goes, down 2");
+        assert_eq!((m.x, m.y), (0, 0), "moved left as far as it goes; full height, so not down");
         let m = drag(&s, Grip::Move, (5, 5), (11, 11));
         assert_eq!((m.x, m.y, m.w, m.h), (2, 0, 10, 12), "a full-height block can't go lower");
         let z = drag(&s, Grip::Size, (11, 11), (6, 4));

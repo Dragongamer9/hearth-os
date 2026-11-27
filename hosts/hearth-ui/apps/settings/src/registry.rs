@@ -43,7 +43,7 @@ pub fn built(id: &str) -> bool {
 /// categories in each (settings-pages.js TABS).
 pub const TABS: &[(&str, &str, &[&str])] = &[
     ("quick", "Quick", &[]),
-    ("system", "System", &["system", "home", "apps", "updates", "a11y"]),
+    ("system", "System", &["system", "home", "apps", "ai", "updates", "a11y"]),
     ("network", "Network", &["net"]),
     ("devices", "Devices", &["bt", "link"]),
     ("gaming", "Gaming", &["gaming"]),

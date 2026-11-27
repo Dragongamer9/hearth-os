@@ -242,3 +242,180 @@ mod tests {
         assert!(script("ob('Body').location.z = 2.0", true).contains("if True:\n    bpy.ops.wm.save_mainfile()"));
     }
 }
+
+// ------------------------------------------------------------------ editing a mesh itself (Tab, Sculpt, Paint)
+
+/// One object's own mesh, as Blender keeps it (before the changes on top): its points, edges and faces, and the
+/// colours painted on its points (Blender's colour attribute "Hearth paint"). Edit, Sculpt and Paint change these
+/// here, in Rust, as you work; Blender writes them into the .blend when you're done (apply_code).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EditMesh {
+    pub obj: String,
+    pub verts: Vec<[f32; 3]>,
+    pub faces: Vec<Vec<u32>>,
+    pub edges: Vec<[u32; 2]>,
+    pub colors: Vec<[f32; 3]>,
+}
+
+/// Blender's script that writes an object's own mesh as JSON (args after `--`: the JSON file, the object).
+pub const MESH_DUMP: &str = r#"import bpy, json, sys
+# HEARTH_MESH_DUMP
+a = sys.argv[sys.argv.index('--') + 1:]
+o = bpy.data.objects.get(a[1])
+me = o.data
+ca = me.color_attributes.get('Hearth paint') if hasattr(me, 'color_attributes') else None
+cols = [round(c, 4) for d in ca.data for c in tuple(d.color)[:3]] if ca is not None and ca.domain == 'POINT' else []
+json.dump({'obj': o.name, 'verts': [round(c, 5) for v in me.vertices for c in v.co], 'faces': [list(p.vertices) for p in me.polygons],
+           'edges': [list(e.vertices) for e in me.edges], 'colors': cols}, open(a[0], 'w'))
+"#;
+
+impl EditMesh {
+    pub fn parse(j: &Value) -> EditMesh {
+        let flat = |k: &str| -> Vec<[f32; 3]> { j.get(k).and_then(Value::as_array).map(|v| v.chunks(3).filter(|c| c.len() == 3).map(|c| [c[0].as_f64().unwrap_or(0.0) as f32, c[1].as_f64().unwrap_or(0.0) as f32, c[2].as_f64().unwrap_or(0.0) as f32]).collect()).unwrap_or_default() };
+        let verts = flat("verts");
+        let n = verts.len() as u32;
+        let faces: Vec<Vec<u32>> = j.get("faces").and_then(Value::as_array).map(|a| a.iter().filter_map(|f| f.as_array().map(|f| f.iter().filter_map(|x| x.as_u64()).map(|x| x as u32).collect::<Vec<u32>>())).filter(|f: &Vec<u32>| f.len() >= 3 && f.iter().all(|i| *i < n)).collect()).unwrap_or_default();
+        let mut edges: Vec<[u32; 2]> = j.get("edges").and_then(Value::as_array).map(|a| a.iter().filter_map(|e| e.as_array()).filter(|e| e.len() == 2).map(|e| [e[0].as_u64().unwrap_or(0) as u32, e[1].as_u64().unwrap_or(0) as u32]).filter(|e| e[0] < n && e[1] < n).collect()).unwrap_or_default();
+        if edges.is_empty() {
+            // from the faces (a stand-in, or an old file)
+            for f in &faces {
+                for i in 0..f.len() {
+                    let (a, b) = (f[i], f[(i + 1) % f.len()]);
+                    let e = [a.min(b), a.max(b)];
+                    if !edges.contains(&e) {
+                        edges.push(e);
+                    }
+                }
+            }
+        }
+        let mut colors = flat("colors");
+        if colors.len() != verts.len() {
+            colors = Vec::new();
+        }
+        EditMesh { obj: j["obj"].as_str().unwrap_or("").to_string(), verts, faces, edges, colors }
+    }
+    /// The faces as triangles (a fan each), with the face each came from.
+    pub fn tris(&self) -> Vec<([u32; 3], usize)> {
+        let mut v = Vec::new();
+        for (fi, f) in self.faces.iter().enumerate() {
+            for k in 1..f.len().saturating_sub(1) {
+                v.push(([f[0], f[k], f[k + 1]], fi));
+            }
+        }
+        v
+    }
+    /// Each point's normal (the faces round it), in the mesh's own space.
+    pub fn normals(&self) -> Vec<[f32; 3]> {
+        let mut n = vec![[0.0f32; 3]; self.verts.len()];
+        for (t, _) in self.tris() {
+            let (a, b, c) = (self.verts[t[0] as usize], self.verts[t[1] as usize], self.verts[t[2] as usize]);
+            let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let cr = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+            for i in t {
+                let x = &mut n[i as usize];
+                x[0] += cr[0];
+                x[1] += cr[1];
+                x[2] += cr[2];
+            }
+        }
+        for x in n.iter_mut() {
+            let l = (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]).sqrt().max(1e-9);
+            *x = [x[0] / l, x[1] / l, x[2] / l];
+        }
+        n
+    }
+    /// Each point's neighbours (along the edges).
+    pub fn neighbours(&self) -> Vec<Vec<u32>> {
+        let mut nb = vec![Vec::new(); self.verts.len()];
+        for e in &self.edges {
+            nb[e[0] as usize].push(e[1]);
+            nb[e[1] as usize].push(e[0]);
+        }
+        nb
+    }
+    /// The JSON Blender's apply_code reads: the points (and the paint when there is any).
+    pub fn to_json(&self) -> Value {
+        let mut j = serde_json::json!({"obj": self.obj, "co": self.verts.iter().flat_map(|v| v.iter().copied()).collect::<Vec<f32>>()});
+        if !self.colors.is_empty() {
+            j["colors"] = serde_json::json!(self.colors.iter().flat_map(|v| v.iter().copied()).collect::<Vec<f32>>());
+        }
+        j
+    }
+}
+
+/// The edit Blender makes when you're done: the points and paint from `file` (EditMesh::to_json) into the object's
+/// mesh; the paint becomes Blender's colour attribute "Hearth paint", shown by the material when nothing else colours
+/// it. `then`: Blender's own mesh tools on the picked points afterwards ("delete": the points go, "extrude": the
+/// picked faces pulled out along their normal by `amount`), as bmesh does them.
+pub fn apply_code(file: &str, then: &str, picked: &[u32], amount: f32) -> String {
+    format!(
+        r#"import bmesh
+j = json.load(open({f}))
+o = ob(j['obj'])
+me = o.data
+if len(j.get('co', [])) == len(me.vertices) * 3:
+    me.vertices.foreach_set('co', j['co'])
+cs = j.get('colors') or []
+if len(cs) == len(me.vertices) * 3:
+    ca = me.color_attributes.get('Hearth paint') or me.color_attributes.new('Hearth paint', 'FLOAT_COLOR', 'POINT')
+    rgba = []
+    for i in range(len(me.vertices)):
+        rgba += cs[i * 3:i * 3 + 3] + [1.0]
+    ca.data.foreach_set('color', rgba)
+    try:
+        me.color_attributes.active_color = ca
+    except Exception:
+        pass
+    for s in o.material_slots:
+        m = s.material
+        if m and m.use_nodes:
+            n = m.node_tree.nodes.get('Principled BSDF')
+            if n and not n.inputs['Base Color'].is_linked:
+                a = m.node_tree.nodes.new('ShaderNodeVertexColor')
+                a.layer_name = 'Hearth paint'
+                m.node_tree.links.new(a.outputs['Color'], n.inputs['Base Color'])
+me.update()
+then, picked = {then}, {picked:?}
+if then and picked:
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    vs = [bm.verts[i] for i in picked if i < len(bm.verts)]
+    if then == 'delete':
+        bmesh.ops.delete(bm, geom=vs, context='VERTS')
+    elif then == 'extrude':
+        fs = [f for f in bm.faces if all(v in vs for v in f.verts)]
+        if fs:
+            r = bmesh.ops.extrude_face_region(bm, geom=fs)
+            nv = [g for g in r['geom'] if isinstance(g, bmesh.types.BMVert)]
+            nrm = sum((f.normal for f in fs), fs[0].normal * 0) / len(fs)
+            bmesh.ops.translate(bm, verts=nv, vec=nrm * {amount})
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+"#,
+        f = py(file),
+        then = py(then),
+        picked = picked,
+        amount = amount
+    )
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::*;
+    #[test]
+    fn an_objects_own_mesh() {
+        let j = serde_json::json!({"obj": "Body", "verts": [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], "faces": [[0, 1, 2, 3]], "edges": []});
+        let m = EditMesh::parse(&j);
+        assert_eq!(m.verts.len(), 4);
+        assert_eq!(m.edges.len(), 4, "edges from the faces");
+        assert_eq!(m.tris().len(), 2);
+        assert!((m.normals()[0][2] - 1.0).abs() < 1e-5);
+        assert_eq!(m.neighbours()[0].len(), 2);
+        assert_eq!(m.to_json()["co"].as_array().unwrap().len(), 12);
+        let c = apply_code("/tmp/x.json", "extrude", &[0, 1, 2, 3], 0.3);
+        assert!(c.contains("bmesh.ops.extrude_face_region") && c.contains("[0, 1, 2, 3]"));
+    }
+}

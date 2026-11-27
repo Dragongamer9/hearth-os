@@ -10,6 +10,8 @@
 //! and This bottle's settings, each moved, sized, hidden and customized (Edit layout), with its own buttons, panes and
 //! info in its blocks window. `--bottle NAME` opens that bottle.
 
+mod installer;
+
 use hearth_oss_kit_a::need::{self, Have, Need};
 use hearth_oss_kit_a::{self as k, yaml, Ch, Sz, Tag, E};
 use hearth_ui::app::{self, win};
@@ -175,6 +177,7 @@ enum Pop {
     GoBack(String),
     Dropped(String),
     Get(usize),
+    Installing,
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +212,8 @@ enum Msg {
     Stop(u32),
     StopAll,
     Installers(run::Output),
+    Manifest(run::Output),
+    InstallTick,
     GetProgram(usize),
     Runner(String),
     Windows(&'static str),
@@ -245,6 +250,9 @@ struct App {
     new_kind: &'static str,
     procs: Vec<Proc>,
     installers: Vec<Value>,
+    /// a community installer Hearth is running (installer.rs): its name and its steps' states
+    installing: Option<(String, installer::Progress)>,
+    install_done: bool,
     notes: Value,
     said: String,
     busy: bool,
@@ -320,6 +328,8 @@ impl App {
             new_kind: "application",
             procs: Vec::new(),
             installers: Vec::new(),
+            installing: None,
+            install_done: false,
             notes: k::read_settings(APP),
             said: String::new(),
             busy: false,
@@ -480,7 +490,13 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             };
             a.pop = Some(p);
         }
-        Msg::Close => a.pop = None,
+        Msg::Close => {
+            if a.pop == Some(Pop::Installing) && a.install_done {
+                a.installing = None;
+                a.install_done = false;
+            }
+            a.pop = None;
+        }
         Msg::Text(s) => a.text = s,
         Msg::Kind(kd) => a.new_kind = kd,
         Msg::NewBottle => {
@@ -602,7 +618,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                         let key = l.trim_end_matches(':').trim().to_string();
                         let block: String = ls[i + 1..].iter().take_while(|x| x.starts_with(' ')).map(|x| format!("{x}\n")).collect();
                         let grade = yaml::yget(&block, &["Grade"]).unwrap_or_default();
-                        v.push(json!({"key": key, "name": yaml::yget(&block, &["Name"]).unwrap_or(key.clone()), "about": yaml::yget(&block, &["Description"]).unwrap_or_default(), "grade": grade}));
+                        v.push(json!({"key": key, "name": yaml::yget(&block, &["Name"]).unwrap_or(key.clone()), "about": yaml::yget(&block, &["Description"]).unwrap_or_default(), "grade": grade, "category": yaml::yget(&block, &["Category"]).unwrap_or_else(|| "Software".into())}));
                     }
                 }
                 // the ones people checked first (Platinum, Gold)
@@ -613,17 +629,52 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     _ => 3,
                 });
                 a.installers = v;
+                // --install NAME: that community installer, straight away (CI's pictures; a link from the Store)
+                if let Some(key) = app::arg("--install") {
+                    if let Some(i) = a.installers.iter().position(|x| x["key"].as_str() == Some(key.as_str())) {
+                        return update(a, Msg::GetProgram(i));
+                    }
+                }
             }
         }
         Msg::GetProgram(i) => {
             a.pop = None;
             let Some(inst) = a.installers.get(i).cloned() else { return Task::none() };
             let key = inst["key"].as_str().unwrap_or("").to_string();
-            let b = a.pick.clone();
-            // Bottles' own installer for it, in its window (the steps people checked: its extras, the download, its program)
-            let cmd = a.cli(&["run", "-b", &b, "--installer", &key]);
-            a.said = format!("Bottles installs {} into {b} with the community's installer.", inst["name"].as_str().unwrap_or(""));
-            return Task::perform(run::spawn(cmd), Msg::Ran);
+            let cat = inst["category"].as_str().unwrap_or("Software").to_string();
+            // the community's manifest for it, run by Hearth step by step in this bottle (installer.rs)
+            let url = format!("{}/{}/{}.yml", installer::BASE, installer::enc(&cat), installer::enc(&key));
+            a.said = format!("Getting the community's installer for {}…", inst["name"].as_str().unwrap_or(""));
+            return Task::perform(run::spawn(run::args(&["curl", "-fsSL", "-m", "30", &url])), Msg::Manifest);
+        }
+        Msg::Manifest(o) => {
+            if !o.ok || o.out.trim().is_empty() {
+                a.said = format!("The installer couldn't be got: {}", o.why());
+                return Task::none();
+            }
+            let Some(b) = a.bottle().cloned() else { return Task::none() };
+            let m = installer::parse(&o.out);
+            let prog: installer::Progress = std::sync::Arc::new(std::sync::Mutex::new(installer::lines_of(&m)));
+            a.installing = Some((m.name.clone(), prog.clone()));
+            a.pop = Some(Pop::Installing);
+            let ctx = installer::Ctx { bottle: b.name.clone(), dir: b.dir.clone(), yml: b.file.clone(), wine: a.wine_of(&b) };
+            let snap_first = b.flag(&["Parameters", "versioning_automatic"]);
+            let name = m.name.clone();
+            let _ = std::thread::Builder::new().name("hearth-bottles-installer".into()).spawn(move || {
+                if snap_first {
+                    let _ = snapshot(&ctx.bottle, &ctx.dir, &format!("Before installing {name}"));
+                }
+                installer::run(ctx, m, prog);
+            });
+        }
+        Msg::InstallTick => {
+            if let Some((_, p)) = &a.installing {
+                let done = p.lock().map(|g| g.iter().all(|l| !matches!(l.st, installer::St::Waiting | installer::St::Doing)) || g.iter().any(|l| matches!(l.st, installer::St::Failed(_)))).unwrap_or(true);
+                if done {
+                    a.install_done = true;
+                    return a.reload();
+                }
+            }
         }
         Msg::Runner(r) => {
             a.pop = None;
@@ -647,7 +698,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.change(|t| yaml::yset(&yaml::yset(t, &["Parameters", "dxvk"], Some(dx)), &["Parameters", "vkd3d"], Some(vk)));
         }
         Msg::Param(key) => {
-            let on = a.bottle().map(|b| b.flag(&["Parameters", key])).unwrap_or(false);
+            // Controller and USB is on until it's turned off (Wine lets them in by itself)
+            let on = a.bottle().map(|b| if key == "hearth_devices" { b.get(&["Parameters", key]).map(|v| v == "true").unwrap_or(true) } else { b.flag(&["Parameters", key]) }).unwrap_or(false);
             let Some(b) = a.bottle().cloned() else { return Task::none() };
             a.change(|t| yaml::yset(t, &["Parameters", key], Some(if on { "false" } else { "true" })));
             // what Wine itself needs for it (the registry), with the bottle's own Wine
@@ -656,6 +708,18 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 "hearth_fit_scale" => Some(("HKCU\\Control Panel\\Desktop", "LogPixels", if on { "96" } else { "144" }, "REG_DWORD")),
                 _ => None,
             };
+            if key == "hearth_devices" {
+                // Wine's own bus driver: controllers and USB devices reach the bottle or are kept apart (installer.rs)
+                let now_on = !b.get(&["Parameters", key]).map(|v| v == "true").unwrap_or(true);
+                let f = b.dir.join("hearth-devices.reg");
+                if let Err(e) = std::fs::write(&f, installer::devices_reg(now_on)) {
+                    a.said = format!("Couldn't change it: {e}");
+                    return Task::none();
+                }
+                let cmd = vec!["env".to_string(), format!("WINEPREFIX={}", b.dir.display()), a.wine_of(&b), "reg".into(), "import".into(), f.to_string_lossy().to_string()];
+                a.said = if now_on { "Controllers and USB devices reach this bottle's programs.".into() } else { "Controllers and USB devices are kept apart from this bottle.".into() };
+                return Task::perform(run::spawn(cmd), |o| Msg::Done("reg".into(), if o.ok { Ok(String::new()) } else { Err(o.why()) }));
+            }
             if let Some((rk, rv, rd, rt)) = reg {
                 let cmd = vec!["env".to_string(), format!("WINEPREFIX={}", b.dir.display()), a.wine_of(&b), "reg".into(), "add".into(), rk.into(), "/v".into(), rv.into(), "/t".into(), rt.into(), "/d".into(), rd.into(), "/f".into()];
                 return Task::perform(run::spawn(cmd), |o| Msg::Done("reg".into(), if o.ok { Ok(String::new()) } else { Err(o.why()) }));
@@ -1132,7 +1196,7 @@ fn settings(a: &App, b: &Bottle) -> E<'static, Msg> {
         k::kv(&p, "Can see my home folder", k::switch(&p, !b.flag(&["Parameters", "sandbox"]) && b.get(&["Parameters", "sandbox"]).is_some(), Some(Msg::Home))),
         k::kv(&p, "Shared folders", k::chip(&p, if shared.is_empty() { "None".to_string() } else { shared.join(", ") }, Ch::Plain, Sz::Sm, Some(Msg::Pop(Pop::Shared)))),
         k::kv(&p, "Internet", k::switch(&p, b.get(&["Sandbox", "share_net"]).map(|v| v == "true").unwrap_or(true), Some(Msg::Net))),
-        k::kv(&p, "Controller and USB", k::switch(&p, b.flag(&["Parameters", "hearth_devices"]), Some(Msg::Param("hearth_devices")))),
+        k::kv(&p, "Controller and USB", k::switch(&p, b.get(&["Parameters", "hearth_devices"]).map(|v| v == "true").unwrap_or(true), Some(Msg::Param("hearth_devices")))),
         container(k::cap::<Msg>(&p, "Shows up in")).padding(k::pad(10.0, 0.0, 4.0, 0.0)),
         k::kv(&p, "Apps menu", k::switch(&p, shows("menu"), Some(Msg::Shows("menu")))),
         k::kv(&p, "Files' Open with", k::switch(&p, shows("files"), Some(Msg::Shows("files")))),
@@ -1246,6 +1310,28 @@ fn pop_box(a: &App) -> Option<E<'_, Msg>> {
             opts.push(("A new bottle for it…".into(), false, Msg::Pop(Pop::New)));
             k::chooser(&p, format!("Run {file} in…"), opts, Msg::Close)
         }
+        Pop::Installing => {
+            let (name, prog) = a.installing.as_ref()?;
+            let lines = prog.lock().map(|g| g.clone()).unwrap_or_default();
+            let mut c = Column::new().spacing(6.0).push(k::h2::<Msg>(&p, format!("Installing {name} into {}", a.pick)));
+            for (i, l) in lines.iter().enumerate() {
+                let (mark, col, why) = match &l.st {
+                    installer::St::Waiting => ("○", p.muted, String::new()),
+                    installer::St::Doing => ("◐", p.accent, String::new()),
+                    installer::St::Done => ("✓", k::GREEN, String::new()),
+                    installer::St::Skipped(w) => ("–", p.muted, w.clone()),
+                    installer::St::Failed(w) => ("✕", k::RED, w.clone()),
+                };
+                let mut r = row![container(t(mark, 13.0, col)).width(Length::Fixed(18.0)), t(format!("{}. {}", i + 1, l.words), 12.0, p.text)].spacing(6.0).align_y(iced::Center);
+                if !why.is_empty() {
+                    r = r.push(k::mu1::<Msg>(&p, why, 11.0));
+                }
+                c = c.push(r);
+            }
+            let fin = a.install_done;
+            c = c.push(row![k::fill(), k::chip(&p, if fin { "Done" } else { "Hide (it keeps going)" }, if fin { Ch::Acc } else { Ch::Plain }, Sz::Md, Some(Msg::Close))]);
+            ui::dialog_box(&p, 560.0, c)
+        }
         Pop::Get(i) => {
             let x = a.installers.get(i)?;
             ui::dialog_box(
@@ -1253,7 +1339,7 @@ fn pop_box(a: &App) -> Option<E<'_, Msg>> {
                 460.0,
                 column![
                     k::h2::<Msg>(&p, x["name"].as_str().unwrap_or("").to_string()),
-                    k::para(p.muted, format!("{} The community checked it ({}). Bottles installs it into {} with its extras, in its own window.", x["about"].as_str().unwrap_or(""), x["grade"].as_str().unwrap_or("not graded"), a.pick), 12.0),
+                    k::para(p.muted, format!("{} The community checked it ({}). Hearth installs it into {} with its extras, step by step, as the community's installer says.", x["about"].as_str().unwrap_or(""), x["grade"].as_str().unwrap_or("not graded"), a.pick), 12.0),
                     row![k::fill(), k::chip(&p, "Cancel", Ch::Plain, Sz::Md, Some(Msg::Close)), k::chip(&p, "Install", Ch::Acc, Sz::Md, Some(Msg::GetProgram(i)))].spacing(8.0),
                 ]
                 .spacing(10.0),
@@ -1377,11 +1463,15 @@ fn subscription(a: &App) -> Subscription<Msg> {
     if !a.procs.is_empty() {
         s.push(iced::time::every(std::time::Duration::from_secs(2)).map(|_| Msg::Tick));
     }
+    // a community installer at work: its steps, twice a second
+    if a.installing.is_some() && !a.install_done {
+        s.push(iced::time::every(std::time::Duration::from_millis(500)).map(|_| Msg::InstallTick));
+    }
     Subscription::batch(s)
 }
 
 fn main() -> iced::Result {
-    if app::handle_cli("hearth-bottles", "Hearth Bottles: Windows apps, each in its own bottle (built on Bottles).\n  --bottle NAME   open that bottle") {
+    if app::handle_cli("hearth-bottles", "Hearth Bottles: Windows apps, each in its own bottle (built on Bottles).\n  --bottle NAME   open that bottle\n  --install NAME  run that community installer in it") {
         return Ok(());
     }
     let w = app::window("hearth-bottles", (1280.0, 800.0), (960.0, 600.0));

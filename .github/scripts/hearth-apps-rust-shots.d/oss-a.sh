@@ -56,8 +56,28 @@ before=$(md5sum "$OH/.config/MangoHud/MangoHud.conf")
 SHOT_WAIT=3.5 oss oss-a-03-overlay hearth-overlay "$OV"
 SHOT_WAIT=3.5 oss oss-a-03-overlay-forza hearth-overlay "$OV" --game wine-ForzaHorizon5.conf
 SHOT_WAIT=4.5 oss oss-a-03-overlay-editing hearth-overlay env HEARTH_ARRANGE_OPEN=overlay:settings HEARTH_STUDIO_STAGE=overlay:none "$OV"
-[ -n "$vk" ] && { kill "$vk" 2>/dev/null; wait "$vk" 2>/dev/null; }
 [ "$before" = "$(md5sum "$OH/.config/MangoHud/MangoHud.conf")" ] || echo "::error title=oss-03 overlay::opening it changed MangoHud.conf"
+# Drag it in the game to place it anywhere (place.rs): Hearth's see-through window over the game with the overlay's
+# ghost, dragged from near the top left to the middle (wl-drag.py); MangoHud's file gets the spot as it moves.
+( sleep 2.2; python3 "$ROOT/.github/scripts/wl-drag.py" 1280 800 90,80 520,330 --steps 30 >/tmp/ov-drag.log 2>&1 ) &
+SHOT_WAIT=4.5 oss oss-a-03-overlay-place hearth-overlay-place "$OV" --place --at 40,40
+ox=$(grep -E '^offset_x=' "$OH/.config/MangoHud/MangoHud.conf" | tail -1 | cut -d= -f2)
+oy=$(grep -E '^offset_y=' "$OH/.config/MangoHud/MangoHud.conf" | tail -1 | cut -d= -f2)
+if [ "${ox:-0}" -gt 300 ] && [ "${oy:-0}" -gt 150 ]; then echo "::notice title=oss-03 overlay place::dragged: MangoHud's position top-left, offset $ox, $oy ($(cat /tmp/ov-drag.log))"
+else echo "::error title=oss-03 overlay place::the drag didn't place it (offset ${ox:-none}, ${oy:-none}; $(cat /tmp/ov-drag.log))"; fi
+# Warn when hot (hot.rs): Hearth's watch reads the card's temperature (86 °C here, a stand-in file) and MangoHud shows
+# its warning line in the game through its exec= line.
+echo 86000 > /tmp/ov-temp
+printf 'exec=cat %s/hearth-overlay-hot\n' "$XDG_RUNTIME_DIR" >> "$OH/.config/MangoHud/MangoHud.conf"
+env HOME="$OH" XDG_CONFIG_HOME="$OH/.config" HEARTH_OVERLAY_TEMP=/tmp/ov-temp "$OV" --watch >/tmp/ov-watch.log 2>&1 &
+ow=$!
+sleep 2.5
+grep -q 'hot' "$XDG_RUNTIME_DIR/hearth-overlay-hot" 2>/dev/null && echo "::notice title=oss-03 overlay hot::$(cat "$XDG_RUNTIME_DIR/hearth-overlay-hot")" || echo "::error title=oss-03 overlay hot::no warning written ($(tail -c 300 /tmp/ov-watch.log))"
+SHOT_WAIT=3.5 oss oss-a-03-overlay-hot hearth-overlay "$OV"
+echo 70000 > /tmp/ov-temp; sleep 2.5
+[ -s "$XDG_RUNTIME_DIR/hearth-overlay-hot" ] && [ -n "$(tr -d '[:space:]' < "$XDG_RUNTIME_DIR/hearth-overlay-hot")" ] && echo "::error title=oss-03 overlay hot::the warning stayed after it cooled"
+kill $ow 2>/dev/null; wait $ow 2>/dev/null
+[ -n "$vk" ] && { kill "$vk" 2>/dev/null; wait "$vk" 2>/dev/null; }
 
 # ---- 08 Hearth Bottles (Bottles): two programs running in Office and tools (stand-ins with its WINEPREFIX)
 oss_world bottles
@@ -67,6 +87,12 @@ sleep 1.5
 SHOT_WAIT=4 oss oss-a-08-bottles hearth-bottles "$BO" --bottle "Office and tools"
 SHOT_WAIT=4.5 oss oss-a-08-bottles-editing hearth-bottles env HEARTH_ARRANGE_OPEN=bottles:bottle HEARTH_STUDIO_STAGE=bottles:none "$BO" --bottle "Office and tools"
 pkill -f "import time; x = bytearray" 2>/dev/null
+# A community installer run by Hearth step by step (installer.rs): Notepad++'s manifest from bottlesdevs/programs
+# (a stand-in answer), its extras with winetricks, the download checked, the setup run with the bottle's Wine, the
+# registry, the installer's own script skipped, and Notepad++ added to the bottle's programs.
+SHOT_WAIT=3 oss oss-a-08-bottles-installing hearth-bottles "$BO" --bottle "Trying something" --install notepad-plus-plus
+SHOT_WAIT=15 oss oss-a-08-bottles-installed hearth-bottles "$BO" --bottle "Trying something" --install notepad-plus-plus
+grep -q 'name: Notepad++' "$OH/.local/share/hearth/bottles/trying/bottle.yml" && echo "::notice title=oss-08 installer::Notepad++ is in the bottle's programs; $(tr '\n' '|' < "$OA/bottles/wine.log" | cut -c1-600)" || echo "::error title=oss-08 installer::the program wasn't added ($(tr '\n' '|' < "$OA/bottles/wine.log" 2>/dev/null | cut -c1-400))"
 
 # ---- 17 Hearth 3D (Blender): the quad mech (Blender's answer stands in: oss-a-fixture.py's scene)
 oss_world hearth-3d
@@ -74,3 +100,16 @@ H3="$BIN/hearth-3d"
 SHOT_WAIT=4 oss oss-a-17-hearth-3d hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body
 SHOT_WAIT=4 oss oss-a-17-hearth-3d-wire hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Gun --shade wire
 SHOT_WAIT=4.5 oss oss-a-17-hearth-3d-editing hearth-3d env HEARTH_ARRANGE_OPEN=hearth-3d:studio HEARTH_STUDIO_STAGE=hearth-3d:none "$H3" "$OH/Models/quad-mech.blend" --pick Body
+# Hearth 3D's Box select, Tab, Sculpt and Paint, each driven by a real drag (wl-drag.py, wlroots' virtual pointer):
+# a drawn box picks the objects in it; Tab with a box drawn over part of Body's own mesh (Blender's stand-in gives it:
+# a box of quads) picks those points; a Sculpt stroke (Draw) raises the mesh under it; a Paint stroke paints it.
+DRAG="python3 $ROOT/.github/scripts/wl-drag.py 1280 800"
+( sleep 3; $DRAG 250,160 760,470 --steps 25 >/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=5 oss oss-a-17-hearth-3d-box hearth-3d "$H3" "$OH/Models/quad-mech.blend" --tool box
+( sleep 3.5; $DRAG 420,220 560,330 --steps 20 >>/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=5.5 oss oss-a-17-hearth-3d-edit hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body --mode edit
+( sleep 3.5; $DRAG 400,300 470,280 540,300 610,290 680,310 --steps 12 >>/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=6 oss oss-a-17-hearth-3d-sculpt hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body --mode sculpt
+( sleep 3.5; $DRAG 400,300 470,280 540,300 610,290 680,310 --steps 12 >>/tmp/h3d-drag.log 2>&1 ) &
+SHOT_WAIT=6 oss oss-a-17-hearth-3d-paint hearth-3d "$H3" "$OH/Models/quad-mech.blend" --pick Body --mode paint
+echo "::notice title=oss-17 drags::$(tr '\n' ' ' < /tmp/h3d-drag.log)"

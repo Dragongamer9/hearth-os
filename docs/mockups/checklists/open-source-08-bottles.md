@@ -64,14 +64,14 @@ Board: Hearth Bottles (Bottles, GPL-3): Windows apps in their own bottles, each 
 - [x] Snapshots · Take one now · Go back (Hearth's own copies of the bottle) (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "fn go_back("
 - [x] Running now · Stop all · Word · Story notes.docx, foobar2000 with memory and CPU, Stop (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "\"Running now\""
 - [x] Get a program · "installers checked by the community" (Bottles' programs list) · Your own .exe… (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "\"installers checked by the community\""
-- [ ] Installing one of the community's installers (Bottles' installers run in Bottles' own installer; its command (bottles-cli) may not have an installer option, so this needs checking on a device and may need Bottles' window)
+- [x] Installing one of the community's installers: Hearth runs Bottles' manifest itself, step by step in the bottle (extras, checked downloads, the setup, registry, DLLs, the program added), each step shown (CI pictures oss-a-08-bottles-installing, -installed; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/installer.rs: "pub fn do_step(c: &Ctx, s: &[(String, String)])"
 
 ## This bottle's settings
 - [x] Runner ▾ · Acts like ▾ (bottles-cli edit) (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "&[\"edit\", \"-b\", &b, \"--win\", w]"
 - [x] Graphics DXVK / VKD3D / OpenGL (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "(\"VKD3D\".into(), gi == 1, Msg::Graphics(1))"
 - [x] Sharper fonts · Fit to my screen scale (Wine's registry) · Snapshot before each install (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "\"Snapshot before each install\""
 - [x] KEPT APART: Can see my home folder · Shared folders (Wine's folders linked to yours) · Internet (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "\"Shared folders\""
-- [ ] Controller and USB (the switch is shown and kept in the bottle's file, but Bottles has no per-bottle device setting, so it doesn't change anything yet)
+- [x] Controller and USB: Wine's own bus driver settings (winebus: SDL and input controllers, hidraw USB devices) imported into the bottle's registry, on or kept apart (needs testing on a device) — hosts/hearth-ui/apps/bottles/src/installer.rs: "pub fn devices_reg(on: bool) -> String"
 - [x] SHOWS UP IN: Apps menu · Files' Open with (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "\"Files' Open with\""
 - [x] SPACE: the bar, "3.8 GB in this bottle", "21.4 GB in all 6" (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "format!(\"{} in all {}\""
 - [x] Back up the bottle · Copy it · Delete… (CI picture oss-a-08-bottles; needs testing on a device) — hosts/hearth-ui/apps/bottles/src/main.rs: "\"Back up the bottle\""

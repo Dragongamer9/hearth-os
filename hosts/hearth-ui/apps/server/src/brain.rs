@@ -422,7 +422,9 @@ mod tests {
     #[test]
     fn the_brain_has_its_shape_and_parts() {
         let c = cloud();
-        assert!(c.p.len() > 6000 && c.p.len() < 7200, "{}", c.p.len());
+        // exactly as many points as ithil-brain.js makes: 2 x 2700 cortex, 900 cerebellum, 360 stem, 2 x 260 memory,
+        // 2 x 200 sleep, 160 + 2 x 90 needs, 140 self-model (no cortex point falls in the gap between the halves)
+        assert_eq!(c.p.len(), 8060);
         assert_eq!(c.cent.len(), R.len());
         // the first numbers of ithil-brain.js's seeded rnd() (seed 7)
         let mut r = Rng(7);

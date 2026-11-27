@@ -162,7 +162,7 @@ elif app == "overlay":
     w(".config/MangoHud/wine-ForzaHorizon5.conf", conf)
     w(".config/MangoHud/wine-eldenring.conf", conf.replace("fps_limit=120", "fps_limit=60"))
     w(".config/environment.d/90-hearth-overlay.conf", "MANGOHUD=1\n")
-    w(".config/nimbus/overlay.json", json.dumps({"names": {"wine-ForzaHorizon5.conf": "Forza Horizon 5", "wine-eldenring.conf": "Elden Ring"}, "gameModeLevel": 3, "warnGpu": 83}) + "\n")
+    w(".config/nimbus/overlay.json", json.dumps({"names": {"wine-ForzaHorizon5.conf": "Forza Horizon 5", "wine-eldenring.conf": "Elden Ring"}, "gameModeLevel": 3, "warnGpu": 83, "warnOn": True}) + "\n")
 elif app == "bottles":
     MB = 1048576
     user = os.environ.get("USER") or "ci"
@@ -211,8 +211,22 @@ elif app == "bottles":
         slug = "".join(c.lower() if c.isalnum() else "-" for c in "Office and tools-" + pn)
         w(".local/share/applications/hearth-bottles-%s.desktop" % slug, "[Desktop Entry]\nType=Application\nName=%s\n" % pn)
     cmd("bottles-cli", 'echo "bottles-cli $*"\n')
-    cmd("curl", 'case "$*" in\n  *bottlesdevs/programs*) printf "%s";;\n  *) exit 22;;\nesac\n' % "".join(
-        "%s:\n  Name: %s\n  Description: x\n  Grade: Platinum\n" % (k_, n_) for k_, n_ in (("office-2016", "Office 2016 installer"), ("paint-net", "Paint.NET"), ("msi-afterburner", "MSI Afterburner"), ("notepad-plus-plus", "Notepad++"), ("irfanview", "IrfanView"))).replace("%", "%%"))
+    # The community's installer for Notepad++ as bottlesdevs/programs has it (installer.rs runs it), its download a
+    # stand-in file, and stand-ins for Wine and winetricks that take their time and do what the real ones leave behind.
+    import hashlib
+    fake = b"MZ hearth stand-in installer\n"
+    manifest = ("Name: Notepad++\nDescription: A text editor\nGrade: Platinum\nArch: win64\nDependencies:\n- vcredist2019\n- arial32\n"
+                "Parameters:\n  dxvk: false\nSteps:\n- action: install_exe\n  file_name: npp.8.6.Installer.x64.exe\n  url: https://example.org/npp.8.6.Installer.x64.exe\n"
+                "  file_checksum: %s\n  arguments: /S\n- action: set_register_key\n  key: HKCU\\Software\\Notepad++\n  value: noUpdate\n  data: '1'\n  key_type: REG_SZ\n"
+                "- action: run_script\n  script: echo hi\nExecutable:\n  name: Notepad++\n  file: notepad++.exe\n  path: Notepad++/notepad++.exe\n") % hashlib.md5(fake).hexdigest()
+    w(os.path.join(root, "npp.yml"), manifest)
+    w(os.path.join(root, "fake.exe"), fake.decode())
+    cmd("wine", 'echo "wine $*" >> "%s"\ncase "$1" in\n  *.exe) sleep 2; mkdir -p "$WINEPREFIX/drive_c/Program Files/Notepad++"; : > "$WINEPREFIX/drive_c/Program Files/Notepad++/notepad++.exe";;\nesac\nexit 0\n' % os.path.join(root, "wine.log"))
+    cmd("winetricks", 'echo "winetricks $*" >> "%s"; sleep 1.5\n' % os.path.join(root, "wine.log"))
+    cmd("curl", 'out=; prev=; for a; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done\ncase "$*" in\n  *Software/notepad-plus-plus.yml*) cat "%s";;\n  *example.org*) cp "%s" "$out";;\n  *bottlesdevs/programs*) cat "%s";;\n  *) exit 22;;\nesac\n' % (os.path.join(root, "npp.yml"), os.path.join(root, "fake.exe"), os.path.join(root, "index.yml")))
+    os.environ["INDEX"] = "".join(
+        "%s:\n  Name: %s\n  Description: x\n  Grade: Platinum\n" % (k_, n_) for k_, n_ in (("office-2016", "Office 2016 installer"), ("paint-net", "Paint.NET"), ("msi-afterburner", "MSI Afterburner"), ("notepad-plus-plus", "Notepad++"), ("irfanview", "IrfanView")))
+    w(os.path.join(root, "index.yml"), os.environ["INDEX"])
     # two programs running in Office and tools (stand-ins with its WINEPREFIX, named as Wine names them)
     w(os.path.join(root, "run-office.sh"), "#!/bin/sh\nWINEPREFIX='%s' exec -a WINWORD.EXE python3 -c 'import time; x = bytearray(412 * 1048576); x[::4096] = b\"1\" * len(x[::4096]); time.sleep(90)' 'Story notes.docx' &\nWINEPREFIX='%s' exec -a foobar2000.exe python3 -c 'import time; x = bytearray(64 * 1048576); x[::4096] = b\"1\" * len(x[::4096]); time.sleep(90)' &\n" % (os.path.join(base, "office"), os.path.join(base, "office")), 0o755)
 elif app == "hearth-3d":
@@ -255,7 +269,41 @@ elif app == "hearth-3d":
         "frame": 32, "start": 0, "end": 96, "fps": 24, "action": "Walk cycle", "world": [0.05, 0.05, 0.05], "objects": objs}
     w(os.path.join(root, "scene.json"), json.dumps(scene))
     w(os.path.join(home, "Models/quad-mech.blend"), "BLENDER-v403 (a stand-in)\n")
-    cmd("blender", 'out=; take=; for a; do [ -n "$take" ] && { out="$a"; take=; }; [ "$a" = "--" ] && take=1; done\n[ -n "$out" ] && cp "%s" "$out"\nexit 0\n' % os.path.join(root, "scene.json"))
+    # Blender's stand-in: the scene's JSON as Blender's script writes it, or (Hearth 3D's Tab, Sculpt and Paint: the
+    # script marked HEARTH_MESH_DUMP) an object's own mesh: Body as a box of quads, 10 a side (as a modeller keeps it).
+    w(os.path.join(root, "blender.py"), r"""import json, sys
+a = sys.argv[1:]
+rest = a[a.index('--') + 1:] if '--' in a else []
+if any('HEARTH_MESH_DUMP' in x for x in a):
+    out, obj = rest[0], rest[1]
+    W, D, H, N = 4.0, 4.0, 1.2, 10
+    verts, faces, index = [], [], {}
+    def vid(p):
+        k = tuple(round(c, 5) for c in p)
+        if k not in index:
+            index[k] = len(verts)
+            verts.append(k)
+        return index[k]
+    for axis in range(3):
+        for side in (-1, 1):
+            for i in range(N):
+                for j in range(N):
+                    q = []
+                    for di, dj in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        u, v = -1 + 2 * (i + di) / N, -1 + 2 * (j + dj) / N
+                        p = [0.0, 0.0, 0.0]
+                        p[axis] = side
+                        o = [x for x in range(3) if x != axis]
+                        p[o[0]], p[o[1]] = u, v
+                        q.append(vid((p[0] * W / 2, p[1] * D / 2, p[2] * H / 2)))
+                    if side < 0:
+                        q.reverse()
+                    faces.append(q if axis != 1 else q[::-1])
+    json.dump({'obj': obj, 'verts': [c for p in verts for c in p], 'faces': faces, 'edges': [], 'colors': []}, open(out, 'w'))
+elif rest:
+    open(rest[0], 'w').write(open(%r).read())
+""" % os.path.join(root, "scene.json"))
+    cmd("blender", 'exec python3 "%s" "$@"\n' % os.path.join(root, "blender.py"))
 else:
     sys.exit("no such app: " + app)
 

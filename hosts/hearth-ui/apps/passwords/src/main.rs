@@ -11,6 +11,7 @@
 //! $HEARTH_PASSWORDS_FIXTURE: a made-up, already opened vault (CI's pictures; nothing is sent or written then).
 
 mod bw;
+mod fill;
 mod kp;
 mod vault;
 
@@ -81,6 +82,9 @@ enum Msg {
     UseIt,
     CloseMaker,
     Fill(&'static str),
+    /// Fill in by itself in browsers: the window in front, looked at every 2 s while it's on and the vault is open
+    WatchFront,
+    Front(String, String),
     Backup,
     Fix,
     Leaks,
@@ -123,6 +127,8 @@ struct App {
     keys: Option<Keys>,
     token: String,
     items: Vec<Item>,
+    /// the last browser page Fill in by itself offered (once a page)
+    filled_title: String,
     folders: Vec<vault::Folder>,
     open_ok: bool,
     offline: bool,
@@ -282,6 +288,7 @@ impl App {
             keys: None,
             token: String::new(),
             items: Vec::new(),
+            filled_title: String::new(),
             folders: Vec::new(),
             open_ok: false,
             offline: false,
@@ -318,7 +325,7 @@ impl App {
             }
             return (a, Task::none());
         }
-        (a, Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null))))
+        (a, Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null))))
     }
     fn base(&self) -> String {
         self.prefs.s("server", "http://127.0.0.1:8222").trim_end_matches('/').to_string()
@@ -335,8 +342,11 @@ impl App {
         if self.open.is_empty() || !self.items.iter().any(|i| i.id == self.open) {
             self.open = self.items.first().map(|i| i.id.clone()).unwrap_or_default();
         }
+        // Super + Alt + P can fill these in now (fill.rs; only while the vault is open)
+        fill::share(self.items.iter().filter(|i| !i.password.is_empty()).map(|i| fill::Login { id: i.id.clone(), name: i.name.clone(), uri: i.uri.clone(), user: i.user.clone(), password: i.password.clone() }).collect());
     }
     fn lock(&mut self) {
+        fill::share(Vec::new());
         for i in self.items.iter_mut() {
             i.wipe();
         }
@@ -714,6 +724,17 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let e = EditBuf { id: i.id.clone(), name: i.name.clone(), user: i.user.clone(), password: s, uri: i.uri.clone(), notes: i.notes.clone() };
             return put_item(a, &e, false);
         }
+        Msg::WatchFront => return Task::perform(bg(fill::front), |r| { let (a, t) = r.unwrap_or_default(); Msg::Front(a, t) }),
+        Msg::Front(app_id, title) => {
+            if fill::is_browser(&app_id) && title != a.filled_title && !title.is_empty() {
+                a.filled_title = title.clone();
+                let logins: Vec<fill::Login> = a.items.iter().map(|i| fill::Login { id: i.id.clone(), name: i.name.clone(), uri: i.uri.clone(), user: String::new(), password: if i.password.is_empty() { String::new() } else { "x".into() } }).collect();
+                if !fill::fits(&title, &logins).is_empty() {
+                    let me = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "hearth-passwords-app".into());
+                    run::detached(&[&me, "--fill"]);
+                }
+            }
+        }
         Msg::Fill(k) => {
             let d = k != "fillBrowsers";
             let v = !a.prefs.b(k, d);
@@ -722,7 +743,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Backup => {
             let local = a.base().contains("127.0.0.1") || a.base().contains("localhost");
             if local {
-                return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "backup", "vaultwarden"])), |o| {
+                return Task::perform(run::spawn(hearth_oss::server::args(&["backup", "vaultwarden"])), |o| {
                     Msg::Wrote(if o.ok { Ok(format!("Backed up on your server: {}", o.json().and_then(|j| j.get("backup").and_then(Value::as_str).map(str::to_string)).unwrap_or_default())) } else { Err(format!("The backup didn't work: {}", o.why())) })
                 });
             }
@@ -779,12 +800,12 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Server2(v) => a.srv = v,
         Msg::Install => {
             a.said = "Installing Vaultwarden on this PC (its own image, in your Podman)…".into();
-            return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "install", "vaultwarden"])), Msg::Ran);
+            return Task::perform(run::spawn(hearth_oss::server::args(&["install", "vaultwarden"])), Msg::Ran);
         }
-        Msg::TurnOn => return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "on", "vaultwarden"])), Msg::Ran),
+        Msg::TurnOn => return Task::perform(run::spawn(hearth_oss::server::args(&["on", "vaultwarden"])), Msg::Ran),
         Msg::Ran(o) => {
             a.said = if o.ok { "Done. Make your account on your server's page, then unlock here.".into() } else { format!("That didn't work: {}", o.why()) };
-            return Task::perform(run::spawn(run::args(&["python3", &run::shell_helper("hearth-oss-server"), "status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null)));
+            return Task::perform(run::spawn(hearth_oss::server::args(&["status"])), |o| Msg::Server2(o.json().unwrap_or(Value::Null)));
         }
         Msg::OpenServerPage => run::detached(&["xdg-open", &a.base()]),
         Msg::OpenKeepass => {
@@ -1039,6 +1060,7 @@ fn detail(a: &App) -> Element<'_, Msg> {
             w::kv(&p, "Fill in by itself in browsers", w::sw(&p, a.prefs.b("fillBrowsers", false), Some(Msg::Fill("fillBrowsers")))),
             w::kv(&p, "Ask before filling", w::sw(&p, a.prefs.b("fillAsk", true), Some(Msg::Fill("fillAsk")))),
             w::kv(&p, "Also for apps (Hearth AI, Store)", w::sw(&p, a.prefs.b("fillApps", true), Some(Msg::Fill("fillApps")))),
+            t("Super + Alt + P fills in the window in front while your vault is open.", 11.0, p.muted),
         ],
     )
     .width(Length::Fill);
@@ -1308,6 +1330,10 @@ fn subscription(a: &App) -> Subscription<Msg> {
     if codes {
         s.push(iced::time::every(std::time::Duration::from_secs(1)).map(|_| Msg::Tick));
     }
+    // Fill in by itself in browsers (off unless you turn it on): the window in front, every 2 s while the vault is open
+    if a.open_ok && a.prefs.b("fillBrowsers", false) {
+        s.push(iced::time::every(std::time::Duration::from_secs(2)).map(|_| Msg::WatchFront));
+    }
     Subscription::batch(s)
 }
 
@@ -1316,6 +1342,9 @@ fn shown(a: &App) -> Element<'_, Msg> {
 }
 
 fn main() -> iced::Result {
+    if app::flag("--fill") {
+        return fill::run_fill();
+    }
     if app::handle_cli("hearth-passwords-app", "Hearth Passwords: your vault on your own server (built on Vaultwarden, AGPL-3, and KeePassXC, GPL-3).") {
         return Ok(());
     }

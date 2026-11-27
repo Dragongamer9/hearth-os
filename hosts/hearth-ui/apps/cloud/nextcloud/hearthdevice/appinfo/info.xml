@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <!-- Hearth Cloud's own small Nextcloud app (hosts/hearth-ui/apps/cloud/nextcloud; AGPL-3 like Nextcloud): for
+         every file written, it notes which device wrote it (the name of the app password or session that did) as
+         Hearth's WebDAV property {https://hearthos.fun/ns}device, which Hearth Cloud's FROM column shows. -->
+    <id>hearthdevice</id>
+    <name>Hearth device names</name>
+    <summary>Notes which device changed each file, for Hearth Cloud</summary>
+    <description>Every time a file is written, the name of the device (its app password or session) is kept as the file's own WebDAV property, so Hearth Cloud can show where each change came from.</description>
+    <version>1.0.0</version>
+    <licence>agpl</licence>
+    <author>Dragongamer9</author>
+    <namespace>HearthDevice</namespace>
+    <category>files</category>
+    <dependencies>
+        <nextcloud min-version="28" max-version="33"/>
+    </dependencies>
+</info>

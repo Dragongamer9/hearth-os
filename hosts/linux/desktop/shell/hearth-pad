@@ -140,8 +140,40 @@ SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RI
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
                    set(OSK_SPECIAL.values()) |
                    {'KEY_LEFTSHIFT', 'KEY_LEFTCTRL', 'KEY_LEFTALT', 'KEY_LEFTMETA', 'KEY_TAB', 'KEY_ENTER', 'KEY_ESC',
-                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V', 'KEY_F4', 'KEY_PAGEUP', 'KEY_PAGEDOWN'})
+                    'KEY_BACKSPACE', 'KEY_Q', 'KEY_COMPOSE', 'KEY_V', 'KEY_F4', 'KEY_PAGEUP', 'KEY_PAGEDOWN'} |
+                   {'KEY_RIGHTSHIFT', 'KEY_RIGHTCTRL', 'KEY_RIGHTALT'} | {'KEY_F%d' % n for n in range(1, 13)})
 MODS = {'ctrl': 'KEY_LEFTCTRL', 'alt': 'KEY_LEFTALT', 'shift': 'KEY_LEFTSHIFT'}
+
+# ---- Hearth Overlay's controller shortcut, Menu (☰) + R3 (hosts/hearth-ui/apps/overlay; board 03 "or Controller:
+# ≡ + R3"): the helper presses MangoHud's own show-and-hide keys (toggle_hud in MangoHud.conf, Hearth Overlay's "Show
+# and hide"), held a moment so MangoHud, which looks at the keyboard once a frame, sees them. Over a fullscreen game
+# too (the helper is paused there, but this one chord still works); never in Game Mode (Steam's own overlay levels).
+OVERLAY_HOLD = 0.12
+# MangoHud's key names (X keysyms) → the keys sent.
+MANGOHUD_KEYS = {'Shift_R': 'KEY_RIGHTSHIFT', 'Shift_L': 'KEY_LEFTSHIFT', 'Control_R': 'KEY_RIGHTCTRL',
+                 'Control_L': 'KEY_LEFTCTRL', 'Alt_L': 'KEY_LEFTALT', 'Alt_R': 'KEY_RIGHTALT', 'Super_L': 'KEY_LEFTMETA'}
+for _n in range(1, 13):
+    MANGOHUD_KEYS['F%d' % _n] = 'KEY_F%d' % _n
+for _c in 'abcdefghijklmnopqrstuvwxyz0123456789':
+    MANGOHUD_KEYS[_c] = MANGOHUD_KEYS[_c.upper()] = 'KEY_' + _c.upper()
+
+
+def mangohud_toggle_keys(conf=None):
+    """The keys of MangoHud's toggle_hud (its default Shift_R+F12), from MangoHud.conf as Hearth Overlay writes it."""
+    if conf is None:
+        base = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+        conf = os.path.join(base, 'MangoHud', 'MangoHud.conf')
+    want = 'Shift_R+F12'
+    try:
+        with open(conf, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                k, _, v = line.strip().partition('=')
+                if k.strip() == 'toggle_hud' and v.strip():
+                    want = v.strip()
+    except OSError:
+        pass
+    keys = [MANGOHUD_KEYS.get(x.strip()) for x in want.split('+')]
+    return keys if keys and all(keys) else ['KEY_RIGHTSHIFT', 'KEY_F12']
 
 
 # ---- Hearth COSMIC (--cosmic): keys it sends besides the ones above.
@@ -645,6 +677,8 @@ class Pad:
             return self.game_button(name, down, now)
         if self.locked:
             return self.locked_button(name, down)
+        if name == 'r3' and down and 'menu' in self.held and not self.osk_only:
+            return self.overlay_chord(now)
         if name == 'guide' and self.firehold and not self.osk_only and self.mode != 'radial':
             if down:
                 self.guide_from = self.mode
@@ -698,6 +732,14 @@ class Pad:
             self.fh_stick = (d, now)
         elif not d:
             self.fh_stick = (None, 0.0)
+
+    def overlay_chord(self, now):
+        """Menu (☰) + R3: Hearth Overlay shown or hidden (MangoHud's own keys, held OVERLAY_HOLD s; tick lets go)."""
+        keys = mangohud_toggle_keys()
+        for k in keys:
+            self.out.press(k, True)
+        self.overlay_up = (now + OVERLAY_HOLD, keys)
+        note('controller: Menu + R3, the overlay\'s keys %s' % '+'.join(keys))
 
     def osk_chord(self):
         """Guide + X: the on-screen keyboard, like Steam + X. The radial menu that Guide's press opened goes away again;
@@ -895,6 +937,11 @@ class Pad:
         self.sticks = (lx, ly, rx, ry)
 
     def tick(self, now, dt):
+        up = getattr(self, 'overlay_up', None)
+        if up and now >= up[0]:
+            for k in reversed(up[1]):
+                self.out.press(k, False)
+            self.overlay_up = None
         if self.gnome:
             self.gnome_tick(now, dt)
         lx, ly, rx, ry = self.sticks

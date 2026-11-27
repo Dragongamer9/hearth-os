@@ -28,9 +28,9 @@ Board: Hearth Mouse (Piper/libratbag): DPI steps, buttons, report rate, lights a
 - [x] Wheel · Scroll · 3 lines (the desktop's setting) (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "Scroll · {} lines"
 - [x] More: any key, a macro from Hearth Remap, a Hearth action · Hearth Remap › (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "More: any key, a macro from Hearth Remap, a Hearth action"
 - [x] Reports per second and "Higher is smoother, uses a bit more battery"; 125 / 500 / 1000 / 2000 / 4000 Hz (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "Higher is smoother, uses a bit more battery"
-- [ ] Lift-off distance Low / Mid / High (shown; libratbag has no setting for it yet, so it can't be changed from Linux)
+- [ ] Lift-off distance Low / Mid / High (shown, with "not on this mouse from Linux"; no maker's protocol for it is known: Razer's command for it isn't described anywhere, rivalcfg lists it as missing and libratbag has none, so Hearth can't write it safely to any mouse yet)
 - [x] Angle snapping (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "\"Angle snapping\""
-- [ ] Sleep after 5 min ▾ (shown; libratbag has no setting for it yet)
+- [x] Sleep after 5 min ▾: Hearth's own write for the mice whose protocol is known (Razer wireless: read back to be sure; SteelSeries Aerox 3), its udev rule installed by Hearth Mouse; other mice say they can't be told from Linux (CI picture mouse-4-sleep-known; needs testing on a device with one of those mice) — hosts/hearth-ui/apps/mouse/src/hid.rs: "pub fn set_sleep(k: &Known, minutes: u32)"
 - [x] Lights: Logo and Bottom strip, each with its colour and Still / Breathing / Wave (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "\"Bottom strip\""
 - [x] Show the DPI step colour (the logo takes the step's colour when you pick a step) (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "\"Show the DPI step colour\""
 - [x] Follow Hearth Lights (Hearth Lights' colour and effect on the mouse's lights) (CI pictures mouse-1…3; needs testing on a device) — hosts/hearth-ui/apps/mouse/src/main.rs: "\"Follow Hearth Lights\""

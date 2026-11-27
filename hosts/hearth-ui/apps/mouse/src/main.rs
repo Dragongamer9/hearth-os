@@ -3,7 +3,7 @@
 //! libratbag (MIT) and its daemon ratbagd, the same as Piper (GPL-2) uses (rb.rs). DPI steps, every button, report
 //! rate, angle snapping, its lights and the profiles kept on the mouse itself, all written to the mouse (Commit).
 //!
-//! libratbag not on this PC: it comes with Hearth OS's Fedora edition (libratbag-ratbagd); its daemon is started by
+//! libratbag not on this PC: Install libratbag gets Debian's own ratbagd (debs.rs, hearth-admin deb-install); its daemon is started by
 //! D-Bus when asked, never at start-up. "Switch with the game" is the runner (`--run`, hearth-mouse.service), only
 //! once you change it, and "ask me" by default.
 //!
@@ -11,6 +11,9 @@
 
 #[path = "../../oss-kit/kit.rs"]
 mod kit;
+#[path = "../../oss-kit/debs.rs"]
+mod debs;
+mod hid;
 mod pic;
 mod rb;
 
@@ -44,6 +47,13 @@ pub enum Msg {
     Lines(u32),
     Rate(u32),
     Snap,
+    /// Sleep after: Hearth's own write to the mouse (hid.rs), for the models whose protocol is known
+    Sleep(u32),
+    Slept(u32, Result<(), String>),
+    SleepNow(Option<u32>),
+    /// Hearth Mouse's udev rule for those models (a small .deb, hearth-admin deb-install)
+    Access,
+    Accessed(Result<(), String>),
     LedMode(usize, u32),
     LedColour(usize, [u8; 3]),
     DpiColour,
@@ -53,6 +63,8 @@ pub enum Msg {
     SwitchBy,
     OpenRemap,
     StartIt,
+    /// Debian's own libratbag (ratbagd), installed from here (debs.rs)
+    InstallIt,
     Drag,
     Max,
     Min,
@@ -67,6 +79,7 @@ pub enum Pop {
     Button(u32),
     Wheel,
     Colour(usize),
+    Sleep,
 }
 
 struct App {
@@ -82,6 +95,8 @@ struct App {
     dpi_text: String,
     saved: bool,
     said: String,
+    /// the mouse's sleep time (read from the mouse where it can say, else what Hearth set)
+    sleep_min: Option<u32>,
     settings: Value,
     lines: u32,
     battery: Option<u32>,
@@ -130,12 +145,13 @@ impl App {
             at: 0,
             loading: true,
             problem: String::new(),
-            pop: Pop::None,
+            pop: if app::arg("--show").as_deref() == Some("sleep") { Pop::Sleep } else { Pop::None },
             picked: app::arg("--pin").unwrap_or_default(),
             step: usize::MAX,
             dpi_text: String::new(),
             saved: false,
             said: String::new(),
+            sleep_min: None,
             settings: kit::read_settings(APP),
             lines: scroll_lines(),
             battery: None,
@@ -235,6 +251,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     let name = a.mouse().map(|m| m.name.clone()).unwrap_or_default();
                     a.battery = rb::battery(&name);
                     a.dpi_text = a.res().get(a.cur_step()).map(|r| format!("{} DPI", r.x)).unwrap_or_default();
+                    // a mouse Hearth can ask itself: its sleep time now
+                    if let Some(k) = a.mouse().and_then(|x| hid::known(&x.model)).filter(|_| std::env::var_os("HEARTH_MOUSE_FIXTURE").is_none()) {
+                        return Task::perform(kit::bg(move || hid::sleep_now(&k)), |r| Msg::SleepNow(r.flatten()));
+                    }
                 }
                 Err(e) => a.problem = e,
             }
@@ -343,6 +363,39 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return a.write(move || rb::set_rate(&p, hz));
             }
         }
+        Msg::Sleep(m) => {
+            a.pop = Pop::None;
+            let Some(k) = a.mouse().and_then(|x| hid::known(&x.model)) else { return Task::none() };
+            if std::env::var_os("HEARTH_MOUSE_FIXTURE").is_some() {
+                return update(a, Msg::Slept(m, Ok(())));
+            }
+            return Task::perform(kit::bg(move || hid::set_sleep(&k, m)), move |r| Msg::Slept(m, r.unwrap_or_else(|| Err("stopped".into()))));
+        }
+        Msg::Slept(m, r) => match r {
+            Ok(()) => {
+                a.sleep_min = Some(m);
+                a.said = format!("The mouse sleeps after {m} min without moving.");
+            }
+            Err(e) => a.said = format!("The mouse didn't take it: {e}"),
+        },
+        Msg::SleepNow(m) => a.sleep_min = m.or(a.sleep_min),
+        Msg::Access => {
+            a.said = "Asking for the administrator's password to let Hearth Mouse set this mouse…".into();
+            return Task::perform(kit::bg(|| {
+                let deb = debs::build("hearth-mouse-access", "1", "Hearth Mouse: the person at the PC may set the sleep time of known mice", &[("/usr/lib/udev/rules.d/70-hearth-mouse.rules", hid::udev_rule(), 0o644)], "udevadm control --reload-rules || true
+udevadm trigger --subsystem-match=hidraw || true")?;
+                debs::install(&deb)
+            }), |r| Msg::Accessed(r.unwrap_or_else(|| Err("stopped".into()))));
+        }
+        Msg::Accessed(r) => {
+            a.said = match r {
+                Ok(()) => "Hearth Mouse can set this mouse now.".into(),
+                Err(e) => format!("It wasn't allowed: {e}"),
+            };
+            if let Some(k) = a.mouse().and_then(|x| hid::known(&x.model)) {
+                return Task::perform(kit::bg(move || hid::sleep_now(&k)), |r| Msg::SleepNow(r.flatten()));
+            }
+        }
         Msg::Snap => {
             if let Some(p) = a.profile().cloned() {
                 if p.snapping >= 0 {
@@ -413,6 +466,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let name = a.mouse().map(|m| m.name.clone()).unwrap_or_default();
             hearth_ui::run::detached(&["hearth-remap-app", "--device", &name]);
         }
+        Msg::InstallIt => {
+            a.said = "Getting Debian's libratbag…".into();
+            return Task::perform(kit::bg(|| debs::ratbagd()), |r| Msg::Wrote(r.unwrap_or_else(|| Err("stopped".into())))).chain(load());
+        }
         Msg::StartIt => {
             a.said = "Starting libratbag's ratbagd…".into();
             return Task::perform(
@@ -449,7 +506,7 @@ fn mouse_block(a: &App) -> E<'_, Msg> {
         let words = if a.loading {
             "Asking libratbag which mice are here…".to_string()
         } else if !rb::installed() {
-            return kit::missing(&p, "libratbag isn't on this PC yet", "Hearth Mouse is built on libratbag (MIT), which knows how to talk to gaming mice from many makers, like Piper does. It comes with Hearth OS's Fedora edition from the update that brings Hearth Mouse.", None, false);
+            return kit::missing(&p, "libratbag isn't on this PC yet", "Hearth Mouse is built on libratbag (MIT), which knows how to talk to gaming mice from many makers, like Piper does. Install Debian's own libratbag from here (it asks for the administrator's password once; its daemon starts only when Hearth Mouse asks it something).", Some(("Install libratbag".into(), Msg::InstallIt)), false);
         } else if !a.problem.is_empty() {
             return kit::missing(&p, "libratbag isn't answering", format!("Its daemon, ratbagd, didn't answer ({}). Start it (it asks once, as administrator); it's never part of starting the PC.", a.problem), Some(("Start ratbagd".into(), Msg::StartIt)), false);
         } else {
@@ -563,15 +620,31 @@ fn rate_block(a: &App) -> E<'_, Msg> {
     let cur = pr.map(|p| p.rate).unwrap_or(0);
     let s = seg(&p, rates.iter().map(|hz| (format!("{hz} Hz"), *hz == cur, Some(Msg::Rate(*hz)))).collect());
     let snap = pr.map(|p| p.snapping).unwrap_or(-1);
-    // libratbag has no lift-off distance or sleep time yet: shown as the mouse has them, not changeable here
-    let lod = seg(&p, vec![("Low".into(), true, None), ("Mid".into(), false, None), ("High".into(), false, None)]);
+    // Lift-off distance: no maker's protocol for it is known well enough to write (hid.rs), so it says so;
+    // Sleep after: Hearth's own write for the mice whose protocol is known (hid.rs), else it says so
+    let lod: E<'_, Msg> = row![seg(&p, vec![("Low".into(), false, None), ("Mid".into(), false, None), ("High".into(), false, None)]), t("not on this mouse from Linux", 11.0, p.muted)].spacing(8.0).align_y(iced::Center).into();
+    let known = a.mouse().and_then(|m| hid::known(&m.model));
+    let sleep: E<'_, Msg> = match known {
+        Some(k) => {
+            let mut c = Column::new().spacing(6.0).push(row![field(&p, a.sleep_min.map(|m| format!("{m} min ▾")).unwrap_or_else(|| "5 min ▾".into()), 70.0, Some(Msg::Pop(Pop::Sleep)))].spacing(6.0).align_y(iced::Center));
+            if a.pop == Pop::Sleep {
+                let mut r = Row::new().spacing(6.0);
+                for m in hid::choices(k.kind) {
+                    r = r.push(chip(&p, format!("{m} min"), Some(Msg::Sleep(*m))));
+                }
+                c = c.push(r).push(row![t("No access to it yet?", 11.0, p.muted), chip(&p, "Let Hearth Mouse set it", Some(Msg::Access))].spacing(6.0).align_y(iced::Center));
+            }
+            c.into()
+        }
+        None => row![field(&p, "5 min".into(), 70.0, None), t("this mouse can't be told from Linux", 11.0, p.muted)].spacing(8.0).align_y(iced::Center).into(),
+    };
     column![
         ts("Reports per second", 18.0, p.text),
         t("Higher is smoother, uses a bit more battery", 12.0, p.muted),
         container(s).padding(pad(8.0, 0.0, 4.0, 0.0)),
         kit::line(&p, "Lift-off distance", lod),
         kit::line(&p, "Angle snapping", switch(&p, snap > 0, if snap >= 0 { Some(Msg::Snap) } else { None })),
-        kit::line(&p, "Sleep after", field(&p, "5 min".into(), 70.0, None)),
+        kit::line(&p, "Sleep after", sleep),
     ]
     .spacing(8.0)
     .into()

@@ -17,6 +17,12 @@ cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme
 mkdir -p /tmp/w/hosts/linux/desktop/shell && cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
 # hearth-layout carries Mantel's ready-made desktops (screen.rs READY: one copy for both Mantels).
 cp -a /src/hosts/linux/desktop/shell/screens /tmp/w/hosts/linux/desktop/shell/
+# Passwords, Cloud and Home carry the servers' helper and its user services (oss-kit server.rs), so they update with
+# the apps from the Store.
+cp /src/hosts/linux/desktop/shell/hearth-oss-server /tmp/w/hosts/linux/desktop/shell/
+mkdir -p /tmp/w/os/system_files/usr/lib/systemd/user
+cp /src/os/system_files/usr/lib/systemd/user/hearth-vaultwarden.* /src/os/system_files/usr/lib/systemd/user/hearth-nextcloud.* \
+  /src/os/system_files/usr/lib/systemd/user/hearth-home-assistant.* /tmp/w/os/system_files/usr/lib/systemd/user/
 cd /tmp/w/hosts/hearth-ui
 if ! cargo build --release --workspace > /tmp/w/build.log 2>&1; then
   # The first errors as annotations (the build's log can't be read from here).
