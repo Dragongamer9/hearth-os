@@ -73,7 +73,7 @@ updates through the Hearth Store as `hearth-mods` (red flag 14). Every part keep
 - [ ] Filters: Works with my mods, Hide adult mods, Fits the Ally — open: Fits the Ally does nothing yet
 - [x] Each result: picture, source tag, game, name, endorsed / downloads / rating, the check ("✓ works with your mods · needs nothing new", "! same job as …: pick one", "! needs … (yours is …)") (needs testing on a device) — hosts/hearth-ui/apps/mods/src/pages.rs: "format!(\"{} endorsed · {} downloads\", commas(h.endorsed), commas(h.downloads))"
 - [x] Nexus Mods search (the owner's own API key, as today) (needs testing on a device) — hosts/hearth-ui/apps/mods/src/sources.rs: "\"Sign in to Nexus Mods (Accounts) with your own API key.\""
-- [ ] Thunderstore search (no key) — open: built; the CI picture found nothing (being checked)
+- [x] Thunderstore search (no key) (CI picture mods-03-find: 12 real Valheim results for "map"; needs testing on a device) — hosts/hearth-ui/apps/mods/src/sources.rs: "https://thunderstore.io/api/cyberstorm/listing/{c}/?q={}&ordering=most-downloaded"
 - [x] mod.io search (its public API; a key the owner types, kept in the keyring) (needs testing on a device) — hosts/hearth-ui/apps/mods/src/sources.rs: "https://api.mod.io/v1/games/{gid}/mods?api_key={}&_q={}&_limit=10"
 - [ ] CurseForge search (a key from the keyring) — open: needs CurseForge's API key (the owner applies)
 - [x] The picked mod: picture, source and game tags, name, ENDORSED, DOWNLOADS, VERSION, UPDATED, its words (needs testing on a device) — hosts/hearth-ui/apps/mods/src/pages.rs: "stat(\"Endorsed\", commas(h.endorsed))"
