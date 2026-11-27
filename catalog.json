@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 59,
+  "serial": 60,
   "apps": [
     {
       "id": "command-center",
@@ -1432,6 +1432,38 @@
       "partId": "hearth-forge-app",
       "builtOn": "Hunyuan3D, TRELLIS, TripoSR and 19 more open models",
       "licence": "each model's own"
+    },
+    {
+      "id": "part-hearth-listen-app",
+      "name": "Hearth Listen",
+      "kind": "app",
+      "part": {
+        "id": "hearth-listen-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-listen-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-listen-app-1.18.1/hearth-listen-app-1.18.1.tar.gz",
+        "sha256": "9a99f5bb7499715b2d2e446eced13669569de0eb53bba4e0bd1a421ba51b86c1",
+        "size": 7400037,
+        "notes": [
+          "New: recordings made into words with their times and voices, live captions, Send to Voice Studio",
+          "Built on whisper.cpp (MIT)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-listen-app",
+      "inImage": false,
+      "short": "Listen",
+      "card": "Speech to words, on your own PC",
+      "icon": "LI",
+      "from": "#8fd0ff",
+      "to": "#2f6fd8",
+      "partId": "hearth-listen-app",
+      "builtOn": "whisper.cpp",
+      "licence": "MIT",
+      "tagline": "Speech to words, on your own PC",
+      "about": "Recordings made into words with their times and voices, live captions for anything playing, export to .txt, .srt and .vtt, and Send to Voice Studio. Nothing leaves your network. Built on whisper.cpp (MIT). Get it from the Hearth Store, which keeps it up to date."
     }
   ],
   "tests": [
