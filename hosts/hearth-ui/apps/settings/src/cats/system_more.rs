@@ -370,11 +370,56 @@ fn core(method: &str, args: Value) -> Vec<String> {
     sv(&["nimbus", "--settings-call", method, &args.to_string()])
 }
 
+/// "Files a move put aside" (red flag 9, Nov 27, 2026): each ~/.old-hearth-<date> folder (hearth-old-files status),
+/// with Bring back (everything in it that isn't in your home folder now, never replacing anything: hard links, so no
+/// extra space), Keep (don't ask again) and Delete now (asks once more first). Nothing here happens by itself, and
+/// nothing deletes these folders by itself.
+fn old_files<'a>(a: &'a App) -> Vec<El<'a>> {
+    let p = a.sh.p;
+    let st = &a.system;
+    let folders = va(st.j("oldf"), "folders");
+    let mut out: Vec<El<'a>> = Vec::new();
+    if folders.is_empty() {
+        return out;
+    }
+    out.push(head(&p, "Files a move put aside"));
+    for f in folders {
+        let name = vs(f, "name");
+        let back = vf(f, "back", 0.0) as i64;
+        let items = vf(f, "items", 0.0) as i64;
+        let sub = format!("Put aside on {} when this PC moved to another Hearth OS: {} item{}{}. Kept until you delete it.",
+            vs(f, "date"), items, if items == 1 { "" } else { "s" },
+            if back > 0 { format!(", {back} of them not in your home folder now") } else { ", everything in it is in your home folder again".to_string() });
+        out.push(info_row(&p, G::Folder, format!("~/{name}"), sub));
+        let bring = Msg::Exec(Ex::new(py_s("hearth-old-files", vec!["bring-back".into(), name.clone()]))
+            .re("oldf").ok("Put back what wasn't in your home folder ✓ Nothing that was there was replaced.").fail("Couldn't bring it all back").secs(3600));
+        if back > 0 {
+            out.push(act_row(&p, G::Check, "Bring back what the move put aside", "Puts back everything in it that isn't in your home folder now. Nothing there is replaced, and Steam's own folders and caches stay out. Uses no extra space; the folder stays as it is.", "Bring back", Some(bring)));
+        }
+        if !vb(f, "kept") {
+            out.push(act_row(&p, G::Folder, "Keep", "Keeps the folder as it is and stops asking", "Keep", Some(Msg::Exec(Ex::new(py_s("hearth-old-files", vec!["keep".into(), name.clone()])).re("oldf").ok("Kept. It stays until you delete it.")))));
+        }
+        let asking = st.txt("oldfdel") == name;
+        out.push(srow(&p, G::Close, "Delete now", "Deletes the folder for good, with everything in it", btn(&p, if asking { "Cancel" } else { "Delete now…" }, Kind::Danger, false, Some(Msg::Text("oldfdel", if asking { String::new() } else { name.clone() })))));
+        if asking {
+            let run = Msg::Seq(vec![
+                Msg::Text("oldfdel", String::new()),
+                Msg::Exec(Ex::new(py_s("hearth-old-files", vec!["delete".into(), name.clone(), "--yes".into()])).re("oldf").ok("Deleted").fail("Couldn't delete it").secs(1800)),
+            ]);
+            out.push(srow(&p, G::Check, format!("Yes, delete ~/{name}"), "This can't be undone. Anything you brought back stays in your home folder.", btn(&p, "Yes, delete it", Kind::Danger, false, Some(run))));
+        }
+    }
+    out
+}
+
 fn storage(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let v = at(st.j("disk"), "value");
     let mut c = crate::widgets::Secs::on(a, 0).spacing(10.0);
+    for r in old_files(a) {
+        c = c.push(r);
+    }
     if v.is_null() {
         // Hearth's core couldn't be asked (the Hearth app isn't here, or it's still reading): the drives from df.
         if !st.read("disk") {

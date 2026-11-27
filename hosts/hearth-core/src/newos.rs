@@ -3,7 +3,7 @@
 //! channel :stable, never the old pre-archive :latest, and your home folder is left as it is both ways); Hearth OS on
 //! Debian (edition id "peppermint", archived in 1.16: still the way back to the Debian a PC came from);
 //! Ubuntu and CachyOS are archived. Afterwards, on the new system, the files that were put aside (~/.old-hearth-<date>: Settings ›
-//! System, "Delete now" / "Restore a folder"; deleted after 30 days).
+//! System, "Delete now" / "Restore a folder"; kept until you delete it: red flag 9, nothing deletes it by itself).
 //! The move itself is hearth-admin move-to-new-os --edition NAME (root, through pkexec; the edition picks the image
 //! from a fixed list there too); the first start of the new system (hearth-clean-install, in every edition's image)
 //! does the clean-up and writes the list of what it put aside.
@@ -291,8 +291,9 @@ pub fn restore_target(home: &Path, rel: &str) -> PathBuf {
 
 fn read_manifest(dir: &Path) -> Value { std::fs::read(dir.join(MANIFEST)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(json!({})) }
 
-/// The old-files folders in this home: [{name, date, created, deleteAfter, daysLeft, moved: [...], expired}].
-pub fn list_in(home: &Path, now_s: u64) -> Vec<Value> {
+/// The old-files folders in this home: [{name, date, created, moved: [...], kept: true}]. Red flag 9 (Nov 27, 2026):
+/// they're kept until the person deletes them; an old manifest's "deleteAfter" is never acted on.
+pub fn list_in(home: &Path, _now_s: u64) -> Vec<Value> {
     let mut out = Vec::new();
     for e in std::fs::read_dir(home).into_iter().flatten().flatten() {
         let name = e.file_name().to_string_lossy().to_string();
@@ -300,12 +301,9 @@ pub fn list_in(home: &Path, now_s: u64) -> Vec<Value> {
         if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) { continue; }
         let m = read_manifest(&e.path());
         let created = m["created"].as_u64().unwrap_or(0);
-        let delete_after = m["deleteAfter"].as_u64().unwrap_or(if created > 0 { created + 30 * 86400 } else { 0 });
         let moved: Vec<Value> = m["moved"].as_array().cloned().unwrap_or_default().into_iter()
             .filter(|v| v.as_str().map(|r| safe_rel(r) && e.path().join(r).symlink_metadata().is_ok()).unwrap_or(false)).collect();
-        let left = if delete_after > now_s { (delete_after - now_s).div_ceil(86400) } else { 0 };
-        out.push(json!({"name": name, "date": date, "created": created, "deleteAfter": delete_after, "daysLeft": left,
-                        "expired": delete_after > 0 && delete_after <= now_s, "moved": moved, "from": m["from"]}));
+        out.push(json!({"name": name, "date": date, "created": created, "kept": true, "moved": moved, "from": m["from"]}));
     }
     out.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     out
@@ -313,18 +311,11 @@ pub fn list_in(home: &Path, now_s: u64) -> Vec<Value> {
 
 fn now_s() -> u64 { crate::library::now_ms() / 1000 }
 
-/// For Settings › System. Folders past their 30 days are deleted here (in the background).
+/// For Settings › System: only reads. Nothing is ever deleted here (red flag 9: until 1.18 this deleted folders past
+/// their 30 days by itself; now only "Delete now", which the person presses, deletes one).
 pub fn old_files_status() -> Value {
     let home = crate::paths::home();
-    let list = list_in(&home, now_s());
-    for f in list.iter().filter(|f| f["expired"] == true) {
-        if let Some(n) = f["name"].as_str() {
-            let p = home.join(n);
-            crate::bridge::log(&format!("old files: {n} is past its 30 days, deleting it"));
-            std::thread::spawn(move || { let _ = std::fs::remove_dir_all(p); });
-        }
-    }
-    json!({"folders": list.into_iter().filter(|f| f["expired"] != true).collect::<Vec<_>>()})
+    json!({"folders": list_in(&home, now_s())})
 }
 
 fn checked_dir(name: &str) -> Result<PathBuf, String> {
@@ -387,9 +378,12 @@ mod tests {
         let l = list_in(home.path(), 1000 + 86400);
         assert_eq!(l.len(), 1);
         assert_eq!(l[0]["moved"], json!(["Documents", ".config/foo"]));
-        assert_eq!(l[0]["daysLeft"], 29);
-        assert_eq!(l[0]["expired"], false);
-        assert_eq!(list_in(home.path(), 1000 + 31 * 86400)[0]["expired"], true);
+        assert_eq!(l[0]["kept"], true);
+        // Long past an old manifest's "deleteAfter": still listed, still there, never deleted by itself.
+        let later = list_in(home.path(), 1000 + 400 * 86400);
+        assert_eq!((later.len(), later[0]["kept"].clone()), (1, json!(true)));
+        assert!(later[0].get("expired").is_none() && later[0].get("daysLeft").is_none());
+        assert!(old.join("Documents").is_dir());
         // Something new where it was: restored beside it.
         assert_eq!(restore_target(home.path(), "Documents"), home.path().join("Documents"));
         std::fs::create_dir_all(home.path().join("Documents")).unwrap();

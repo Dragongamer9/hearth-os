@@ -1,0 +1,42 @@
+# Red flag 9 (Nov 27, 2026): a move between Hearth editions keeps the whole home folder, nothing a move put aside is
+# ever deleted by itself, and Bring back never replaces anything (hosts/linux/test/test_keep_home.py), with the move's
+# own tests. Python only (seconds); runs when any of the files it guards changes.
+name: Moves keep the home folder
+
+on:
+  push:
+    branches: [bughunt, 'feature/**']
+    paths: ['os/system_files/usr/libexec/nimbus/hearth-clean-install', 'os/system_files/usr/libexec/nimbus/hearth-admin',
+            'hosts/linux/desktop/shell/hearth-old-files', 'hosts/linux/desktop/shell/OldFilesWatch.qml',
+            'hosts/hearth-core/src/newos.rs', 'hosts/hearth-ui/apps/settings/src/cats/system_more.rs',
+            'hosts/linux/test/test_keep_home.py', 'hosts/linux/test/test_hearth_clean_install.py',
+            '.github/workflows/image-point.yml', '.github/workflows/keep-home.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Moves keep the home folder; nothing deleted by itself; Bring back never replaces anything
+        run: |
+          set -o pipefail
+          fail=0
+          for f in os/system_files/usr/libexec/nimbus/hearth-clean-install os/system_files/usr/libexec/nimbus/hearth-admin \
+                   hosts/linux/desktop/shell/hearth-old-files; do
+            python3 -m py_compile "$f" || { echo "::error title=syntax::$f"; fail=1; }
+          done
+          for t in test_keep_home test_hearth_clean_install test_hearth_keep_signins; do
+            if ! python3 -m unittest discover -s hosts/linux/test -p "$t.py" -v > "/tmp/$t.log" 2>&1; then
+              fail=1
+              echo "::error title=$t::$(grep -E '^(FAIL|ERROR)|Error:' "/tmp/$t.log" | head -8 | tr '\n' '|' | cut -c1-900)"
+            else
+              echo "::notice title=$t::$(grep -E '^Ran ' "/tmp/$t.log")"
+            fi
+            tail -20 "/tmp/$t.log"
+          done
+          exit $fail

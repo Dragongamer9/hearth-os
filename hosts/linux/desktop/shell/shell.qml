@@ -526,6 +526,7 @@ ShellRoot {
     Loader { source: "SigninSplash.qml" }
     Loader { source: "BtReceive.qml"; onLoaded: item.settings = settings }   // 1.14: receiving files over Bluetooth (off until you turn it on)
     Loader { source: "InkWatch.qml"; onLoaded: item.settings = settings }    // 1.14: ink or toner running low
+    Loader { source: "OldFilesWatch.qml"; onLoaded: item.settings = settings }    // red flag 9: what a move put aside, never deleted by itself
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {

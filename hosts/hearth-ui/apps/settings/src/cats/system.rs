@@ -413,6 +413,7 @@ fn reader(key: &'static str) -> Vec<String> {
         "memory" => lx("hearth-memory", &["status"]),
         "disk" => sv(&["nimbus", "--settings-call", "diskspace.status", "{}"]),
         "df" => data::sh(data::STORAGE),
+        "oldf" => py("hearth-old-files", &["status"]),
         "prefs" => py("hearth-files", &["prefs"]),
         "thispc" => py("hearth-files", &["this-pc"]),
         // Your desktop, Startup, Boot splash, Remote desktop
@@ -473,7 +474,7 @@ fn reads_of(page: &str) -> &'static [&'static str] {
         "power-awake" => &["pset"],
         "battery" | "info-energy" => &["pset", "upower"],
         "memory" => &["memory"],
-        "storage" => &["disk", "df"],
+        "storage" => &["disk", "df", "oldf"],
         "drives" => &["prefs", "thispc"],
         "your-desktop" => &["deskchoice"],
         "startup" => &["server", "k-session"],

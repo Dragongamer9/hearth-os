@@ -128,6 +128,9 @@ put('info-sensors', {'sections': [{'title': 'Temperatures', 'gauges': [{'label':
 put('info-modules', items([('nvidia', 'module', 'nvidia', 'used by nvidia_modeset, nvidia_uvm', '104 MB'), ('amdgpu', 'module', 'amdgpu', 'used by 3', '14 MB'), ('mt7921e', 'module', 'mt7921e', '', '1 MB')]))
 put('info-interrupts', items([('0', 'IR-IO-APIC', 'timer', '', '42'), ('9', 'IR-IO-APIC', 'acpi', '', '12,904'), ('120', 'IR-PCI-MSIX', 'nvme0q0', '', '88,120')]))
 put('live', '')
+# Storage › Files a move put aside (red flag 9): the owner's Nov 24 folder, not answered yet.
+put('oldf', {'folders': [{'name': '.old-hearth-2026-11-24', 'date': '2026-11-24', 'from': 'Hearth OS, Fedora edition', 'items': 31, 'back': 27,
+                          'ask': True, 'kept': False, 'brought': 0}]})
 put('hsearch', {'prefs': {'indexing': True}, 'plugins': []})
 PY
 mkdir -p "$HOME/.config/nimbus"
@@ -145,6 +148,7 @@ HEARTH_SYSTEM_SHOW=flag:askoveramp run settings-sys-sound-overamp hearth-setting
 HEARTH_SYSTEM_SHOW=text:askhib=hibernate run settings-sys-power-hibernate hearth-settings 0 "$BIN/hearth-settings-app" --page power
 HEARTH_SYSTEM_SHOW=open:lang run settings-sys-region-chooser hearth-settings 0 "$BIN/hearth-settings-app" --page region
 HEARTH_SYSTEM_SHOW=open:app:Discord run settings-sys-notifications-app hearth-settings 0 "$BIN/hearth-settings-app" --page notifications
+HEARTH_SYSTEM_SHOW=text:oldfdel=.old-hearth-2026-11-24 run settings-sys-storage-oldfiles-delete hearth-settings 0 "$BIN/hearth-settings-app" --page storage
 # The long pages' lower parts: the screen made three times as tall (the window fills it), pictured in two more
 # pieces of 1280x800 (NAME-2, NAME-3), then the screen put back.
 tall() { # tall NAME PAGE

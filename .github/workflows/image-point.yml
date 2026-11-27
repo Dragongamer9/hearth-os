@@ -25,6 +25,16 @@ jobs:
           set -euo pipefail
           IMAGE=ghcr.io/dragongamer9/hearth-peppermint
           case "$FROM" in testing-[0-9]*-[0-9]*) ;; *) echo "::error title=image::'$FROM' isn't a dated testing tag"; exit 1 ;; esac
+          # Red flag 9 (Nov 27, 2026): never back before 1.18. On Nov 24 :testing still pointed at 1.13 (pulled back to it
+          # on Nov 18), and a PC moving from Fedora to Debian started that image, whose first start didn't know "keep the
+          # home folder" and put nearly the whole home folder aside. Images before 1.18 are never pointed at again.
+          ver=${FROM#testing-}; ver=${ver%-*}
+          major=${ver%%.*}; rest=${ver#*.}; minor=${rest%%.*}
+          case "$major.$minor" in *[!0-9.]*|.*|*.) echo "::error title=image::can't read the version in '$FROM'"; exit 1 ;; esac
+          if [ "$major" -lt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -lt 18 ]; }; then
+            echo "::error title=image::'$FROM' is older than 1.18: its first start after a move between editions could put your home folder aside (red flag 9). Pick 1.18 or newer."
+            exit 1
+          fi
           echo "${{ secrets.GITHUB_TOKEN }}" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
           want=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$FROM")
           before=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:testing")
