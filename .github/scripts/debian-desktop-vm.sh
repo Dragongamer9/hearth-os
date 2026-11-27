@@ -52,6 +52,25 @@ sudo tee -a "$CI/desktop.sh" >/dev/null <<'JOB'
 u=tester; uid=$(id -u $u); home=$(getent passwd $u | cut -d: -f6)
 as() { runuser -u $u -- env XDG_RUNTIME_DIR=/run/user/$uid "$@"; }
 mode=$(command -v nimbus-mode || ls /usr/local/bin/nimbus-mode /usr/bin/nimbus-mode 2>/dev/null | head -1)
+# The second start (after the first one installed broken Store parts and restarted): signed in by itself, through
+# the Store's broken session start (stopped after a minute) to the built-in one, which must bring a screen up.
+if [ -f /var/lib/hearth-ci/second-start ]; then
+  rm -f /var/lib/hearth-ci/second-start
+  sid=""; up=no
+  for i in $(seq 120); do loginctl list-sessions --no-legend 2>/dev/null | grep -q " $u " && { sid=yes; break; }; sleep 2; done
+  for i in $(seq 120); do
+    if pgrep -u $u -x labwc >/dev/null || pgrep -u $u -x gamescope >/dev/null; then up=yes; break; fi
+    sleep 2
+  done
+  sleep 20
+  echo "HEARTH-CI-broken session=${sid:-none} up=$up · session part: $(tr -d '\n' < $home/.local/state/hearth/parts/hearth-session.json 2>/dev/null) · $(pgrep -a -u $u 'labwc|gamescope|nimbus-session|sleep 600' 2>/dev/null | cut -c1-80 | head -6 | tr '\n' ';')"
+  grep -a 'hearth-part' "$home/.local/share/nimbus/session.log" 2>/dev/null | tail -4 | sed 's/^/HEARTH-CI-partlog /'
+  echo "HEARTH-CI-SHOT broken-parts"; sleep 10
+  tail -25 "$home/.local/share/nimbus/session.log" 2>/dev/null | sed 's/^/HEARTH-CI-log /'
+  echo HEARTH-CI-desktop-END
+  sleep 2; systemctl poweroff
+  exit 0
+fi
 for i in $(seq 120); do loginctl list-sessions --no-legend 2>/dev/null | grep -q " $u " && break; sleep 2; done
 echo "HEARTH-CI-session $(loginctl list-sessions --no-legend 2>/dev/null | grep " $u " | head -1 | tr -s ' ')"
 echo "HEARTH-CI-login $(systemctl is-active display-manager.service 2>&1) $(journalctl -b --no-pager -o cat 2>/dev/null | grep -aiE 'unable to exec|panicked|Permission denied|authentication failure' | head -2 | tr '\n' ' ')"
@@ -77,9 +96,9 @@ while [ $((SECONDS - start)) -lt "$REST" ]; do
   sleep 60
 done
 # The Hearth Store's start-up parts broken on purpose (docs/STORE-SYSTEM-PARTS.md "Starting up"; red flag 2): a session
-# start that never brings a screen up and a gamescope that ends at once, installed as the Store would. Signed in again
-# (the automatic sign-in does it, as after signing out), the PC must still reach a screen through the built-in ones,
-# with both copies marked as not working.
+# start that never brings a screen up and a gamescope that ends at once, installed in the account's home as the Store
+# would. Then the PC restarts (nothing pressed): the start after it (below, "the second start") must still reach a
+# screen through the built-in ones, with the broken copies marked as not working.
 ver=$(cat /usr/share/nimbus/version 2>/dev/null)
 P=$home/.local/share/hearth/parts
 mkdir -p "$P/hearth-session/9.9.9" "$P/gamescope/9.9.9/gamescope"
@@ -89,23 +108,11 @@ chmod 755 "$P/hearth-session/9.9.9/nimbus-session" "$P/gamescope/9.9.9/gamescope
 printf '{"id": "hearth-session", "version": "9.9.9", "os": "%s", "path": "nimbus-session"}\n' "$ver" > "$P/hearth-session/part.json"
 printf '{"id": "gamescope", "version": "9.9.9", "os": "%s", "path": "gamescope/gamescope"}\n' "$ver" > "$P/gamescope/part.json"
 chown -R $u: "$home/.local/share/hearth"
-old_sid=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u=$u '$3 == u {print $1; exit}')
-[ -n "$old_sid" ] && loginctl terminate-session "$old_sid"
-for i in $(seq 30); do pgrep -u $u -x labwc >/dev/null || break; sleep 1; done
-new_sid=""; up=no
-for i in $(seq 120); do
-  sleep 2
-  new_sid=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u=$u -v o="$old_sid" '$3 == u && $1 != o {print $1; exit}')
-  if [ -n "$new_sid" ] && { pgrep -u $u -x labwc >/dev/null || pgrep -u $u -x gamescope >/dev/null; }; then up=yes; break; fi
-done
-sleep 20
-echo "HEARTH-CI-broken session=${new_sid:-none} up=$up · session part: $(tr -d '\n' < $home/.local/state/hearth/parts/hearth-session.json 2>/dev/null) · $(pgrep -a -u $u 'labwc|gamescope|nimbus-session|sleep 600' 2>/dev/null | cut -c1-80 | head -6 | tr '\n' ';')"
-grep -a 'hearth-part' "$home/.local/share/nimbus/session.log" 2>/dev/null | tail -4 | sed 's/^/HEARTH-CI-partlog /'
-echo "HEARTH-CI-SHOT broken-parts"; sleep 10
 echo "HEARTH-CI-SHOT end"; sleep 10
 tail -25 "$home/.local/share/nimbus/session.log" 2>/dev/null | sed 's/^/HEARTH-CI-log /'
-echo HEARTH-CI-desktop-END
-sleep 2; systemctl poweroff
+: > /var/lib/hearth-ci/second-start
+echo "HEARTH-CI-restart broken Store parts installed ($ver); restarting"
+sleep 2; systemctl reboot
 JOB
 sudo chmod 755 "$CI/desktop.sh"
 sudo tee "$DEP/etc/systemd/system/hearth-ci-desktop.service" >/dev/null <<'UNIT'
@@ -161,8 +168,10 @@ v HEARTH-CI-session | grep -q ' tester ' || fail "nobody was signed in: no sessi
 v HEARTH-CI-login | grep -qiE 'unable to exec|panicked|Permission denied' && fail "the sign-in failed: $(v HEARTH-CI-login)"
 v HEARTH-CI-desktop | grep -q 'up=yes' || fail "Mantel didn't come up after Desktop Mode was asked for: $(v HEARTH-CI-desktop) · $(grep -a '^HEARTH-CI-log' "$OUT/job.txt" | tail -8 | cut -c15-)"
 ann notice "Store start-up parts broken on purpose: $(v HEARTH-CI-broken) $(grep -a '^HEARTH-CI-partlog' "$OUT/job.txt" | cut -c18- | tr '\n' ' ')"
-if v HEARTH-CI-broken | grep -q 'session=none'; then
-  ann warning "the broken-on-purpose Store parts weren't tried: the virtual PC didn't sign in again after its session was ended"
+if ! v HEARTH-CI-broken | grep -q .; then
+  fail "the second start (with the Store's session start and gamescope broken on purpose) never reported: $(v HEARTH-CI-restart)"
+elif v HEARTH-CI-broken | grep -q 'session=none'; then
+  fail "with the Store's session start and gamescope broken on purpose, nobody was signed in at the next start: $(v HEARTH-CI-broken)"
 else
   v HEARTH-CI-broken | grep -q 'up=yes' || fail "with the Store's session start and gamescope broken on purpose, no screen came up: $(v HEARTH-CI-broken)"
   v HEARTH-CI-broken | grep -q '"fails": [2-9]' || fail "the broken Store session start wasn't marked as not working: $(v HEARTH-CI-broken)"

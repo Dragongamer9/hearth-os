@@ -576,6 +576,8 @@ class StoreAndBuild(unittest.TestCase):
         self.assertEqual((by["gamescope"]["partId"], by["gamescope"]["group"]), ("gamescope", "gamemode"))
         self.assertEqual((by["session-start"]["partId"], by["session-start"]["group"]), ("hearth-session", "gamemode"))
         self.assertEqual((by["login-screen"]["partId"], by["login-screen"]["group"]), ("hearth-greeter", "services"))
+        self.assertEqual(by["system-packages"]["group"], "services")
+        self.assertIn("kernel and drivers come with Hearth OS", by["system-packages"]["card"])
         self.assertEqual(by["recovery"].get("with"), "system")
         self.assertNotIn("partId", by["recovery"])
 

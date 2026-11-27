@@ -495,6 +495,43 @@ class Switch(Base):
             self.assertIn('would change how this PC starts', why, plan)
             self.assertEqual(seen, [], plan)
 
+    def test_system_packages_offer_and_update_only_upgrades(self):
+        """The Hearth Store's System packages: Debian's fixes, read as anyone, put in with the admin password, never
+        the boot chain (docs/STORE-SYSTEM-PARTS.md "System packages")."""
+        plan = ('Inst openssl [3.5.1-1] (3.5.1-1+deb13u1 Debian-Security:13/stable-security [amd64])\n'
+                'Inst libssl3t64 [3.5.1-1] (3.5.1-1+deb13u1 Debian-Security:13/stable-security [amd64])\n'
+                'Conf openssl (3.5.1-1+deb13u1 Debian-Security:13/stable-security [amd64])\n')
+        self.assertEqual([p['name'] for p in self.u.upgrade_plan(plan)], ['openssl', 'libssl3t64'])
+        with mock.patch.object(self.u, 'run', return_value=(0, plan + 'Inst linux-image-amd64 [6.12] (6.16 Debian:13 [amd64])\n')):
+            r = self.u.cmd_upgradable()
+        self.assertEqual([p['name'] for p in r['packages']], ['openssl', 'libssl3t64'], 'the kernel is never offered')
+        self.assertEqual(r['restart'], 'pc')
+
+        def go(out):
+            seen = []
+            with self.pins(), mock.patch.object(self.u.os, 'geteuid', return_value=0), mock.patch.object(self.u, 'need_writable'), \
+                    mock.patch.object(self.u, 'run', side_effect=lambda cmd, **k: (seen.append(cmd), (0, out if '-s' in cmd else ''))[1]), \
+                    mock.patch.object(self.u, 'apt_stream', side_effect=lambda cmd, lo, hi, timeout=0: seen.append(cmd) or (0, ['ok'])), \
+                    mock.patch.object(self.u, 'cmd_record', side_effect=lambda wait=0: seen.append('record')), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    return self.u.cmd_upgrade_system(), seen
+                except self.u.Fail as e:
+                    return str(e), seen
+        r, seen = go(plan)
+        self.assertEqual((r['packages'], r['restart']), (['openssl', 'libssl3t64'], 'pc'))
+        self.assertIn(['apt-get', 'upgrade', '-y'] + self.u.DPKG_OPTS, seen, 'only upgrades: nothing new, nothing removed')
+        self.assertEqual(seen[-1], 'record')
+        r, seen = go(plan + 'Inst grub-efi-amd64-signed [1] (2 Debian:13 [amd64])\n')
+        self.assertIn('would change how this PC starts', r)
+        self.assertFalse(any(c[:2] == ['apt-get', 'upgrade'] for c in seen if isinstance(c, list)))
+        r, seen = go('')
+        self.assertEqual(r['packages'], [])
+        self.assertNotIn('record', seen)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(self.u.os, 'geteuid', return_value=1000):
+            self.assertEqual(self.u.main(['hearth-unlock', '--upgrade-system']), 1, 'root only')
+
     def test_install_package_runs_apt_and_records(self):
         seen = []
         with self.pins(), mock.patch.object(self.u.os, 'geteuid', return_value=0), mock.patch.object(self.u, 'need_writable'), \
@@ -760,6 +797,13 @@ class Admin(unittest.TestCase):
         self.assertEqual(ex, [[self.ha.UNLOCK, '--install-deb', '/home/me/a.deb']])
         _, _, ex = self.main(['hearth-admin', 'deb-remove', 'a'])
         self.assertEqual(ex, [[self.ha.UNLOCK, '--remove-package', 'a']])
+
+    def test_system_packages_update_always_asks_for_the_admin_password(self):
+        _, _, ex = self.main(['hearth-admin', 'system-packages-update'])
+        self.assertEqual(ex, [[self.ha.UNLOCK, '--upgrade-system']])
+        rules = (pathlib.Path(__file__).resolve().parents[3] / 'os/system_files/usr/share/polkit-1/rules.d/49-hearth-admin.rules').read_text()
+        i = rules.index('system-packages-')
+        self.assertIn('AUTH_ADMIN', rules[i:i + 200])
 
     def test_driver_install_only_takes_drivers(self):
         _, _, ex = self.main(['hearth-admin', 'driver-install', 'firmware-iwlwifi'])

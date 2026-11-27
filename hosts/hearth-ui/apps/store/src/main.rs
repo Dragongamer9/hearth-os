@@ -206,6 +206,10 @@ pub enum Msg {
     PartsFilter(String),
     /// Decky plugins: what's there and newer (hearth-decky), and getting them
     DeckySeen(BTreeMap<String, (String, String)>),
+    /// System packages: Debian's fixes on offer, then putting them in (the admin password), then how many
+    SysPkgsSeen(Vec<String>),
+    SysPkgsUpdate,
+    SysPkgsDone(Result<usize, String>),
     DeckyUpdate,
     DeckyDone(Result<(), String>),
     /// System parts: hearth-system-part's status
@@ -261,6 +265,8 @@ pub struct App {
     /// An update just put in that takes effect after signing out ("signout") or a restart ("pc"): the note asks
     /// Restart now / Later. Nothing ever restarts or signs out by itself.
     pub restart_ask: String,
+    /// Debian's fixes on offer (System packages), from the last Check for updates.
+    pub sys_pkgs: Vec<String>,
     /// The parts being updated that will need that, by entry id.
     pub restart_after: std::collections::HashMap<String, String>,
     pub hearth: String,
@@ -367,6 +373,7 @@ impl App {
             note: String::new(),
             note_bad: false,
             restart_ask: String::new(),
+            sys_pkgs: Vec::new(),
             restart_after: Default::default(),
             hearth,
             edition,
@@ -1080,6 +1087,33 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::DeckySeen(m) => a.decky = m,
+        Msg::SysPkgsSeen(v) => a.sys_pkgs = v,
+        Msg::SysPkgsUpdate => {
+            if a.part_busy.contains("system-packages") || paths::fixture().is_some() || a.offline() {
+                return Task::none();
+            }
+            // Never while a game runs (installing could make it stutter: red flag 2).
+            if net::game_running() {
+                a.say("A game is running: update the system packages when you've finished playing.", true);
+                return Task::none();
+            }
+            a.part_busy.insert("system-packages".into());
+            a.say("Updating Debian's system packages… Takes effect after you restart.", false);
+            return Task::perform(net::off(parts::sys_pkgs_update), |r| Msg::SysPkgsDone(r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+        }
+        Msg::SysPkgsDone(r) => {
+            a.part_busy.remove("system-packages");
+            match r {
+                Ok(0) => a.say("Debian's system packages are up to date.", false),
+                Ok(n) => {
+                    a.sys_pkgs.clear();
+                    system::add_history(&format!("System packages ({n} fixes)"), files::now());
+                    a.say(format!("{n} system package{} updated. Takes effect after you restart: what you have keeps working until then.", if n == 1 { "" } else { "s" }), false);
+                    a.restart_ask = "pc".into();
+                }
+                Err(s) => a.say(s, true),
+            }
+        }
         Msg::DeckyUpdate => {
             if a.decky_busy || paths::fixture().is_some() {
                 return Task::none();
@@ -1531,7 +1565,8 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 }
                 parts::decky_status()
             }), |m| Msg::DeckySeen(m.unwrap_or_default()));
-            return Task::batch([a.check_now(), update(a, Msg::SysLook(true)), decky]);
+            let pkgs = Task::perform(net::off(parts::sys_pkgs_check), |v| Msg::SysPkgsSeen(v.unwrap_or_default()));
+            return Task::batch([a.check_now(), update(a, Msg::SysLook(true)), decky, pkgs]);
         }
         Msg::AppsDir => {
             if a.job.is_some() || !a.part_busy.is_empty() || a.moving {

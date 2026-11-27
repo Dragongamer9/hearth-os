@@ -1042,6 +1042,15 @@ fn part_row<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
             fix = o.takes_effect().to_string();
         }
         end = end.push(chip(&p, o.version.clone(), Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then(|| Msg::PartUpdate(e.id.clone()))));
+    } else if e.id == "system-packages" {
+        // Debian's own fixes (docs/STORE-SYSTEM-PARTS.md "System packages"): the admin password, then a restart.
+        let busy = a.part_busy.contains("system-packages");
+        if a.sys_pkgs.is_empty() {
+            end = end.push(chip(&p, if busy { "Updating…" } else { "Up to date" }, Chip::Ok));
+        } else {
+            fix = "Takes effect after you restart".to_string();
+            end = end.push(chip(&p, format!("{} fix{}", a.sys_pkgs.len(), if a.sys_pkgs.len() == 1 { "" } else { "es" }), Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then_some(Msg::SysPkgsUpdate)));
+        }
     } else if let Some(v) = (!e.decky.is_empty()).then(|| a.decky_offer(e)).flatten() {
         end = end.push(chip(&p, v, Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then_some(Msg::DeckyUpdate)));
     } else if e.with == "system" {

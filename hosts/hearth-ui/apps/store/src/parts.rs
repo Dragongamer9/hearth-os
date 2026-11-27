@@ -242,6 +242,45 @@ pub fn system_cmd(cmd: &str, id: &str) -> Result<(), String> {
     }
 }
 
+// ------------------------------------------------------------------ System packages (Debian's own fixes)
+/// The writable system's tool (Hearth OS on Debian): `--upgradable` lists Debian's fixes on offer, read only, as you;
+/// `hearth-admin system-packages-update` (the admin password) puts them in. The boot chain stays pinned out of apt, so
+/// the kernel, boot loader and drivers never come this way (docs/STORE-SYSTEM-PARTS.md "System packages").
+pub const UNLOCK: &str = "/usr/bin/hearth-unlock";
+
+/// Debian's fixes on offer (their package names); empty when there are none or this Hearth OS can't say.
+pub fn sys_pkgs_check() -> Vec<String> {
+    let text = if let Some(f) = crate::paths::fixture() {
+        std::fs::read_to_string(f.join("system-packages.json")).unwrap_or_default()
+    } else if std::path::Path::new(UNLOCK).exists() {
+        crate::net::run_short(120, &[UNLOCK, "--upgradable"]).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    sys_pkgs_parse(&text)
+}
+
+pub fn sys_pkgs_parse(text: &str) -> Vec<String> {
+    serde_json::from_str::<serde_json::Value>(text.trim())
+        .ok()
+        .and_then(|v| v.get("packages").and_then(|p| p.as_array()).map(|a| a.iter().filter_map(|x| x.get("name").and_then(|n| n.as_str()).map(String::from)).collect()))
+        .unwrap_or_default()
+}
+
+/// Puts them in (the admin password); how many were updated.
+pub fn sys_pkgs_update() -> Result<usize, String> {
+    let out = std::process::Command::new("pkexec").args(["/usr/libexec/nimbus/hearth-admin", "system-packages-update"]).stdin(std::process::Stdio::null()).output().map_err(|e| format!("The admin helper couldn't start ({e})."))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    if let Some(e) = text.lines().rev().find_map(|l| l.strip_prefix("error: ")) {
+        return Err(format!("{e}; nothing changed."));
+    }
+    let n = text.lines().rev().find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).and_then(|v| v.get("packages").and_then(|p| p.as_array()).map(|a| a.len()));
+    match (out.status.success(), n) {
+        (true, Some(n)) => Ok(n),
+        _ => Err("It needs the admin password; nothing changed.".into()),
+    }
+}
+
 // ------------------------------------------------------------------ Decky plugins (Hearth Sync, Hearth Link, Hearth Music)
 pub const DECKY: &str = "/usr/libexec/nimbus/hearth-decky";
 
@@ -297,6 +336,13 @@ fn restart_mantel() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_debians_fixes() {
+        assert_eq!(sys_pkgs_parse(r#"{"packages": [{"name": "openssl", "from": "3.5.1-1", "to": "3.5.1-1+deb13u1"}, {"name": "curl"}], "restart": "pc"}"#), vec!["openssl", "curl"]);
+        assert!(sys_pkgs_parse("").is_empty());
+        assert!(sys_pkgs_parse("error: not unlocked").is_empty());
+    }
 
     fn part(v: &str, os: &str) -> Part {
         Part { id: "hearth-files-app".into(), version: v.into(), os: os.into(), path: "hearth-files-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 1, notes: vec![], missing: vec![], system: false, restart: String::new() }

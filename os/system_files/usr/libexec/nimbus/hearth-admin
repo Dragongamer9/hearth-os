@@ -47,6 +47,10 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin deb-install FILE.deb | deb-remove PACKAGE
                                      a .deb on the system itself (Peppermint unlocked; the Install Package
                                      window). Always asks for an administrator's password (49-hearth-admin.rules)
+  hearth-admin system-packages-update
+                                     the Hearth Store's System packages: Debian's fixes for what's installed, in the
+                                     writable system (hearth-unlock --upgrade-system: only upgrades, the boot chain
+                                     pinned, recorded). Always asks for an administrator's password; never by itself
   hearth-admin driver-install PACKAGE
                                      a driver from Debian on the system itself (Settings › App store › Drivers;
                                      Peppermint unlocked): only nvidia-open, nvidia-driver, firmware-*, intel-microcode
@@ -3331,6 +3335,9 @@ def main(argv):
     elif cmd == 'deb-install' and len(argv) == 3:
         caller()
         unlock(['--install-deb', argv[2]])
+    elif cmd == 'system-packages-update' and len(argv) == 2:
+        caller()
+        unlock(['--upgrade-system'])
     elif cmd == 'driver-install' and len(argv) == 3:
         caller()
         if not DRIVER_PKG.fullmatch(argv[2]):

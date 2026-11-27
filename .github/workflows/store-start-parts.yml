@@ -14,7 +14,8 @@ on:
             'os/system_files/usr/libexec/nimbus/hearth-login-screen', 'os/system_files/usr/share/hearth/store/**',
             'hosts/linux/session/nimbus-session', 'hosts/linux/test/test_store_start_parts.py',
             'hosts/hearth-ui/apps/store/**', '.github/scripts/gamescope-part-build.sh', '.github/scripts/store-*',
-            '.github/workflows/store-start-parts.yml', '.github/workflows/quick-update.yml']
+            '.github/workflows/store-start-parts.yml', '.github/workflows/quick-update.yml',
+            'os-bases/peppermint/system_files/usr/bin/hearth-unlock', 'os/system_files/usr/libexec/nimbus/hearth-admin']
 permissions:
   contents: read
 concurrency:
@@ -29,7 +30,7 @@ jobs:
       - name: The fallback logic's tests
         run: |
           set -o pipefail
-          for t in test_store_start_parts test_hearth_part test_hearth_system_part test_hearth_login_screen test_hearth_display_modes test_store_parts; do
+          for t in test_store_start_parts test_hearth_unlock test_hearth_part test_hearth_system_part test_hearth_login_screen test_hearth_display_modes test_store_parts; do
             if python3 -m unittest "hosts/linux/test/$t.py" > /tmp/$t.log 2>&1; then
               echo "::notice title=$t::$(tail -3 /tmp/$t.log | tr '\n' ' ')"
             else

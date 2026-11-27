@@ -590,6 +590,19 @@
       "about": "Hearth's own login screen. It's part of Hearth OS and gets its own updates in the Hearth Store, installed with the admin password; one that doesn't show or doesn't sign anyone in is left out: the usual login screen for that start, then the one built into Hearth OS."
     },
     {
+      "id": "system-packages",
+      "name": "System packages",
+      "card": "Debian's own fixes, with the admin password; the kernel and drivers come with Hearth OS",
+      "icon": "SP",
+      "from": "#a3acb9",
+      "to": "#5b6472",
+      "group": "services",
+      "kind": "builtin",
+      "short": "System packages",
+      "tagline": "Debian's own fixes, with the admin password; the kernel and drivers come with Hearth OS",
+      "about": "Debian's own fixes (security fixes in its libraries and programs), put in through the writable system with the admin password, never by themselves and never while a game runs. They take effect after a restart, and the Store asks (Restart now or Later). The boot loader, the kernel and drivers stay pinned: they come with Hearth OS updates, so the version before always stays startable."
+    },
+    {
       "id": "recovery",
       "name": "Recovery and Safe start",
       "card": "the boot menu's fallback",

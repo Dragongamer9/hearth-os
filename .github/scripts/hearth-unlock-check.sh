@@ -222,6 +222,22 @@ if [ "$MODE" = image ]; then
   echo "::notice title=hearth-unlock dracut triggers::$(ic 'cat /usr/lib/sysimage/dpkg/info/dracut*.triggers 2>/dev/null | tr "\n" " "' | cut -c1-250)"
 fi
 
+# ---- 7f. the Hearth Store's System packages: Debian's fixes in the writable system (docs/STORE-SYSTEM-PARTS.md)
+echo "--- System packages"
+s=$(U "$A" 'runuser -u nobody -- /usr/bin/hearth-unlock --upgradable 2>/dev/null | tail -n1')
+n=$(field "$s" "len(d['packages'])")
+[ -n "$n" ] && ok "the fixes on offer can be read as anyone: $n ($(field "$s" "' '.join(p['name'] for p in d['packages'][:8])"))" || err "--upgradable didn't answer: $s"
+[ "$(field "$s" "any(p['name'].split(':')[0].startswith(('linux-', 'grub', 'shim', 'dracut')) for p in d['packages'])")" = False ] \
+  && ok "nothing from the boot chain is ever offered" || err "the boot chain is on offer: $s"
+r=$(U "$A" '/usr/bin/hearth-unlock --upgrade-system 2>&1 | tail -n1')
+[ "$(field "$r" "d['ok']")" = True ] && ok "updated $(field "$r" "len(d['packages'])") package(s); restart: $(field "$r" "d['restart'] or 'not needed'")" || err "--upgrade-system: $r"
+s=$(U "$A" '/usr/bin/hearth-unlock --upgradable 2>/dev/null | tail -n1')
+[ "$(field "$s" "len(d['packages'])")" = 0 ] && ok "nothing left to update" || err "still on offer after updating: $s"
+U "$A" '[ -z "$(ls -A /boot 2>/dev/null)" ]' && ok "/boot untouched by the update" || err "the update wrote /boot"
+start "$A"
+s=$(st "$A"); [ "$(field "$s" "d['state']")" = unlocked ] && ok "the next start keeps them (the layer is on)" || err "after the update, the next start: $s"
+U "$A" 'test -x /usr/games/sl' && ok "your own packages are still there" || err "the update took your packages"
+
 # ---- 8. the boot guard's own tests (in this system's Python)
 ic 'cd /src/hosts/linux && python3 -B -m unittest discover -s test -p test_hearth_boot_guard.py 2>&1 | tail -3' | sed 's/^/  /'
 ic 'cd /src/hosts/linux && python3 -B -m unittest discover -s test -p test_hearth_boot_guard.py >/dev/null 2>&1' \

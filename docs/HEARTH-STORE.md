@@ -125,7 +125,9 @@ with the built-in copy to fall back to at once ("Starting up" there). The **boot
 never Store parts: they change only with Hearth OS updates, which keep the version before startable. A part whose
 update takes effect only after signing out or a restart says so ("restart": "signout" or "pc" in its list entry):
 "Takes effect after you sign out / restart" on its page and before installing, then **Sign out now / Restart now** or
-**Later**, never by itself and never while a game runs.
+**Later**, never by itself and never while a game runs. **System packages** (Debian's own fixes, in the writable system,
+with the admin password) has its own row with the same restart notice; the kernel and drivers aren't in it (they stay
+pinned and come with Hearth OS).
 
 ## Safety
 

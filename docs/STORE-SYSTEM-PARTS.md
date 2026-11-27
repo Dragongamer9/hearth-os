@@ -159,19 +159,27 @@ push an update we can". Not built in this branch, because it couldn't be proven 
   snippet and Recovery broken on purpose, still reaching the login prompt on the previous entry; the owner's go-ahead
   for each such image, as for a release (red flag 1 and the release rules).
 
-## System packages: Debian's own updates (a plan, not built)
+## System packages: Debian's own updates (Nov 26, feature/store-session-parts)
 
-The owner said yes to a "System packages" part: Debian's security fixes through the Store. The plan:
+The owner said yes to a "System packages" part: Debian's fixes through the Store. Built, for the Hearth OS version
+after 1.18 (hearth-unlock and hearth-admin are in the image):
 
-- **Through the writable system, with the admin password, never by itself:** `hearth-admin system-packages-check`
-  (as you: `apt-get -s upgrade` against apt's lists, read only) and `system-packages-install` (pkexec, admin password:
-  `hearth-unlock --install-package` for each one, so they're recorded and come back after a Hearth OS update, and the
-  version before stays startable: a start with the layer that doesn't reach Hearth leaves the layer off, Safe start).
+- **What it is:** a row on the Store's Hearth parts page (Services: "System packages"). **Check for updates** asks
+  `hearth-unlock --upgradable` (as you, read only, from apt's lists as they are: the fixes on offer, "N fixes").
+  **Update** runs `pkexec hearth-admin system-packages-update` (always the admin password, 49-hearth-admin.rules) →
+  `hearth-unlock --upgrade-system`: apt's lists refreshed, then `apt-get upgrade` in the writable system (only
+  upgrades: nothing new, nothing removed), recorded like any apt change. Never by itself, and the Store refuses while
+  a game runs.
 - **What it can't change:** the boot chain stays pinned out of apt (GRUB, shim, kernels, ostree, bootc, dracut, DKMS,
-  microcode, fwupd: `/etc/apt/preferences.d/hearth-boot-chain`) and systemd, glibc, D-Bus and Mesa are held at the
-  image's versions (`hearth-image-core`). So the **kernel and graphics drivers can't come this way**: they come with
-  Hearth OS images (and the dated image above). What's left is Debian's other packages (security fixes in libraries
-  and programs), which take effect when the program starts again; when one of them is a service or a library the
-  session uses, the Store's restart notice ("Restart now / Later") says so.
-- **To prove before building:** hearth-unlock-check.sh's real overlay + apt run with a package upgraded this way,
-  then an update with the reapply, then a broken one (Safe start).
+  microcode, fwupd: `/etc/apt/preferences.d/hearth-boot-chain`; a plan that would touch one is refused) and systemd,
+  glibc, D-Bus and Mesa are held at the image's versions (`hearth-image-core`). So **the kernel and graphics drivers
+  don't come this way**: they come with Hearth OS images. What comes is Debian's other packages (security fixes in
+  libraries and programs).
+- **Taking effect:** after a restart. The Store says so and asks **Restart now / Later** (never by itself).
+- **The version before stays startable:** the changes are in the writable system's layer for this version, so a
+  start that doesn't reach Hearth leaves the layer off (Safe start, "Turn my changes back on"); a Hearth OS update
+  starts from its own clean image.
+- **Tests:** `test_hearth_unlock.py` (the plan, only upgrades, the boot chain refused, root only, the admin password);
+  `hearth-unlock-check.sh` (boot-guard.yml on Debian 13 and base-peppermint.yml in the built image): the real
+  `--upgradable` as an ordinary account, the real `--upgrade-system` with apt, nothing left on offer after it, /boot
+  untouched, the next start still unlocked with your own packages.

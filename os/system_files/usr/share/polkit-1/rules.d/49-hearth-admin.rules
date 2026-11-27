@@ -68,6 +68,12 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+system-part-\S+(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // The Hearth Store's System packages (Debian's fixes, in the writable system): always an administrator's password.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+system-packages-\S+(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
     // root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&

@@ -1023,6 +1023,52 @@ def cmd_install_package(name):
     return {'ok': True, 'package': name, 'native': True}
 
 
+UPGRADE_LINE = re.compile(r'^Inst (\S+) \[([^\]]+)\] \((\S+)', re.M)
+
+
+def upgrade_plan(out):
+    """apt-get -s upgrade's plan: [{name, from, to}] (only upgrades: `upgrade` never adds or removes a package)."""
+    return [{'name': m.group(1), 'from': m.group(2), 'to': m.group(3)} for m in UPGRADE_LINE.finditer(out or '')]
+
+
+def cmd_upgradable():
+    """The Hearth Store's System packages (docs/STORE-SYSTEM-PARTS.md): Debian's fixes on offer, from apt's lists as
+    they are (read only; anyone may ask). The boot chain is pinned out of apt and Hearth's core packages are held at the
+    image's versions, so neither is ever offered."""
+    code, out = run(['apt-get', '-s', '-o', 'Debug::NoLocking=1', 'upgrade'], timeout=300, env=APT_ENV)
+    plan = [p for p in upgrade_plan(out) if not BOOT_CHAIN_PKG.fullmatch(p['name'].split(':')[0])] if code == 0 else []
+    return {'packages': plan, 'restart': 'pc' if plan else ''}
+
+
+def cmd_upgrade_system():
+    """System packages, put in (hearth-admin system-packages-update, the admin password): Debian's fixes for what's
+    installed, in the writable system, recorded like any apt change. Only upgrades (nothing new, nothing removed);
+    refused if the plan would touch how the PC starts. Never by itself. Takes effect after a restart."""
+    need_root()
+    need_writable()
+    boot_chain_pinned()
+    progress(5, 'Getting Debian\'s list of packages')
+    run(['apt-get', 'update'], timeout=600, env=APT_ENV)
+    code, out = run(['apt-get', '-s', 'upgrade'], timeout=600, env=APT_ENV)
+    if code != 0:
+        raise Fail(f"couldn't plan the update ({(out.strip().splitlines() or ['apt-get failed'])[-1][:200]})")
+    plan = upgrade_plan(out)
+    touched = sorted({m.group(1) for m in re.finditer(r'^(?:Inst|Remv|Conf) (\S+)', out, re.M)
+                      if BOOT_CHAIN_PKG.fullmatch(m.group(1).split(':')[0])})
+    if touched:
+        raise Fail(f"not updated: it would change how this PC starts ({', '.join(touched[:6])}). Those come only with "
+                   "Hearth OS's updates")
+    if not plan:
+        progress(100, 'Up to date')
+        return {'ok': True, 'packages': [], 'restart': ''}
+    code, tail = apt_stream(['apt-get', 'upgrade', '-y'] + DPKG_OPTS, 10, 95, timeout=3600)
+    if code != 0:
+        raise Fail(f'couldn\'t update the system packages ({tail[-1] if tail else "apt-get failed"})')
+    cmd_record(wait=120)
+    progress(100, 'Updated')
+    return {'ok': True, 'packages': [p['name'] for p in plan], 'restart': 'pc'}
+
+
 def cmd_remove_package(name):
     need_root()
     need_writable()
@@ -1092,6 +1138,12 @@ def main(argv):
             return 0
         if c == '--install-package' and len(a) == 2:
             print(json.dumps(cmd_install_package(a[1])))
+            return 0
+        if c == '--upgradable' and len(a) == 1:
+            print(json.dumps(cmd_upgradable()))
+            return 0
+        if c == '--upgrade-system' and len(a) == 1:
+            print(json.dumps(cmd_upgrade_system()))
             return 0
         if c == '--remove-package' and len(a) == 2:
             print(json.dumps(cmd_remove_package(a[1])))
