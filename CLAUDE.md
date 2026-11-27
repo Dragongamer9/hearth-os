@@ -67,6 +67,11 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
    itself. Say how each change ships before building it; anything that seems to need a Hearth OS release goes to the
    owner first.
 
+15. **RED FLAG: Adding an app never makes it built in or installed by default** (the owner, Nov 27, 2026: "just because we
+   add apps don't make them built in or installed by default"). A new app is a Store app people Get: never copied into
+   the Hearth OS image, never "kind": "builtin" in the Store lists, never installed by itself. Only what the image
+   already had stays built in.
+
 ## Branches and releasing
 
 - Work lands on `bughunt` (feature work on `feature/*` branches, merged into bughunt when green). `main` is releases.
