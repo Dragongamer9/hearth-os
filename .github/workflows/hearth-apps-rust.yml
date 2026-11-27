@@ -68,8 +68,10 @@ jobs:
       - name: Tests
         run: |
           cd hosts/hearth-ui
-          cargo test --release --workspace -- --test-threads=1 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          cargo test --release --workspace --no-fail-fast -- --test-threads=1 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
           echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-500)"
+          # each app's own tests named (one failing app no longer hides the others': --no-fail-fast)
+          grep -E '^test [a-z_:]+ \.\.\. (ok|FAILED)$' ../../test.log | grep -E 'relay::' | while read -r l; do echo "::notice title=cargo test (Studio relay)::$l"; done
           # a failing test is named, with why (the pipe above is tee's, so the step itself goes on to the pictures)
           if grep -qE '^test result: FAILED' ../../test.log; then
             grep -E '^test .* FAILED$|panicked at|assertion' ../../test.log | head -20 | while read -r l; do echo "::error title=cargo test::$(echo "$l" | cut -c1-900)"; done
