@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 38,
+  "serial": 39,
   "apps": [
     {
       "id": "command-center",
@@ -1293,6 +1293,27 @@
       },
       "group": "apps",
       "open": "hearth-retro-to-steam-app"
+    },
+    {
+      "id": "part-hearth-beat-maker-app",
+      "name": "Hearth Beat Maker",
+      "kind": "builtin",
+      "part": {
+        "id": "hearth-beat-maker-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-beat-maker-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-beat-maker-app-1.18.1/hearth-beat-maker-app-1.18.1.tar.gz",
+        "sha256": "deb5403c38c18aac54daa359947a49fe26001dd295c0fb2bbc41bfbf467f323a",
+        "size": 7316438,
+        "notes": [
+          "New: make songs from patterns, the piano roll and instruments, export for videos",
+          "Built on LMMS (GPL-2)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-beat-maker-app"
     }
   ],
   "tests": [
