@@ -1,0 +1,60 @@
+HEARTH-CI-session 1 1000 tester seat0 1249 user tty2 no -
+HEARTH-CI-login active 
+HEARTH-CI-game none · 1287 /bin/sh /usr/bin/nimbus-session;1474 /bin/sh /usr/bin/nimbus-session;
+HEARTH-CI-SHOT game
+HEARTH-CI-desktop up=yes · 3488 labwc -C /run/user/1000/hearth-labwc;3588 quickshell -p /usr/share/nimbus/desktop/shell;
+HEARTH-CI-SHOT desktop
+HEARTH-CI-mem 0 1017028 146104 - 2285
+HEARTH-CI-SHOT rest-0
+HEARTH-CI-mem 60 1089792 158324 30 2358
+HEARTH-CI-mem 120 1130216 158324 0 2343
+HEARTH-CI-mem 180 1140784 158324 0 2344
+HEARTH-CI-mem 240 1139496 158324 0 2338
+HEARTH-CI-mem 300 1163508 158324 0 2348
+HEARTH-CI-SHOT end
+HEARTH-CI-log 2026-11-27 07:07:38 start: steam game mode: Steam isn't set up on this device yet. Open Steam here in Desktop Mode once, answer its questions and sign in, then switch to Game Mode; Desktop Mode instead
+HEARTH-CI-log 2026-11-27 07:07:38 desktop mode
+HEARTH-CI-log 2026-11-27 07:07:38 desktop mode: Hearth Classic
+HEARTH-CI-log 2026-11-27 07:07:38 desktop: labwc
+HEARTH-CI-log 2026-11-27 07:07:38 desktop mode: Mantel on labwc
+HEARTH-CI-log 2026-11-27 07:07:41 desktop mode: running after 3s
+HEARTH-CI-log steam warm: no Steam here
+HEARTH-CI-log 2026-11-27 07:09:59 switch asked for: desktop
+HEARTH-CI-log 2026-11-27 07:09:59 switching to desktop
+HEARTH-CI-log 2026-11-27 07:09:59 starting desktop mode
+HEARTH-CI-log 2026-11-27 07:09:59 desktop mode
+HEARTH-CI-log 2026-11-27 07:10:00 desktop mode: Hearth Classic
+HEARTH-CI-log 2026-11-27 07:10:00 desktop: labwc
+HEARTH-CI-log 2026-11-27 07:10:00 desktop mode: Mantel on labwc
+HEARTH-CI-log 2026-11-27 07:10:01 desktop mode: running after 2s
+HEARTH-CI-restart broken Store parts installed (1.18.0); restarting
+HEARTH-CI-broken session=yes up=yes · session part: {  "version": "9.9.9",  "fails": 2,  "at": 1795763907,  "why": "it didn't come up within 60 s"} · 1244 /bin/sh /usr/bin/nimbus-session;1503 /bin/sh /usr/bin/nimbus-session;1758 labwc -C /run/user/1000/hearth-labwc;
+HEARTH-CI-partlog 2026-11-27 07:17:27 hearth-part: hearth-session 9.9.9: the Hearth Store's copy, on trial (/var/home/tester/.local/share/hearth/parts/hearth-session/9.9.9/nimbus-session)
+HEARTH-CI-partlog 2026-11-27 07:18:27 hearth-part: The Hearth Store's update to the session start (9.9.9) didn't start properly (it didn't come up within 60 s), so the one built into Hearth OS is used from now on. Hearth Store › Hearth parts › Try it again uses the update again.
+HEARTH-CI-SHOT broken-parts
+HEARTH-CI-log 2026-11-27 07:07:38 start: steam game mode: Steam isn't set up on this device yet. Open Steam here in Desktop Mode once, answer its questions and sign in, then switch to Game Mode; Desktop Mode instead
+HEARTH-CI-log 2026-11-27 07:07:38 desktop mode
+HEARTH-CI-log 2026-11-27 07:07:38 desktop mode: Hearth Classic
+HEARTH-CI-log 2026-11-27 07:07:38 desktop: labwc
+HEARTH-CI-log 2026-11-27 07:07:38 desktop mode: Mantel on labwc
+HEARTH-CI-log 2026-11-27 07:07:41 desktop mode: running after 3s
+HEARTH-CI-log steam warm: no Steam here
+HEARTH-CI-log 2026-11-27 07:09:59 switch asked for: desktop
+HEARTH-CI-log 2026-11-27 07:09:59 switching to desktop
+HEARTH-CI-log 2026-11-27 07:09:59 starting desktop mode
+HEARTH-CI-log 2026-11-27 07:09:59 desktop mode
+HEARTH-CI-log 2026-11-27 07:10:00 desktop mode: Hearth Classic
+HEARTH-CI-log 2026-11-27 07:10:00 desktop: labwc
+HEARTH-CI-log 2026-11-27 07:10:00 desktop mode: Mantel on labwc
+HEARTH-CI-log 2026-11-27 07:10:01 desktop mode: running after 2s
+HEARTH-CI-log 2026-11-27 07:17:27 hearth-part: hearth-session 9.9.9: the Hearth Store's copy, on trial (/var/home/tester/.local/share/hearth/parts/hearth-session/9.9.9/nimbus-session)
+HEARTH-CI-log 2026-11-27 07:18:27 hearth-part: The Hearth Store's update to the session start (9.9.9) didn't start properly (it didn't come up within 60 s), so the one built into Hearth OS is used from now on. Hearth Store › Hearth parts › Try it again uses the update again.
+HEARTH-CI-log 2026-11-27 07:18:28 gamescope: the Hearth Store's copy, on trial
+HEARTH-CI-log 2026-11-27 07:18:31 start: steam game mode: Steam isn't set up on this device yet. Open Steam here in Desktop Mode once, answer its questions and sign in, then switch to Game Mode; Desktop Mode instead
+HEARTH-CI-log 2026-11-27 07:18:31 desktop mode
+HEARTH-CI-log 2026-11-27 07:18:31 desktop mode: Hearth Classic
+HEARTH-CI-log 2026-11-27 07:18:31 desktop: labwc
+HEARTH-CI-log 2026-11-27 07:18:31 desktop mode: Mantel on labwc
+HEARTH-CI-log 2026-11-27 07:18:32 desktop mode: running after 1s
+HEARTH-CI-log steam warm: no Steam here
+HEARTH-CI-desktop-END
