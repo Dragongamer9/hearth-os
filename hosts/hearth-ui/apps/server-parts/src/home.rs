@@ -115,8 +115,8 @@ pub fn state_card<'a, M: Clone + 'a>(p: &Pal, d: &'a HomeData, m: impl Fn(HAct) 
     let fix = !arr(o, "needs").is_empty();
     let r = row![
         st(&tone, 16.0),
-        column![tb(head, 18.0, p.text), t(line, 12.0, p.muted)].spacing(3.0),
-        Space::new().width(Length::Fill),
+        // the words take what's left, so the three buttons always stay in view (Settings' narrower page too)
+        column![tb(head, 18.0, p.text), t(line, 12.0, p.muted)].spacing(3.0).width(Length::Fill),
         w::chip(p, "Fix it", false, Sz::Md, if fix { Some(m(HAct::Fix)) } else { None }),
         w::chip(p, "Open the dashboard", false, Sz::Md, Some(m(HAct::Dashboard))),
         w::chip(p, "Server mode", true, Sz::Md, Some(m(HAct::ServerMode))),

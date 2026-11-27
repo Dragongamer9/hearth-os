@@ -217,6 +217,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             match o.json() {
                 Some(v) if v.get("ok").and_then(Value::as_bool) != Some(false) => {
                     a.data.insert(e, v);
+                    // Backups opened with something to find (Restore's search, its night): look in that night's
+                    // backup once, so its files show without pressing Look
+                    if e == "backups" && !a.ui.contains_key("restoreLooked") && !a.ui_s("restoreSearch", "").is_empty() {
+                        a.ui.insert("restoreLooked".into(), json!(true));
+                        if let Some(x) = pages::backups::first_look(a) {
+                            return a.run(x);
+                        }
+                    }
                 }
                 _ => {
                     a.data.insert(e, json!({"ok": false, "error": engine::problem(&o)}));

@@ -204,7 +204,7 @@ elif 'stats' in a:
         f.write('\n'.join(json.dumps(e) for e in sorted(ev, key=lambda e: e['at'])) + '\n')
 
     # ---------------------------------------------------------------- the Store's last list
-    wj(os.path.join(OUT, 'store.json'), {'hearth-home-server-helper': {'state': 'current', 'version': '1.18.0', 'have': '1.18.0', 'test': True}, 'hearth-home-server-app': {'state': 'current'}})
+    wj(os.path.join(OUT, 'store.json'), {'hearth-home-server-helper': {'state': 'current', 'version': '1.18.0', 'have': '1.18.0', 'test': True}, 'hearth-home-server-app': {'state': 'ready', 'test': True, 'notes': ["The Model vault's checks say which file changed, and a fix for Backups' night picker. The window opens again after you close it.", 'Checks and alerts: the last 12 Sundays in colour', "Backups: By device · all versions"]}})
 
     # ---------------------------------------------------------------- the engines, for real
     for eng, cmds in (('dash', [['status'], ['summary']]), ('vault', [['status'], ['summary']]), ('backups', [['status'], ['summary'], ['files', 'rog-ally', open(os.path.join(OUT, 'restore-night')).read(), 'Gravesleep']])):

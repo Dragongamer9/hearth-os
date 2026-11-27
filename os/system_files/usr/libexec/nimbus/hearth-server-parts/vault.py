@@ -1059,8 +1059,10 @@ def status():
     off = s.get('offline') or {}
     loads = s.get('loads') or {}
     n_ok = sum(1 for r in rows if r['tone'] == 'ok')
-    need = len([a for a in alerts])
-    health = ('Vault healthy · checked %s' % ((C.DAYS[time.localtime(last['at']).tm_wday] + ' ' + C.clock(last['at'])) if last else 'not yet')) if not need else ('%d thing%s need%s a look' % (need, '' if need == 1 else 's', 's' if need == 1 else ''))
+    # the vault's own health (board 01's title tag): your copies, on the vault drive and on R2. What the weekly check
+    # found online (removed, changed) doesn't make your copy unhealthy: Checks and alerts counts those (board 02).
+    need = len([x for x in where if x.get('state') in ('warn', 'bad')])
+    health = ('Vault healthy · checked %s' % ((C.DAYS[time.localtime(last['at']).tm_wday] + ' ' + C.clock(last['at'])) if last else 'not yet')) if not need else ('The vault needs a look: %s' % ', '.join(x['name'] for x in where if x.get('state') in ('warn', 'bad')))
     return {
         'ok': True, 'health': health, 'healthTone': 'ok' if not need else 'warn', 'keep': keep, 'on': bool(c.get('on')),
         'sets': sets, 'setsNote': 'First %d GB on Standard free · Infrequent Access keeps a file at least %d days · no download fees · same R2 account as the Hearth ISOs' % (prices['freeGb'], prices.get('minDays', 30)),

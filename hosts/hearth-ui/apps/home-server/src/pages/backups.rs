@@ -199,6 +199,20 @@ fn restore<'a>(a: &'a App, d: &'a Value, x: &Value) -> E<'a> {
     container(c).padding(16.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(12.0), Some((p.line, 1.0)))).into()
 }
 
+/// The picked device's night's files for Restore's search (`backups files`), when the page opens with one typed.
+pub fn first_look(a: &App) -> Option<crate::Act> {
+    let d = a.d("backups");
+    let devs = arr(d, "devices");
+    let pick = a.ui_s("backupPick", &s(d, "pick"));
+    let dev = devs.iter().find(|x| s(x, "id") == pick).or_else(|| devs.first())?;
+    let nights = arr(d, "nights");
+    let night = a.ui_s("restoreNight", &nights.first().map(|n| s(n, "id")).unwrap_or_default());
+    if night.is_empty() {
+        return None;
+    }
+    Some(crate::Act { engine: "backups", args: vec!["files".into(), s(dev, "id"), night, a.ui_s("restoreSearch", "")], ..Default::default() })
+}
+
 fn view<'a>(a: &'a App) -> E<'a> {
     let p = a.p;
     let d = a.d("backups");

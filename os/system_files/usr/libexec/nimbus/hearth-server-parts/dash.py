@@ -1107,7 +1107,7 @@ def summary():
     power = s['power']['now']
     overall = {
         'headline': '%d of %d services healthy · %d PC%s · %d device%s' % (s['healthy'], s['total'], pcs, '' if pcs == 1 else 's', len(devs), '' if len(devs) == 1 else 's'),
-        'line': ' · '.join(bits), 'state': 'ok' if s['healthy'] == s['total'] and not s['needs'] else ('warn' if s['healthy'] >= s['total'] - 1 else 'bad'),
+        'line': ' · '.join(bits), 'state': 'ok' if s['healthy'] >= s['total'] - 1 else ('warn' if s['healthy'] >= s['total'] - 3 else 'bad'),  # board 11: green with one thing to fix
         'healthy': s['healthy'], 'total': s['total'], 'pcs': pcs, 'needs': s['needs'], 'devices': devs,
         'devicesLine': 'all on Tailscale · Hearth Link shares the AI' if devs else '',
         'server': {'name': '%s · %s' % (s['pc'], gpu.get('k', 'GPU').split(' · ', 1)[-1]) if gpu else s['pc'], 'state': 'ok',
