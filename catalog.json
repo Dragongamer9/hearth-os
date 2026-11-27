@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 50,
+  "serial": 51,
   "apps": [
     {
       "id": "command-center",
@@ -1199,7 +1199,7 @@
     {
       "id": "part-hearth-game-fixer",
       "name": "Hearth Game Fixer",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-game-fixer",
         "version": "1.18.1",
@@ -1215,12 +1215,21 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-game-fixer"
+      "open": "hearth-game-fixer",
+      "inImage": false,
+      "short": "Game Fixer",
+      "card": "Any Windows game, with the community's fixes",
+      "about": "Install a Windows game with the community's script and Hearth sets up the rest: its runner, its fixes (each one can be turned off and back on) and its extras, with the logs when something's wrong. Built on Lutris (GPL-3).",
+      "tagline": "Any Windows game, with the community's fixes",
+      "icon": "GF",
+      "from": "#ff9a8a",
+      "to": "#d8413a",
+      "partId": "hearth-game-fixer"
     },
     {
       "id": "part-hearth-proton-manager",
       "name": "Proton Manager",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-proton-manager",
         "version": "1.18.1",
@@ -1236,12 +1245,21 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-proton-manager"
+      "open": "hearth-proton-manager",
+      "inImage": false,
+      "short": "Proton Manager",
+      "card": "The Proton and Wine your Windows games run with",
+      "about": "What runs your Windows games: the Proton and Wine versions you have, getting more (Proton Hearth, Proton-GE, Wine-GE, Valve's, Luxtorpeda), each game's own pick. Nothing is added, removed or switched unless you say so. In Settings › Gaming. Built on ProtonUp-Qt (GPL-3).",
+      "tagline": "The Proton and Wine your Windows games run with",
+      "icon": "⚙",
+      "from": "#c9c1ba",
+      "to": "#6d645d",
+      "partId": "hearth-proton-manager"
     },
     {
       "id": "part-hearth-imagine-app",
       "name": "Hearth Imagine",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-imagine-app",
         "version": "1.18.1",
@@ -1257,12 +1275,23 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-imagine-app"
+      "open": "hearth-imagine-app",
+      "inImage": false,
+      "short": "Imagine",
+      "card": "Type it and your Nvidia PC makes the picture",
+      "about": "Say what you want and your Nvidia PC makes it: Type and make beside the node graph it runs, results, the queue and the models. Built on ComfyUI (GPL-3). Get it from the Hearth Store, which keeps it up to date.",
+      "tagline": "Type it and your Nvidia PC makes the picture",
+      "icon": "IM",
+      "from": "#d6a6ff",
+      "to": "#7a3fd0",
+      "partId": "hearth-imagine-app",
+      "builtOn": "ComfyUI",
+      "licence": "GPL-3"
     },
     {
       "id": "part-hearth-retro-app",
       "name": "Hearth Retro",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-retro-app",
         "version": "1.18.1",
@@ -1278,12 +1307,23 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-retro-app"
+      "open": "hearth-retro-app",
+      "inImage": false,
+      "short": "Retro",
+      "card": "Your emulator games as shelves, set up in one go",
+      "about": "Your emulator games as shelves in Game Mode, every emulator installed and set the same way, the BIOS check and your controllers. Built on RetroDECK and EmuDeck (GPL-3). Get it from the Hearth Store, which keeps it up to date.",
+      "tagline": "Your emulator games as shelves, set up in one go",
+      "icon": "R",
+      "from": "#ff9be8",
+      "to": "#b04fc8",
+      "partId": "hearth-retro-app",
+      "builtOn": "RetroDECK and EmuDeck",
+      "licence": "GPL-3"
     },
     {
       "id": "part-hearth-retro-to-steam-app",
       "name": "Retro to Steam",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-retro-to-steam-app",
         "version": "1.18.1",
@@ -1299,12 +1339,23 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-retro-to-steam-app"
+      "open": "hearth-retro-to-steam-app",
+      "inImage": false,
+      "short": "Retro to Steam",
+      "card": "Your emulator games in the Steam library, with art",
+      "about": "Hearth Retro's games added to Steam as non-Steam games, each with its art from community art sites, starting in the emulator Hearth Retro set up. Steam's own files only, with Steam closed: never a sign-in. Built on Steam ROM Manager (GPL-3). Get it from the Hearth Store, which keeps it up to date.",
+      "tagline": "Your emulator games in the Steam library, with art",
+      "icon": "RS",
+      "from": "#7ff0d8",
+      "to": "#1f9f8f",
+      "partId": "hearth-retro-to-steam-app",
+      "builtOn": "Steam ROM Manager",
+      "licence": "GPL-3"
     },
     {
       "id": "part-hearth-beat-maker-app",
       "name": "Hearth Beat Maker",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-beat-maker-app",
         "version": "1.18.1",
@@ -1320,12 +1371,23 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-beat-maker-app"
+      "open": "hearth-beat-maker-app",
+      "inImage": false,
+      "short": "Beat Maker",
+      "card": "Songs from patterns, a piano roll and instruments",
+      "about": "Make a song from patterns: the beat, the piano roll, instruments and sounds, played as you go, exported for Hearth's videos (with LMMS projects and its renderer). Built on LMMS (GPL-2). Get it from the Hearth Store, which keeps it up to date.",
+      "tagline": "Songs from patterns, a piano roll and instruments",
+      "icon": "BM",
+      "from": "#ff9be8",
+      "to": "#b04fc8",
+      "partId": "hearth-beat-maker-app",
+      "builtOn": "LMMS",
+      "licence": "GPL-2"
     },
     {
       "id": "part-hearth-forge-app",
       "name": "Hearth Forge",
-      "kind": "builtin",
+      "kind": "app",
       "part": {
         "id": "hearth-forge-app",
         "version": "1.18.1",
@@ -1341,7 +1403,18 @@
         ]
       },
       "group": "apps",
-      "open": "hearth-forge-app"
+      "open": "hearth-forge-app",
+      "inImage": false,
+      "short": "Forge",
+      "card": "Real 3D models from a photo or a few words",
+      "about": "Make real 3D models from a photo or a few words on your own Nvidia PC with 22 open models (Hunyuan3D, TRELLIS, TripoSR and more), or online with Tripo3D and your own key. Ready them for a game or for printing and send them to Hearth 3D, Godot, O3DE or Hearth CAD. Get it from the Hearth Store, which keeps it up to date.",
+      "tagline": "Real 3D models from a photo or a few words",
+      "icon": "HF",
+      "from": "#ffb36b",
+      "to": "#ff6a1f",
+      "partId": "hearth-forge-app",
+      "builtOn": "Hunyuan3D, TRELLIS, TripoSR and 19 more open models",
+      "licence": "each model's own"
     }
   ],
   "tests": [
