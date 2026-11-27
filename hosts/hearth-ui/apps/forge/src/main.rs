@@ -990,7 +990,7 @@ fn note_box<'a>(p: &Pal, s: &str) -> Element<'a, Msg> {
 fn view_middle(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let view = a.pref("view", "real");
-    let looks = [("shape", "Shape"), ("clay", "Clay"), ("real", "Real"), ("wire", "Wire"), ("textures", "Textures")];
+    let mut looks = vec![("shape", "Shape"), ("clay", "Clay"), ("real", "Real"), ("wire", "Wire"), ("textures", "Textures")];
     let light = a.pref("light", "workshop");
     let mut light_c = Column::new().push(w::chip(&p, format!("Light: {light} ▾"), false, Sz::Sm, Some(Msg::Menu("light"))));
     if a.menu == Some("light") {
@@ -1002,6 +1002,11 @@ fn view_middle(a: &App) -> Element<'_, Msg> {
     let mut change_c = Column::new().push(w::chip(&p, "Change it with words…", false, Sz::Sm, has.then_some(Msg::ChangeWords(String::new()))));
     if let Some(c) = &a.change {
         change_c = change_c.push(container(row![w::input(&p, "rustier, a brass handle", c, 12.0, Msg::ChangeWords).on_submit(Msg::ChangeGo).width(Length::Fixed(220.0)), w::chip(&p, "Make", true, Sz::Sm, Some(Msg::ChangeGo))].spacing(6.0).align_y(iced::Center)).padding(6.0).style(ui::boxed(p.panel2, p.r(8.0), Some((p.line, 1.0)))));
+    }
+    // a splat model: its own points as a view of their own
+    let sid = shown.as_ref().and_then(|s| s.get("id")).and_then(Value::as_str).unwrap_or("");
+    if a.mesh.as_ref().map(|m| m.0 == sid && !m.1.s.is_empty()).unwrap_or(false) {
+        looks.push(("splat", "Splat"));
     }
     let tools = row![
         w::seg(&p, looks.iter().map(|(k, l)| (l.to_string(), view == *k, Some(Msg::Set("view", json!(k))))).collect()),
@@ -1021,6 +1026,7 @@ fn view_middle(a: &App) -> Element<'_, Msg> {
         "shape" => Look::Shape,
         "clay" => Look::Clay,
         "wire" => Look::Wire,
+        "splat" if mesh.map(|m| !m.s.is_empty()).unwrap_or(false) => Look::Splat,
         _ => Look::Real,
     };
     let mut layers: Vec<Element<'_, Msg>> = Vec::new();
@@ -1057,6 +1063,9 @@ fn view_middle(a: &App) -> Element<'_, Msg> {
         } else if st.is_object() {
             lines.push("No textures (its shape only)".into());
         }
+        if st.get("splat").and_then(Value::as_bool) == Some(true) {
+            lines.push(if st.get("meshFromSplat").and_then(Value::as_bool) == Some(true) { "A splat (splat.ply) · its mesh made from it".into() } else { "Its splat kept too (splat.ply)".to_string() });
+        }
         if let Some(sz) = st.get("size").and_then(Value::as_array) {
             let v: Vec<f64> = sz.iter().filter_map(Value::as_f64).collect();
             if v.len() == 3 && v[1] > 0.0 {
@@ -1088,6 +1097,9 @@ fn view_middle(a: &App) -> Element<'_, Msg> {
             parts.push(format!("textures {}", forge::mmss(x)));
         }
         if let Some(x) = tm.get("texturesFailed").and_then(Value::as_str) {
+            parts.push(x.to_string());
+        }
+        if let Some(x) = tm.get("note").and_then(Value::as_str) {
             parts.push(x.to_string());
         }
         bottom = bottom.push(w::tag(&p, "Done", Tg::Ok)).push(container(t(parts.join(" · "), 12.0, p.muted)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 10.0 }));

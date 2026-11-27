@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 
 pub const HELPER: &str = include_str!("../helper/hearth-forge.py");
 pub const MODELS_JSON: &str = include_str!("../helper/models.json");
+/// How it makes with each model, through the model's own code (loaded by hearth-forge.py inside the model's runtime).
+pub const RUNNERS_PY: &str = include_str!("../helper/forge_runners.py");
 pub const PORT: u16 = 8191;
 
 #[derive(Debug, Clone, Default)]
@@ -94,12 +96,12 @@ pub fn forge_dir() -> PathBuf {
     std::env::var_os("HEARTH_FORGE_DIR").map(PathBuf::from).unwrap_or_else(|| hearth_ui::paths::home().join("Hearth/Forge"))
 }
 
-/// hearth-forge.py and models.json written next to each other (only when they differ, atomically): the service runs
-/// this copy, so the Store's newer app brings its newer helper.
+/// hearth-forge.py, models.json and forge_runners.py written next to each other (only when they differ, atomically):
+/// the service runs this copy, so the Store's newer app brings its newer helper.
 pub fn helper() -> PathBuf {
     let d = data();
     let _ = std::fs::create_dir_all(&d);
-    for (name, text) in [("hearth-forge.py", HELPER), ("models.json", MODELS_JSON)] {
+    for (name, text) in [("hearth-forge.py", HELPER), ("models.json", MODELS_JSON), ("forge_runners.py", RUNNERS_PY)] {
         let p = d.join(name);
         if std::fs::read_to_string(&p).ok().as_deref() != Some(text) {
             let tmp = d.join(format!(".{name}.tmp"));
@@ -294,11 +296,12 @@ mod tests {
         assert_eq!(c.models.iter().filter(|m| m.best > 0).count(), 4, "Get the best 4 for my PC");
         let v: Value = serde_json::from_str(MODELS_JSON).unwrap();
         for m in v["models"].as_array().unwrap() {
-            if let Some(r) = m.get("runner").and_then(Value::as_str) {
-                assert!(v["runners"].get(r).is_some(), "{r}");
-                assert_eq!(v["runners"][r]["commit"].as_str().unwrap().len(), 40);
-            }
+            let r = m.get("runner").and_then(Value::as_str).expect("every model makes: each has its runner");
+            assert!(v["runners"].get(r).is_some(), "{r}");
+            assert_eq!(v["runners"][r]["commit"].as_str().unwrap().len(), 40);
         }
+        assert!(c.models.iter().all(|m| m.runner && m.no_source.is_empty()), "every one of the 22 can be got and makes");
+        assert!(RUNNERS_PY.contains("RUNNERS = {"));
     }
     #[test]
     fn numbers_as_the_board_writes_them() {

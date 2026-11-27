@@ -1,6 +1,7 @@
 //! The model turning in the viewport, drawn in Rust on iced's canvas: the preview the service made of it (at most
 //! 14 000 faces with their colours), lit by the light you picked, seen as its shape, as clay, real, or its wires, on
-//! a floor. Drag to turn it, scroll to zoom, right-drag to move. Drawn again only when something it shows changes.
+//! a floor; a splat model's own points too (Splat). Drag to turn it, scroll to zoom, right-drag to move. Drawn again
+//! only when something it shows changes.
 
 use iced::widget::canvas::{self, Cache, Frame, Geometry, Path, Stroke};
 use iced::{mouse, Color, Point, Rectangle, Renderer, Size, Theme};
@@ -10,6 +11,22 @@ pub struct Mesh {
     pub v: Vec<[f32; 3]>,
     pub f: Vec<[u32; 3]>,
     pub c: Vec<[u8; 3]>,
+    /// A splat's own points (preview.json "s", "sc"), centred on its floor, one unit tall: shown by the Splat view.
+    pub s: Vec<[f32; 3]>,
+    pub sc: Vec<[u8; 3]>,
+}
+
+fn upright(v: &mut [[f32; 3]]) {
+    if v.is_empty() {
+        return;
+    }
+    let lo = (0..3).map(|i| v.iter().map(|p| p[i]).fold(f32::MAX, f32::min)).collect::<Vec<_>>();
+    let hi = (0..3).map(|i| v.iter().map(|p| p[i]).fold(f32::MIN, f32::max)).collect::<Vec<_>>();
+    let h = (hi[1] - lo[1]).max(1e-6);
+    let (cx, cz) = ((lo[0] + hi[0]) / 2.0, (lo[2] + hi[2]) / 2.0);
+    for p in v.iter_mut() {
+        *p = [(p[0] - cx) / h, (p[1] - lo[1]) / h, (p[2] - cz) / h];
+    }
 }
 
 impl Mesh {
@@ -21,17 +38,14 @@ impl Mesh {
             return None;
         }
         let mut verts: Vec<[f32; 3]> = v.chunks(3).map(|p| [p[0] as f32, p[1] as f32, p[2] as f32]).collect();
-        let lo = (0..3).map(|i| verts.iter().map(|p| p[i]).fold(f32::MAX, f32::min)).collect::<Vec<_>>();
-        let hi = (0..3).map(|i| verts.iter().map(|p| p[i]).fold(f32::MIN, f32::max)).collect::<Vec<_>>();
-        let h = (hi[1] - lo[1]).max(1e-6);
-        let (cx, cz) = ((lo[0] + hi[0]) / 2.0, (lo[2] + hi[2]) / 2.0);
-        for p in verts.iter_mut() {
-            *p = [(p[0] - cx) / h, (p[1] - lo[1]) / h, (p[2] - cz) / h];
-        }
+        upright(&mut verts);
+        let mut s: Vec<[f32; 3]> = num("s").chunks(3).filter(|p| p.len() == 3).map(|p| [p[0] as f32, p[1] as f32, p[2] as f32]).collect();
+        upright(&mut s);
+        let sc: Vec<[u8; 3]> = num("sc").chunks(3).filter(|t| t.len() == 3).map(|t| [t[0] as u8, t[1] as u8, t[2] as u8]).collect();
         let n = verts.len() as u32;
         let faces: Vec<[u32; 3]> = f.chunks(3).filter(|t| t.len() == 3).map(|t| [t[0] as u32, t[1] as u32, t[2] as u32]).filter(|t| t.iter().all(|i| *i < n)).collect();
         let cols: Vec<[u8; 3]> = c.chunks(3).filter(|t| t.len() == 3).map(|t| [t[0] as u8, t[1] as u8, t[2] as u8]).collect();
-        Some(Mesh { v: verts, f: faces, c: cols })
+        Some(Mesh { v: verts, f: faces, c: cols, s, sc })
     }
 }
 
@@ -55,6 +69,7 @@ pub enum Look {
     Clay,
     Real,
     Wire,
+    Splat,
 }
 
 /// The lights to pick from: (name, the light's colour, the glow behind, the background, how strong).
@@ -210,6 +225,18 @@ impl<'a, M: Clone> canvas::Program<M> for Viewport<'a, M> {
             }
             let sh = ellipse(Point::new(foot.0, foot.1), w * 0.45, w * 0.07);
             f.fill(&sh, Color::from_rgba(0.0, 0.0, 0.0, 0.45));
+            // a splat: its own points, far to near, each a small dot of its colour in the light
+            if self.look == Look::Splat && !m.s.is_empty() {
+                let mut pts: Vec<(f32, f32, f32, usize)> = m.s.iter().enumerate().map(|(i, p)| { let q = self.project(*p, sz); (q.0, q.1, q.2, i) }).collect();
+                pts.sort_by(|x, y| x.2.partial_cmp(&y.2).unwrap_or(std::cmp::Ordering::Equal));
+                let r = (sz.height * 0.0032 * self.cam.zoom).clamp(1.0, 5.0);
+                for (x, y, _, i) in pts {
+                    let c = m.sc.get(i).copied().unwrap_or([200, 200, 200]);
+                    let shade = [((c[0] as f32) * (lc[0] as f32 / 255.0)) as u8, ((c[1] as f32) * (lc[1] as f32 / 255.0)) as u8, ((c[2] as f32) * (lc[2] as f32 / 255.0)) as u8];
+                    f.fill(&Path::rectangle(Point::new(x - r / 2.0, y - r / 2.0), Size::new(r, r)), rgb(shade, 0.55 + 0.45 * power));
+                }
+                return;
+            }
             // the faces, far to near, each lit by the light (from the front left, a little above) and the room
             let pts: Vec<(f32, f32, f32)> = m.v.iter().map(|p| self.project(*p, sz)).collect();
             let (sy, cy) = self.cam.yaw.sin_cos();

@@ -7,6 +7,14 @@
 FFX=/tmp/forge-fx
 FDIR="$ROOT/.github/scripts/hearth-apps-rust-shots.d"
 FH="$ROOT/hosts/hearth-ui/apps/forge/helper/hearth-forge.py"
+# its helper's own tests first (hosts/linux/test/test_hearth_forge.py: every model's runner with fakes, Get, the
+# runtimes, splats, the make flow): a notice when they pass, each failure as an error
+if (cd "$ROOT" && python3 -W ignore -m unittest -v hosts/linux/test/test_hearth_forge.py) >/tmp/forge-tests.log 2>&1; then
+  echo "::notice title=forge tests::$(grep -c ' ... ok$' /tmp/forge-tests.log) passed · $(tail -n 3 /tmp/forge-tests.log | tr '\n' ' ')"
+else
+  grep -E '^(FAIL|ERROR):' /tmp/forge-tests.log | head -20 | while read -r l; do echo "::error title=forge tests::$l"; done
+  echo "::error title=forge tests::$(grep -E -B2 -A12 '^(FAIL|ERROR):' /tmp/forge-tests.log | tail -c 3500 | tr '\n' '|')"
+fi
 python3 "$FDIR/forge-fixture.py" make "$FFX" || echo "::error title=forge fixture::it couldn't be made"
 FA="$BIN/hearth-forge-app"
 FENV="XDG_DATA_HOME=$FFX/data XDG_CONFIG_HOME=$FFX/config HEARTH_FORGE_DIR=$FFX/Forge HEARTH_FORGE_TRIPO=http://127.0.0.1:8199 PATH=$FFX/bin:$PATH"
