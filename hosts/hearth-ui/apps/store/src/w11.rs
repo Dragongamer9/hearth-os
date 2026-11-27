@@ -116,7 +116,8 @@ fn rail_of(pg: &Page, a: &App) -> &'static str {
         Page::Settings => "settings",
         Page::App(id) | Page::Repair(id) => match a.entry(id) {
             Some(e) if e.test => "tests",
-            Some(e) if e.part.is_some() || e.kind == Kind::BuiltIn => "parts",
+            Some(e) if e.kind != Kind::Store && (e.part.is_some() || e.kind == Kind::BuiltIn) => "parts",
+            Some(e) if a.got(e) => "library",
             _ if a.inst.contains_key(id) => "library",
             _ => "apps",
         },
@@ -189,7 +190,7 @@ fn foot<'a>(a: &App, e: &Entry) -> E<'a, Msg> {
 fn tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let kind = if e.test { "Test version".to_string() } else if e.part.is_some() || e.kind == Kind::BuiltIn { format!("Hearth part{}", if e.card.is_empty() { String::new() } else { String::new() }) } else { category(e).to_string() };
+    let kind = if e.test { "Test version".to_string() } else if e.kind == Kind::Store { "Hearth app".to_string() } else if e.part.is_some() || e.kind == Kind::BuiltIn { format!("Hearth part{}", if e.card.is_empty() { String::new() } else { String::new() }) } else { category(e).to_string() };
     // An app's few words (store-w11-1: "Your AI team", "Ithil · AI"): its line up to the first ':' or ',', and what it
     // is when those words don't say it already.
     let kind = if !e.tagline.is_empty() && e.kind == Kind::Install {
@@ -512,8 +513,8 @@ pub fn library(a: &App) -> E<'_, Msg> {
         .iter()
         .filter(|e| match tab.as_str() {
             "tests" => e.test,
-            "parts" => !e.test && (e.part.is_some() || (e.kind == Kind::BuiltIn && ["mantel", "files", "settings", "task-manager", "capture", "family", "server", "system-restore", "reliability", "resmon"].contains(&e.id.as_str()))),
-            _ => !e.test && ((e.kind == Kind::Install && a.inst.contains_key(&e.id)) || (e.kind == Kind::BuiltIn && e.part.is_none() && a.here.contains(&e.id))),
+            "parts" => !e.test && e.kind != Kind::Store && (e.part.is_some() || (e.kind == Kind::BuiltIn && ["mantel", "files", "settings", "task-manager", "capture", "family", "server", "system-restore", "reliability", "resmon"].contains(&e.id.as_str()))),
+            _ => !e.test && ((e.kind == Kind::Install && a.inst.contains_key(&e.id)) || (e.kind == Kind::Store && a.got(e)) || (e.kind == Kind::BuiltIn && e.part.is_none() && a.here.contains(&e.id))),
         })
         .collect();
     // When each changed (Sort by: Date updated, newest first): installed or updated by the Store, its quick update, or
@@ -531,7 +532,7 @@ pub fn library(a: &App) -> E<'_, Msg> {
         }
         let sub = match a.state(e) {
             State::UpToDate(i) | State::Ready(i, _) => format!("{}{}", i.version, if e.self_updates { " · updates itself" } else { "" }),
-            _ if a.parts.contains_key(&e.id) => format!("Hearth part · {}", a.parts[&e.id].version),
+            _ if e.kind != Kind::Store && a.parts.contains_key(&e.id) => format!("Hearth part · {}", a.parts[&e.id].version),
             _ => format!("Built into {}", if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) }),
         };
         let w = when(e);
@@ -723,12 +724,13 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     l = l.push(tb(e.name.clone(), f(28.0), tn.text)).push(t(e.author.clone(), f(15.0), look::hex("#8fb2ff", ORANGE)));
     l = l.push(gap(1.0, z(18.0)));
     let main: E<Msg> = match &st {
+        _ if a.part_busy.contains(&e.id) => wide(a, if a.got(e) { "Updating…" } else { "Getting…" }, B::Primary, None),
         State::BuiltIn => wide(a, "Open", B::Primary, Some(Msg::Launch(e.id.clone()))),
         State::Coming => wide(a, "Coming", B::Normal, None),
         _ => wide(a, match &st { State::Get(_) => "Get", _ => view::open_label(e, &st) }, B::Primary, if a.offline() && matches!(st, State::Get(_) | State::Ready(..)) && !e.self_updates { None } else { view::primary(e, &st) }),
     };
     l = l.push(main).push(gap(1.0, z(10.0)));
-    let more: E<Msg> = if a.inst.contains_key(&e.id) { btn(&p, "⋯", B::Normal, false, a.menu, Some(Msg::Menu)) } else { Space::new().into() };
+    let more: E<Msg> = if a.got(e) { btn(&p, "⋯", B::Normal, false, a.menu, Some(Msg::Menu)) } else { Space::new().into() };
     l = l.push(row![container(wide(a, "⟳  Check for updates", B::Normal, (!a.checking).then_some(Msg::TryAgain))).width(Length::Fill), more].spacing(z(8.0)).align_y(iced::Center));
     l = l.push(container(ui::hline(tn.line)).padding(look::pad(z(22.0), 0.0, z(18.0), 0.0)));
     let (ver, ver_k, size) = match (&st, rel.as_ref()) {
@@ -751,7 +753,7 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
             l = l.push(note_line(&tn, G::Shield, "Part of Hearth OS, checked with it")).push(gap(1.0, z(6.0))).push(note_line(&tn, G::Sync, "Updates with Hearth OS"));
         }
         _ => {
-            l = l.push(note_line(&tn, G::Shield, if e.pin.is_some() { "Checked with the SHA-256 in Hearth OS's list" } else { "Checked with the release's SHA-256 list" }));
+            l = l.push(note_line(&tn, G::Shield, if e.kind == Kind::Store { "Checked with the SHA-256 in the signed list" } else if e.pin.is_some() { "Checked with the SHA-256 in Hearth OS's list" } else { "Checked with the release's SHA-256 list" }));
             if e.self_updates {
                 l = l.push(gap(1.0, z(6.0))).push(note_line(&tn, G::Sync, "Updates itself, from its own release"));
             }
@@ -784,7 +786,7 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let needs = format!("{} · no password", if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) });
     let (installs, updates, source) = match &st {
         State::BuiltIn => ("Part of Hearth OS".to_string(), "With Hearth OS".to_string(), "Hearth OS".to_string()),
-        _ => ("AppImage in your home folder".to_string(), if e.self_updates { "By itself".to_string() } else { "From the Store, when you say so".to_string() }, if e.pin.is_some() { "Hearth OS's list".to_string() } else { "GitHub release".to_string() }),
+        _ => (view::installs_as(e).to_string(), if e.self_updates { "By itself".to_string() } else { "From the Store, when you say so".to_string() }, if e.kind == Kind::Store { "The signed list from hearthos.fun".to_string() } else if e.pin.is_some() { "Hearth OS's list".to_string() } else { "GitHub release".to_string() }),
     };
     let info = column![
         ts("Additional information", f(18.0), tn.text),

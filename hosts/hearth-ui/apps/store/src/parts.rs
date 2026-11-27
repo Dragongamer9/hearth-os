@@ -286,6 +286,148 @@ pub fn decky_update() -> Result<(), String> {
     }
 }
 
+// ------------------------------------------------------------------ Store apps (Hearth's apps that aren't in the image)
+/// Where a Store app's program would be if it were built into Hearth OS: hearth-part starts the Store's copy when
+/// there's none there (it never is, for a Store app), the same way every Hearth shortcut calls it.
+pub fn builtin_path(pid: &str) -> String {
+    format!("/usr/libexec/hearth/apps/{pid}")
+}
+
+/// The folder of the Store's copy now in use (~/.local/share/hearth/parts/<id>/<version>).
+pub fn copy_dir(pid: &str) -> Option<PathBuf> {
+    let h = have(pid)?;
+    Some(root().join(pid).join(h.version))
+}
+
+/// The Store app's command, as its menu entry and Open run it.
+pub fn store_command(p: &Part) -> Vec<String> {
+    vec![helper().to_string_lossy().to_string(), "run".into(), p.id.clone(), builtin_path(&p.id)]
+}
+
+/// Opens a Store app (its Store copy, through hearth-part), not waiting for it.
+pub fn store_launch(p: &Part) -> bool {
+    let c = store_command(p);
+    std::process::Command::new(&c[0]).args(&c[1..]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok()
+}
+
+fn bin_dir() -> PathBuf {
+    home().join(".local/bin")
+}
+const MARK: &str = "# Hearth Store: a Hearth app from the Store";
+
+/// The menu entry made from the one that came in the Store copy (share/applications/*.desktop) when it has one, its
+/// Exec pointed at the Store copy (through hearth-part); else one made from the list. `icon`: the icon's path.
+pub fn store_desktop(e: &crate::catalog::Entry, p: &Part, shipped: Option<&str>, icon: &str) -> String {
+    let cmd = store_command(p).join(" ");
+    let one = |s: &str| s.replace(['\n', '\r'], " ");
+    let mut out = String::new();
+    if let Some(d) = shipped.filter(|d| d.contains("[Desktop Entry]")) {
+        let mut in_main = false;
+        for l in d.lines() {
+            let t = l.trim();
+            if t.starts_with('[') {
+                in_main = t == "[Desktop Entry]";
+                if !in_main {
+                    // (other actions run other programs: left out)
+                    break;
+                }
+                out.push_str(l);
+                out.push('\n');
+                continue;
+            }
+            if !in_main || t.starts_with("TryExec=") || t.starts_with("X-Hearth-Store=") || t.starts_with("Actions=") || t.starts_with("DBusActivatable=") {
+                continue;
+            }
+            if let Some(x) = t.strip_prefix("Exec=") {
+                // the program (its first word) becomes the Store copy's start; its arguments stay
+                let rest: Vec<&str> = x.split_whitespace().skip(1).collect();
+                out.push_str(&format!("Exec={cmd}{}{}\n", if rest.is_empty() { "" } else { " " }, rest.join(" ")));
+            } else if t.starts_with("Icon=") {
+                out.push_str(&format!("Icon={icon}\n"));
+            } else {
+                out.push_str(l);
+                out.push('\n');
+            }
+        }
+        if !out.contains("\nExec=") {
+            out.push_str(&format!("Exec={cmd}\n"));
+        }
+        if !out.contains("\nIcon=") {
+            out.push_str(&format!("Icon={icon}\n"));
+        }
+    } else {
+        out = format!(
+            "[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={cmd}\nIcon={icon}\nCategories=Utility;\nTerminal=false\n",
+            one(&e.name),
+            one(if e.tagline.is_empty() { &e.card } else { &e.tagline })
+        );
+    }
+    out.push_str(&format!("X-Hearth-Store={}\n", e.id));
+    out
+}
+
+/// After Get (and each update): the app's menu entry, its icon and its command (~/.local/bin/<program>, so anything
+/// that starts it by name finds the Store's copy: red flag 13), from what came in its Store copy.
+pub fn store_menu(e: &crate::catalog::Entry) -> std::io::Result<()> {
+    let Some(p) = e.part.as_ref() else { return Ok(()) };
+    let dir = copy_dir(&p.id);
+    let first = |sub: &str, ext: &str| -> Option<PathBuf> {
+        let d = dir.as_ref()?.join(sub);
+        let mut v: Vec<PathBuf> = std::fs::read_dir(d).ok()?.flatten().map(|x| x.path()).filter(|x| x.extension().map(|y| y == ext).unwrap_or(false)).collect();
+        v.sort();
+        v.into_iter().next()
+    };
+    let icon = crate::paths::icon_file(&e.id);
+    match first("share/icons/hicolor/scalable/apps", "svg").and_then(|f| std::fs::read(f).ok()) {
+        Some(b) => crate::files::write_atomic(&icon, &b)?,
+        None => crate::files::write_atomic(&icon, crate::files::icon_svg(e).as_bytes())?,
+    }
+    let shipped = first("share/applications", "desktop").and_then(|f| std::fs::read_to_string(f).ok());
+    crate::files::write_atomic(&crate::paths::desktop_file(&e.id), store_desktop(e, p, shipped.as_deref(), &icon.to_string_lossy()).as_bytes())?;
+    let prog = e.program();
+    if !prog.is_empty() && !prog.starts_with('.') && prog.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        let b = bin_dir().join(&prog);
+        let ours = std::fs::read_to_string(&b).map(|t| t.contains(MARK)).unwrap_or(true);
+        if ours {
+            let c = store_command(p);
+            crate::files::write_atomic(&b, format!("#!/bin/sh\n{MARK} ({}); the Store removes it with the app.\nexec {} {} {} {} \"$@\"\n", e.name, c[0], c[1], c[2], c[3]).as_bytes())?;
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&b, std::fs::Permissions::from_mode(0o755))?;
+        }
+    }
+    Ok(())
+}
+
+/// Uninstall a Store app: its Store copy to the Trash (hearth-part remove), its menu entry, icon and command gone; with
+/// `keep` its own folders stay, else they go to the Trash too. Returns what of its own went to the Trash.
+pub fn store_uninstall(e: &crate::catalog::Entry, keep: bool) -> Result<Vec<PathBuf>, String> {
+    let Some(p) = e.part.as_ref() else { return Ok(Vec::new()) };
+    remove(&p.id)?;
+    let _ = std::fs::remove_file(crate::paths::desktop_file(&e.id));
+    let _ = std::fs::remove_file(crate::paths::icon_file(&e.id));
+    let prog = e.program();
+    if !prog.is_empty() && !prog.contains('/') {
+        let b = bin_dir().join(&prog);
+        if std::fs::read_to_string(&b).map(|t| t.contains(MARK)).unwrap_or(false) {
+            let _ = std::fs::remove_file(&b);
+        }
+    }
+    let mut moved = Vec::new();
+    if !keep {
+        for d in crate::files::data_dirs(e) {
+            moved.push(crate::files::trash(&d).map_err(|x| x.to_string())?);
+        }
+    }
+    Ok(moved)
+}
+
+/// A Store app's update: once you've got it, made for this Hearth OS, another version than yours (its own number:
+/// there's no built-in one to compare with).
+pub fn store_offer<'a>(p: &'a Part, h: Option<&Have>, hearth: &str) -> Option<&'a Part> {
+    let h = h?;
+    (fits(&p.os, hearth) && h.version != p.version && (crate::newer(&p.version, &h.version) || !fits(&h.os, hearth))).then_some(p)
+}
+
 fn restart_mantel() {
     // Only Mantel's own shell (quickshell -p …/shell), only yours; the session's loop starts it again right away.
     let uid = unsafe { libc::getuid() }.to_string();
@@ -311,6 +453,78 @@ mod tests {
         let same = Have { version: "1.17.2".into(), os: "1.17".into(), ..Default::default() };
         assert!(test_offer(&p, Some(&same), "1.17").is_none());
         assert!(test_fits(&p, "1.17.3") && !test_fits(&p, "1.18"));
+    }
+
+    #[test]
+    fn a_store_app_updates_only_once_its_got() {
+        let p = part("1.18.2", "1.18");
+        assert!(store_offer(&p, None, "1.18").is_none(), "not got: Get, never an update");
+        let h = Have { version: "1.18.1".into(), os: "1.18".into(), ..Default::default() };
+        assert!(store_offer(&p, Some(&h), "1.18").is_some());
+        let same = Have { version: "1.18.2".into(), os: "1.18".into(), ..Default::default() };
+        assert!(store_offer(&p, Some(&same), "1.18").is_none());
+        assert!(store_offer(&p, Some(&h), "1.19").is_none(), "not made for this Hearth OS");
+    }
+
+    #[test]
+    fn a_store_apps_menu_entry_runs_its_store_copy() {
+        let e = crate::catalog::Entry::from_json(&serde_json::json!({"id": "forge", "name": "Hearth Forge", "kind": "app", "open": "hearth-forge-app",
+            "part": {"id": "hearth-forge-app", "version": "1.18.1", "os": "1.18", "path": "hearth-forge-app", "url": "https://x/y", "sha256": "0".repeat(64)}}), false).unwrap();
+        let p = e.part.clone().unwrap();
+        let shipped = "[Desktop Entry]\nType=Application\nName=Hearth Forge\nExec=/usr/bin/hearth-forge-app %f\nTryExec=/usr/bin/hearth-forge-app\nIcon=hearth-forge\nCategories=Graphics;\n\n[Desktop Action x]\nExec=/usr/bin/other\n";
+        let d = store_desktop(&e, &p, Some(shipped), "/h/icon.svg");
+        assert!(d.contains("\nExec=/usr/libexec/hearth/hearth-part run hearth-forge-app /usr/libexec/hearth/apps/hearth-forge-app %f\n"), "{d}");
+        assert!(!d.contains("TryExec") && !d.contains("/usr/bin/other"));
+        assert!(d.contains("\nIcon=/h/icon.svg\n") && d.contains("Categories=Graphics;") && d.contains("X-Hearth-Store=forge"));
+        let made = store_desktop(&e, &p, None, "/h/icon.svg");
+        assert!(made.starts_with("[Desktop Entry]") && made.contains("Name=Hearth Forge") && made.contains("Exec=/usr/libexec/hearth/hearth-part run hearth-forge-app"));
+    }
+
+    /// Got (the Store copy as hearth-part leaves it), its menu entry, icon and command; then uninstalled with the real
+    /// hearth-part: the copy goes to the Trash, the entry, icon and command go, its own folders stay.
+    #[test]
+    fn a_store_app_got_then_uninstalled() {
+        let d = tempfile::tempdir().unwrap();
+        let h = d.path();
+        for (k, v) in [("HOME", h.to_path_buf()), ("XDG_DATA_HOME", h.join(".local/share")), ("XDG_CONFIG_HOME", h.join(".config")), ("XDG_CACHE_HOME", h.join(".cache")), ("HEARTH_PARTS", h.join(".local/share/hearth/parts")), ("HEARTH_PARTS_STATE", h.join(".local/state/hearth/parts"))] {
+            std::env::set_var(k, v);
+        }
+        let e = crate::catalog::Entry::from_json(&serde_json::json!({"id": "forge", "name": "Hearth Forge", "kind": "app", "open": "hearth-forge-app", "data": ["~/.config/hearth-forge"],
+            "part": {"id": "hearth-forge-app", "version": "1.18.1", "os": "1.18", "path": "hearth-forge-app", "url": "https://x/y", "sha256": "0".repeat(64)}}), false).unwrap();
+        assert!(have("hearth-forge-app").is_none());
+        let v = h.join(".local/share/hearth/parts/hearth-forge-app/1.18.1");
+        std::fs::create_dir_all(v.join("share/applications")).unwrap();
+        std::fs::create_dir_all(v.join("share/icons/hicolor/scalable/apps")).unwrap();
+        std::fs::write(v.join("hearth-forge-app"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(v.join("share/applications/hearth-forge.desktop"), "[Desktop Entry]\nName=Hearth Forge\nExec=/usr/bin/hearth-forge-app\nIcon=hearth-forge\n").unwrap();
+        std::fs::write(v.join("share/icons/hicolor/scalable/apps/hearth-forge.svg"), "<svg>forge</svg>").unwrap();
+        std::fs::write(h.join(".local/share/hearth/parts/hearth-forge-app/part.json"), r#"{"id": "hearth-forge-app", "version": "1.18.1", "os": "1.18", "path": "hearth-forge-app", "installed": 1}"#).unwrap();
+        std::fs::create_dir_all(h.join(".config/hearth-forge")).unwrap();
+        assert_eq!(have("hearth-forge-app").map(|x| x.version), Some("1.18.1".into()));
+        store_menu(&e).unwrap();
+        let desk = std::fs::read_to_string(crate::paths::desktop_file("forge")).unwrap();
+        assert!(desk.contains("Exec=/usr/libexec/hearth/hearth-part run hearth-forge-app"), "{desk}");
+        assert_eq!(std::fs::read_to_string(crate::paths::icon_file("forge")).unwrap(), "<svg>forge</svg>", "the icon that came with it");
+        let bin = std::fs::read_to_string(h.join(".local/bin/hearth-forge-app")).unwrap();
+        assert!(bin.contains(MARK) && bin.contains("run hearth-forge-app"));
+        // someone's own command of that name is never replaced
+        std::fs::write(h.join(".local/bin/hearth-forge-app"), "#!/bin/sh\necho mine\n").unwrap();
+        store_menu(&e).unwrap();
+        assert!(std::fs::read_to_string(h.join(".local/bin/hearth-forge-app")).unwrap().contains("mine"));
+        std::fs::remove_file(h.join(".local/bin/hearth-forge-app")).unwrap();
+        store_menu(&e).unwrap();
+        let hp = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../os/system_files/usr/libexec/hearth/hearth-part");
+        if hp.exists() && std::process::Command::new("python3").arg("--version").output().is_ok() {
+            std::env::set_var("HEARTH_PART", &hp);
+            store_uninstall(&e, true).unwrap();
+            std::env::remove_var("HEARTH_PART");
+            assert!(have("hearth-forge-app").is_none(), "its Store copy is gone");
+            assert!(!crate::paths::desktop_file("forge").exists() && !crate::paths::icon_file("forge").exists());
+            assert!(!h.join(".local/bin/hearth-forge-app").exists());
+            assert!(h.join(".config/hearth-forge").exists(), "its own folders stay by default");
+        }
+        std::env::remove_var("HEARTH_PARTS");
+        std::env::remove_var("HEARTH_PARTS_STATE");
     }
 
     #[test]

@@ -298,6 +298,23 @@ pub enum State {
     Ready(Installed, Rel),
 }
 
+/// A Store app (one of Hearth's apps that isn't in this Hearth OS) on this PC: Get until its Store copy is here, then
+/// installed (Open), with Update when a newer copy for this Hearth OS is out. Not made for this Hearth OS: coming.
+pub fn store_state(p: &catalog::Part, have: Option<&parts::Have>, hearth: &str) -> State {
+    let rel = Rel { version: p.version.clone(), url: p.url.clone(), size: p.size, sha256: p.sha256.clone(), notes: p.notes.clone(), ..Default::default() };
+    match have {
+        None if parts::fits(&p.os, hearth) => State::Get(rel),
+        None => State::Coming,
+        Some(h) => {
+            let i = Installed { version: h.version.clone(), size: p.size, when: h.installed, ..Default::default() };
+            match parts::store_offer(p, Some(h), hearth) {
+                Some(_) => State::Ready(i, rel),
+                None => State::UpToDate(i),
+            }
+        }
+    }
+}
+
 fn this_pc() -> (String, String) {
     hearth_store::this_pc()
 }
@@ -450,6 +467,10 @@ impl App {
         match e.kind {
             Kind::BuiltIn => State::BuiltIn,
             Kind::Coming => State::Coming,
+            Kind::Store => match e.part.as_ref() {
+                Some(p) => store_state(p, self.parts.get(&e.id), &self.hearth),
+                None => State::Coming,
+            },
             Kind::Install => {
                 let rel = self.seen.rel(&e.id);
                 match (self.inst.get(&e.id), rel) {
@@ -472,6 +493,10 @@ impl App {
 
     /// A quick update to offer for this entry (made for this Hearth OS, newer than what runs).
     pub fn part_offer(&self, e: &Entry) -> Option<catalog::Part> {
+        // A Store app's update is its own (state: Update), never a quick update to something built in.
+        if e.kind == Kind::Store {
+            return None;
+        }
         e.part.as_ref().and_then(|p| {
             if p.system {
                 // A system part: what hearth-system-part has (made for this Hearth OS), else the built-in one.
@@ -483,6 +508,11 @@ impl App {
             }
             if e.test { parts::test_offer(p, self.parts.get(&e.id), &self.hearth).cloned() } else { parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned() }
         })
+    }
+
+    /// It's on this PC: an app the Store installed (an AppImage, or a Store app's copy).
+    pub fn got(&self, e: &Entry) -> bool {
+        self.inst.contains_key(&e.id) || (e.kind == Kind::Store && self.parts.contains_key(&e.id))
     }
 
     /// The version of a Hearth part in use now (the Hearth parts page): the Store's copy, the system part, the Decky
@@ -729,6 +759,10 @@ impl App {
             return Task::none();
         }
         let Some(e) = self.entry(id).cloned() else { return Task::none() };
+        // A Store app: Get and its updates install its Store copy (hearth-part, as a quick update does).
+        if e.kind == Kind::Store {
+            return Task::done(Msg::PartGet(id.to_string()));
+        }
         let Some(rel) = self.seen.rel(id) else {
             self.say(format!("{} has no release to install yet.", e.name), true);
             return Task::none();
@@ -856,13 +890,27 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Minimize => return win::minimize(),
         Msg::Close => return win::close(),
         Msg::Resize(d) => return win::resize(d),
+        // A Store app's Check and repair: its Store copy got again (checked against the signed list).
+        Msg::Go(Page::Repair(id)) if a.entry(&id).map(|e| e.kind == Kind::Store).unwrap_or(false) => {
+            a.menu = false;
+            return update(a, Msg::PartGet(id));
+        }
         Msg::Go(pg) => return a.go(pg),
         Msg::Back => return a.back(),
         Msg::Focus(id) => a.focus = id,
         Msg::OpenApp(id) => return a.go(Page::App(id)),
         Msg::Launch(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };
-            if e.kind == Kind::BuiltIn {
+            if e.kind == Kind::Store {
+                match e.part.as_ref() {
+                    Some(p) if a.parts.contains_key(&id) => {
+                        if !parts::store_launch(p) {
+                            a.say(format!("{} couldn't start. Check and repair can put it right.", e.name), true);
+                        }
+                    }
+                    _ => a.say(format!("{} isn't on this PC yet: Get it here.", e.name), true),
+                }
+            } else if e.kind == Kind::BuiltIn {
                 if e.id == "mantel" {
                     a.say("Mantel is Hearth's own desktop: Settings › Your desktop picks it.", false);
                 } else if which(&e.open) {
@@ -911,11 +959,39 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::PartGet(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };
-            let Some(pt) = e.part.clone().filter(|p| e.test && parts::test_fits(p, &a.hearth)) else { return Task::none() };
-            if a.offline() || !a.part_busy.insert(id.clone()) {
+            let store = e.kind == Kind::Store;
+            let Some(pt) = e.part.clone().filter(|p| (e.test || store) && parts::test_fits(p, &a.hearth)) else {
+                if store {
+                    a.say(format!("{} isn't made for Hearth OS {} yet.", e.name, a.hearth), true);
+                }
+                return Task::none();
+            };
+            if a.offline() {
+                a.say("You're offline: installing and updates wait until you're back online.", true);
+                return Task::none();
+            }
+            if !a.part_busy.insert(id.clone()) {
                 return Task::none();
             }
             a.say(format!("Getting {} {}…", e.name, pt.version), false);
+            if store {
+                // Its Store copy (checked against the signed list's SHA-256, made for this Hearth OS), then its menu
+                // entry, icon and command, so it's in Mantel's menus.
+                let had = a.parts.contains_key(&id);
+                let done = if had { format!("{} is on {}: it opens with it next time.", e.name, pt.version) } else { format!("{} {} is installed: open it here or from the app menu.", e.name, pt.version) };
+                let e2 = e.clone();
+                return Task::perform(
+                    net::off(move || {
+                        parts::install_channel(&pt, false)?;
+                        system::add_history(&format!("{} {}", e2.short, pt.version), files::now());
+                        Ok::<String, String>(match parts::store_menu(&e2) {
+                            Ok(()) => done,
+                            Err(x) => format!("{done} (Its menu entry couldn't be written: {x}.)"),
+                        })
+                    }),
+                    move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("It didn't install; nothing changed.".into()))),
+                );
+            }
             let done = if pt.id == "mantel-rust" {
                 format!("{} {} is in: your desktop restarts with it in a moment. Remove it here to go back.", e.name, pt.version)
             } else {
@@ -1403,6 +1479,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let Some(d) = a.dlg.take() else { return Task::none() };
             let Some(e) = a.entry(&d.id).cloned() else { return Task::none() };
             let id = d.id.clone();
+            if e.kind == Kind::Store {
+                return Task::perform(net::off(move || parts::store_uninstall(&e, d.keep).map(|v| v.len())), move |r| Msg::Uninstalled(id.clone(), r.unwrap_or(Err("it stopped".into()))));
+            }
             return Task::perform(
                 net::off(move || {
                     let _ = files::close(&e, 15);
@@ -1428,14 +1507,20 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::ShowFiles(id) => {
             a.menu = false;
-            let d = paths::app_dir(&id);
+            let store = a.entry(&id).filter(|e| e.kind == Kind::Store).and_then(|e| e.part.as_ref()).and_then(|p| parts::copy_dir(&p.id));
+            let d = store.unwrap_or_else(|| paths::app_dir(&id));
             run::detached(&["xdg-open", &d.to_string_lossy()]);
         }
         Msg::ReleasePage(id) => {
             a.menu = false;
             let page = a.inst.get(&id).map(|i| i.page.clone()).filter(|p| !p.is_empty()).or_else(|| a.seen.rel(&id).map(|r| r.page).filter(|p| !p.is_empty()));
             let gh = a.entry(&id).map(|e| e.github.clone()).unwrap_or_default();
-            let url = page.unwrap_or_else(|| format!("https://github.com/{gh}/releases"));
+            // A Store app's release is its part's (…/releases/download/<tag>/<file> → …/releases/tag/<tag>).
+            let part_page = a.entry(&id).filter(|e| e.kind == Kind::Store).and_then(|e| e.part.as_ref()).and_then(|p| {
+                let (base, rest) = p.url.split_once("/releases/download/")?;
+                Some(format!("{base}/releases/tag/{}", rest.split('/').next()?))
+            });
+            let url = part_page.or(page).unwrap_or_else(|| format!("https://github.com/{gh}/releases"));
             if url.starts_with("https://") {
                 run::detached(&["xdg-open", &url]);
             }
@@ -1819,4 +1904,30 @@ fn main() -> iced::Result {
         .window(app::window("hearth-store", (1280.0, 800.0), (960.0, 620.0)))
         .default_font(app::INTER)
         .run()
+}
+
+#[cfg(test)]
+mod store_app_tests {
+    use super::*;
+
+    fn forge() -> catalog::Part {
+        catalog::Part { id: "hearth-forge-app".into(), version: "1.18.1".into(), os: "1.18".into(), path: "hearth-forge-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 9, notes: vec!["first".into()], missing: vec![], system: false }
+    }
+
+    #[test]
+    fn not_in_the_image_and_not_got_is_get() {
+        assert!(matches!(store_state(&forge(), None, "1.18"), State::Get(r) if r.version == "1.18.1" && r.sha256.len() == 64));
+        assert_eq!(store_state(&forge(), None, "1.17"), State::Coming, "not made for this Hearth OS");
+    }
+
+    #[test]
+    fn got_is_installed_and_opens() {
+        let h = parts::Have { version: "1.18.1".into(), os: "1.18".into(), installed: 5, ..Default::default() };
+        assert!(matches!(store_state(&forge(), Some(&h), "1.18"), State::UpToDate(i) if i.version == "1.18.1"));
+        let old = parts::Have { version: "1.18.0".into(), os: "1.18".into(), ..Default::default() };
+        assert!(matches!(store_state(&forge(), Some(&old), "1.18"), State::Ready(i, r) if i.version == "1.18.0" && r.version == "1.18.1"));
+        let e = Entry::from_json(&serde_json::json!({"id": "forge", "name": "Hearth Forge", "kind": "app"}), false).unwrap();
+        assert_eq!(view::open_label(&e, &store_state(&forge(), Some(&h), "1.18")), "Open");
+        assert!(matches!(view::primary(&e, &store_state(&forge(), None, "1.18")), Some(Msg::Start(_, JobKind::Install))));
+    }
 }

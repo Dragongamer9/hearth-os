@@ -19,6 +19,12 @@ pub enum Kind {
     Install,
     /// Part of Hearth OS: shown with "Built in", updates with Hearth.
     BuiltIn,
+    /// One of Hearth's own apps that isn't in this Hearth OS (the owner, Nov 27: "Forge isn't a built in app"; "just
+    /// because we add apps don't make them built in or installed by default"): you Get it from the Store, which puts
+    /// its Store copy in your home folder (hearth-part, as a quick update), and then it opens, updates and uninstalls
+    /// like any app. Its entry is "kind": "app" with a "part"; an older entry that says "builtin" counts too when its
+    /// program isn't on this PC (settle).
+    Store,
     /// Not out yet.
     Coming,
 }
@@ -93,6 +99,9 @@ pub struct Entry {
     /// A Decky plugin (its folder, "decky-hearth-sync"): updated through Hearth's plugin updates (hearth-decky
     /// plugins-update, docs/PLUGIN-UPDATES.md), as you, between Hearth OS updates.
     pub decky: String,
+    /// The list's "inImage" (false: one of Hearth's apps that isn't in the Hearth OS image, a Store app). Only a hint:
+    /// whether its program is really on this PC decides (settle).
+    pub in_image: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +161,8 @@ impl Entry {
         let kind = match s(v, "kind").as_str() {
             "builtin" | "built-in" => Kind::BuiltIn,
             "coming" => Kind::Coming,
+            // A Hearth app from the Store: without a part (none out yet) it's coming.
+            "app" | "store" => if v.get("part").map(|p| p.is_object()).unwrap_or(false) { Kind::Store } else { Kind::Coming },
             _ => Kind::Install,
         };
         let mut file = s(v, "file");
@@ -173,6 +184,7 @@ impl Entry {
         });
         let short = s(v, "short");
         Some(Entry {
+            in_image: v.get("inImage").and_then(Value::as_bool),
             group: s(v, "group"),
             with: s(v, "with"),
             decky: { let d = s(v, "decky"); if d.starts_with("decky-hearth-") && d.len() <= 60 && d.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { d } else { String::new() } },
@@ -245,7 +257,52 @@ impl Entry {
     }
     /// A Hearth part (on the Hearth parts page): built into Hearth OS, updated from the Store or with something else.
     pub fn is_hearth_part(&self) -> bool {
-        !self.test && (self.kind == Kind::BuiltIn || self.part.is_some() || !self.decky.is_empty() || !self.with.is_empty())
+        self.kind != Kind::Store && !self.test && (self.kind == Kind::BuiltIn || self.part.is_some() || !self.decky.is_empty() || !self.with.is_empty())
+    }
+}
+
+impl Entry {
+    /// One of Hearth's own apps with a Store copy to get (a part that isn't a system part, a Decky plugin, a test
+    /// version or a desktop, and that opens a program).
+    pub fn could_be_store_app(&self) -> bool {
+        matches!(self.kind, Kind::BuiltIn | Kind::Store)
+            && !self.test
+            && self.decky.is_empty()
+            && !self.open.trim().is_empty()
+            && self.part.as_ref().map(|p| !p.system).unwrap_or(false)
+    }
+    /// The program it opens, by name ("hearth-forge-app").
+    pub fn program(&self) -> String {
+        let first = self.open.split_whitespace().next().unwrap_or("");
+        first.rsplit('/').next().unwrap_or("").to_string()
+    }
+}
+
+/// Whether an app's program is in this Hearth OS (the image): /usr/libexec/hearth/apps/<it> or /usr/bin/<it>, never
+/// anything in the home folder (a Store copy isn't "in the image"). CI's pretend world lists the programs it leaves
+/// out in its "not-in-image" file instead.
+pub fn in_image(e: &Entry) -> bool {
+    let prog = e.program();
+    let pid = e.part.as_ref().map(|p| p.id.clone()).unwrap_or_default();
+    if let Some(f) = crate::paths::fixture() {
+        let out = std::fs::read_to_string(f.join("not-in-image")).unwrap_or_default();
+        return !out.lines().map(str::trim).any(|l| !l.is_empty() && (l == prog || l == pid));
+    }
+    if prog.is_empty() {
+        return false;
+    }
+    let first = e.open.split_whitespace().next().unwrap_or("");
+    let sys = |n: &str| !n.is_empty() && !n.contains("..") && ["/usr/libexec/hearth/apps", "/usr/bin", "/usr/local/bin", "/usr/games"].iter().any(|d| Path::new(d).join(n).exists());
+    (first.starts_with("/usr/") && Path::new(first).exists()) || sys(&prog) || sys(&pid)
+}
+
+/// What each entry is on this PC: one of Hearth's apps whose program isn't in this Hearth OS is a Store app to Get
+/// (whatever its entry says); one whose program is here is built in, as before.
+pub fn settle(apps: &mut [Entry], present: impl Fn(&Entry) -> bool) {
+    for e in apps.iter_mut() {
+        if e.could_be_store_app() {
+            e.kind = if present(e) { Kind::BuiltIn } else { Kind::Store };
+        }
     }
 }
 
@@ -269,6 +326,54 @@ pub fn parse(text: &[u8]) -> Option<(u64, Vec<Entry>)> {
 pub fn parse_system(text: &[u8]) -> Option<crate::system::SysInfo> {
     let v: Value = serde_json::from_slice(text).ok()?;
     crate::system::parse_info(v.get("system"))
+}
+
+#[cfg(test)]
+mod store_apps {
+    use super::*;
+
+    const LIST: &[u8] = br#"{"serial": 47, "apps": [
+        {"id": "files", "name": "Hearth Files", "kind": "builtin", "open": "hearth-files-app",
+         "part": {"id": "hearth-files-app", "version": "1.18.2", "os": "1.18", "path": "hearth-files-app", "url": "https://x/f", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}},
+        {"id": "part-hearth-forge-app", "name": "Hearth Forge", "kind": "builtin", "open": "hearth-forge-app", "group": "apps",
+         "part": {"id": "hearth-forge-app", "version": "1.18.1", "os": "1.18", "path": "hearth-forge-app", "url": "https://x/y", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}},
+        {"id": "game-fixer", "name": "Hearth Game Fixer", "kind": "app", "inImage": false, "open": "hearth-game-fixer",
+         "part": {"id": "hearth-game-fixer", "version": "1.18.1", "os": "1.18", "path": "hearth-game-fixer", "url": "https://x/z", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}},
+        {"id": "imagine", "name": "Hearth Imagine", "kind": "app", "inImage": false, "open": "hearth-imagine-app"},
+        {"id": "mantel", "name": "Mantel", "kind": "builtin",
+         "part": {"id": "mantel", "version": "1.18.2", "os": "1.18", "path": "shell", "url": "https://x/m", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}},
+        {"id": "helper", "name": "Home server helper", "kind": "builtin", "open": "x",
+         "part": {"id": "hearth-home-server-helper", "version": "1.18.1", "os": "1.18", "path": "h", "system": true, "url": "https://x/h", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}}
+    ]}"#;
+
+    fn kind(apps: &[Entry], id: &str) -> Kind {
+        apps.iter().find(|e| e.id == id).unwrap().kind
+    }
+
+    #[test]
+    fn an_app_thats_not_in_the_image_is_a_store_app() {
+        let (_, mut apps) = parse(LIST).unwrap();
+        assert_eq!(kind(&apps, "game-fixer"), Kind::Store, "kind app with a part");
+        assert_eq!(apps.iter().find(|e| e.id == "game-fixer").unwrap().in_image, Some(false));
+        assert_eq!(kind(&apps, "imagine"), Kind::Coming, "kind app without a part yet: coming, never built in");
+        // On a 1.18 PC only Hearth Files' program is in the image.
+        settle(&mut apps, |e| e.program() == "hearth-files-app");
+        assert_eq!(kind(&apps, "files"), Kind::BuiltIn, "in the image: exactly as before");
+        assert_eq!(kind(&apps, "part-hearth-forge-app"), Kind::Store, "an older entry saying builtin, program not here");
+        assert_eq!(kind(&apps, "game-fixer"), Kind::Store);
+        assert_eq!(kind(&apps, "mantel"), Kind::BuiltIn, "Mantel is a desktop, not an app to get");
+        assert_eq!(kind(&apps, "helper"), Kind::BuiltIn, "system parts stay as they are");
+        assert!(!apps.iter().find(|e| e.id == "part-hearth-forge-app").unwrap().is_hearth_part(), "not on the Hearth parts page");
+        assert!(apps.iter().find(|e| e.id == "files").unwrap().is_hearth_part());
+    }
+
+    #[test]
+    fn its_program_on_this_pc_wins_over_the_hint() {
+        let (_, mut apps) = parse(LIST).unwrap();
+        settle(&mut apps, |_| true);
+        assert_eq!(kind(&apps, "game-fixer"), Kind::BuiltIn, "inImage false but the program is in this image: built in");
+        assert_eq!(kind(&apps, "part-hearth-forge-app"), Kind::BuiltIn);
+    }
 }
 
 #[cfg(test)]
@@ -357,6 +462,8 @@ pub fn load() -> Catalog {
             cat.apps.push(e);
         }
     }
+    // Hearth's apps that aren't in this Hearth OS: Store apps to Get, never "built in" (the owner, Nov 27).
+    settle(&mut cat.apps, in_image);
     // Test versions: only with "Get test versions" on, or while one is installed (so it can be removed).
     let test = crate::prefs::load().test;
     cat.apps.retain(|e| !e.test || test || e.part.as_ref().map(|p| crate::parts::have(&p.id).is_some()).unwrap_or(false));

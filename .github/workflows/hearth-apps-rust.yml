@@ -76,6 +76,11 @@ jobs:
           if grep -qE '^test result: FAILED' ../../test.log; then
             grep -E '^test .* FAILED$|panicked at|assertion' ../../test.log | head -20 | while read -r l; do echo "::error title=cargo test::$(echo "$l" | cut -c1-900)"; done
           fi
+      - name: Store apps aren't built in (red flag 13, the owner's Nov 27 rule)
+        run: |
+          python3 -m unittest -v hosts/linux/test/test_store_only_apps.py hosts/linux/test/test_store_parts.py > /tmp/so.log 2>&1 \
+            && echo "::notice title=Store apps::$(tail -3 /tmp/so.log | tr '\n' ' ')" \
+            || { grep -E '^(FAIL|ERROR|AssertionError)' /tmp/so.log | head -8 | while read -r l; do echo "::error title=Store apps::$l"; done; exit 1; }
       - name: Gather
         run: |
           mkdir -p bin

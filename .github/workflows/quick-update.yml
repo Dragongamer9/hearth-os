@@ -181,6 +181,16 @@ jobs:
             tar -C /tmp/part -xf /tmp/out/hearth-ui.tar "./$APP"
             test -x "/tmp/part/$APP"
             echo "INNER=$APP" >> "$GITHUB_ENV"
+            # Its menu entry and icon come with it (share/applications, share/icons): a Store app isn't in the image,
+            # so the Hearth Store puts these in your home folder when you Get it (parts.rs store_menu).
+            for dsk in $(grep -lE "^Exec=/usr/bin/$APP( |\$)" os/system_files/usr/share/applications/*.desktop 2>/dev/null); do
+              install -Dm644 "$dsk" "/tmp/part/share/applications/$(basename "$dsk")"
+              ic=$(grep -m1 '^Icon=' "$dsk" | cut -d= -f2)
+              for f in "os/system_files/usr/share/icons/hicolor/scalable/apps/$ic.svg" "os/branding/icons/$ic.svg"; do
+                [ -n "$ic" ] && [ -f "$f" ] && { install -Dm644 "$f" "/tmp/part/share/icons/hicolor/scalable/apps/$ic.svg"; break; }
+              done
+            done
+            ls -R /tmp/part/share 2>/dev/null | head -20
           fi
           f="$APP-$VER.tar.gz"
           tar -C /tmp/part -czf "/tmp/$f" --owner=0 --group=0 .
@@ -223,6 +233,20 @@ jobs:
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
           if app in system_parts:
               part["system"] = True
+          # Store apps (the owner, Nov 27: "Forge isn't a built in app"; "just because we add apps don't make them built in
+          # or installed by default"): Hearth's apps that aren't in the Hearth OS image (only what was in 1.18 is; the
+          # same list as os-bases/peppermint/build.sh's STORE_ONLY_APPS, checked by test_store_only_apps.py). Their
+          # entry is "kind": "app" with "inImage": false: a Store with Store apps offers Get; an older Store shows it
+          # as Coming instead of built in and installed. Their name, icon and words come from the image's own list.
+          store_apps = ("hearth-retro-app", "hearth-retro-to-steam-app", "hearth-studio-app", "hearth-beat-maker-app", "hearth-game-fixer",
+                        "hearth-proton-manager", "hearth-overlay", "hearth-bottles", "hearth-3d", "hearth-lights-app", "hearth-remap-app",
+                        "hearth-mouse-app", "hearth-shield-app", "hearth-listen-app", "hearth-imagine-app", "hearth-passwords-app",
+                        "hearth-cloud-app", "hearth-home-app", "hearth-forge-app")
+          try:
+              image_list = json.load(open(os.path.join(os.environ["GITHUB_WORKSPACE"], "os/system_files/usr/share/hearth/store/catalog.json"), encoding="utf-8"))["apps"]
+          except (OSError, ValueError, KeyError):
+              image_list = []
+          about = next((x for x in image_list if x.get("partId") == app or x.get("open") == app), {})
           missing = [l.strip() for l in os.environ.get("MISSING", "").split("|") if l.strip()]
           if missing:
               part["missing"] = missing
@@ -277,6 +301,14 @@ jobs:
           # A test version: shown only with "Get test versions" on, got and removed by hand.
           if test:
               e["test"] = True
+          elif app in store_apps:
+              e["kind"] = "app"
+              e["inImage"] = False
+              e["open"] = app
+              e["group"] = "apps"
+              for k, v in about.items():
+                  if k not in ("id", "kind", "inImage", "part", "_comment"):
+                      e.setdefault(k, v)
           if app == "mantel-rust":
               e["tag"] = "rust"
               e["short"] = "Mantel in Rust"
