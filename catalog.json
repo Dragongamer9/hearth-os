@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 54,
+  "serial": 55,
   "apps": [
     {
       "id": "command-center",
@@ -270,16 +270,16 @@
       "open": "hearth-settings-app",
       "part": {
         "id": "hearth-settings-app",
-        "version": "1.18.2",
+        "version": "1.18.3",
         "os": "1.18",
         "path": "hearth-settings-app",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-settings-app-1.18.2/hearth-settings-app-1.18.2.tar.gz",
-        "sha256": "6f751718bb3385c35b58c045ef9f21b17fd9c3af0f9bd8ae573137078640a818",
-        "size": 12003316,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-settings-app-1.18.3/hearth-settings-app-1.18.3.tar.gz",
+        "sha256": "5f1751f2db351564a7c001d84b442a49f07101f33b50454ce96b1d05e0e8bc59",
+        "size": 12044636,
         "notes": [
-          "Drag and drop: move, size and customize any part of the app, right on it (Customize: look, what it shows, what it does)",
-          "Your own blocks: buttons that run anything, counts, words",
-          "Nothing is kept until Keep this; Cancel and Esc change nothing"
+          "Settings › System › Storage: Files a move put aside, with Bring back, Keep and Delete now",
+          "Nothing put aside is ever deleted by itself any more",
+          "Fixes: AI is in the System tab in the controller look"
         ]
       }
     },
