@@ -323,5 +323,208 @@ class CacheNumbers(unittest.TestCase):
         self.assertEqual(sum(st['devMonth'][month].values()), 4000)
 
 
+class Part2(Base):
+    """The open parts of the boards, built for real (docs/SERVER-HUB.md)."""
+
+    def test_valheim_day_from_its_world_db(self):
+        head = struct.pack('<i', 34) + struct.pack('<d', 214 * 1800 + 900.0)
+        self.assertEqual(hub.valheim_day(head), 214)
+        self.assertIsNone(hub.valheim_day(struct.pack('<i', 3) + struct.pack('<d', 100.0)))   # before netTime was saved
+        self.assertIsNone(hub.valheim_day(b'\x01\x02'))
+
+    def test_players_addresses_and_devices(self):
+        lines = ['[12:01:02] [Server thread/INFO]: Sam[/100.88.0.7:51234] logged in with entity id 12 at (1.0, 64.0, 2.0)',
+                 '[12:03:00] [Server thread/INFO]: Dad[/192.168.1.30:40000] logged in with entity id 13 at (0, 64, 0)']
+        self.assertEqual(hub.minecraft_addrs(lines), {'Sam': '100.88.0.7', 'Dad': '192.168.1.30'})
+        self.assertEqual(hub.bedrock_names(['Player connected: Sam, xuid: 1', 'Player connected: Dad, xuid: 2', 'Player disconnected: Sam, xuid: 1']), ['Dad'])
+        tcp = ('  sl  local_address rem_address   st\n'
+               '   0: 0100007F:63DD 0700586C:C822 01 00000000:00000000\n'
+               '   1: 00000000:63DD 00000000:0000 0A 00000000:00000000\n')
+        self.assertEqual(hub.proc_net_peers(tcp, {25565}), {'108.88.0.7'})
+        ts = {'peers': [{'name': 'rog-ally', 'ips': ['100.101.1.5']}, {'name': 'sam-pc', 'ips': ['100.88.0.7'], 'shared': True}]}
+        self.assertEqual(hub.device_words('100.101.1.5', ts, ['ROG Ally']), 'the ROG Ally')
+        self.assertEqual(hub.device_words('100.88.0.7', ts, []), 'over Tailscale (shared)')
+        self.assertEqual(hub.device_words('192.168.1.30', ts, []), 'on your home network')
+        st = {}
+        hub.learn_addrs(st, 'valheim', ['Sam'], ['100.88.0.7'])
+        hub.learn_addrs(st, 'valheim', ['Sam', 'Jordan'], ['100.88.0.7', '100.88.0.9'])
+        self.assertEqual(st['whoIs']['valheim'], {'Sam': '100.88.0.7', 'Jordan': '100.88.0.9'})
+
+    def test_board_players_devices_and_kick(self):
+        self.board()
+        d = hub.game_view()['detail']
+        self.assertEqual([(p['where'], p['kick']) for p in d['players']], [('the ROG Ally', False), ('over Tailscale (shared)', True), ('over Tailscale (shared)', True)])
+        calls = []
+        self.patch(hub, 'faking', lambda: False)
+        self.patch(hub, 'root', lambda args, stdin=None: calls.append(args) or {'ok': True, 'seconds': 120})
+        self.patch(hub, 'players', lambda gid: {'n': 2, 'names': [{'name': 'Sam'}, {'name': 'Jordan'}]})
+        self.patch(hub, 'game_addrs', lambda gid: ['100.88.0.7', '100.88.0.9'])
+        self.patch(hub, 'seen', lambda: {})
+        self.patch(hub, 'src', lambda name, live, default=None: {'Sam': '100.88.0.7', 'Jordan': '100.88.0.9'} if name.startswith('whoIs.') else default)
+        hub.game_kick('valheim', 'Sam')
+        self.assertEqual(calls, [['games-kick', '100.88.0.7']])
+
+    def test_shared_with_from_tailscale_and_invites(self):
+        ts = {'peers': [{'shared': True, 'owner': 'Chris'}, {'shared': True, 'owner': 'Sam'}]}
+        got = hub.shared_with({'shared': {'Sam': [], 'Dad': ['minecraft']}}, ts, {'minecraft': {'name': 'Minecraft'}}, 'valheim')
+        self.assertEqual(got, ['Sam', 'Dad (Minecraft only)', 'Chris'])
+        self.patch(hub, 'timer_sync', lambda: None)
+        self.patch(hub, 'ts_status', lambda: {'dns': 'pc.ts.net', 'peers': []})
+        hub.invite('valheim', 'Jordan')
+        hub.invite('minecraft', 'Jordan')
+        self.assertEqual(hub.settings()['games']['shared']['Jordan'], ['minecraft', 'valheim'])
+
+    def test_mods_profile_for_r2modman(self):
+        import io
+        import zipfile
+        z = zipfile.ZipFile(io.BytesIO(hub.r2_profile('valheim', [{'id': 'denikson-BepInExPack_Valheim', 'version': '5.4.2202'}])))
+        text = z.read('export.r2x').decode()
+        self.assertIn('- name: denikson-BepInExPack_Valheim', text)
+        self.assertIn('patch: 2202', text)
+
+    def test_mod_zips_stay_in_their_folder(self):
+        import zipfile
+        d = self.tmp.name
+        zp = os.path.join(d, 'bad.zip')
+        with zipfile.ZipFile(zp, 'w') as z:
+            z.writestr('../../evil.txt', 'x')
+        with self.assertRaises(hub.Fail):
+            hub._unzip_into(zp, os.path.join(d, 'plugins'))
+        with zipfile.ZipFile(zp, 'w') as z:
+            z.writestr('BepInExPack_Valheim/BepInEx/core/a.dll', 'x')
+            z.writestr('icon.png', 'x')
+        hub._unzip_into(zp, os.path.join(d, 'game'), 'BepInExPack_Valheim')
+        self.assertTrue(os.path.exists(os.path.join(d, 'game', 'BepInEx', 'core', 'a.dll')))
+        self.assertFalse(os.path.exists(os.path.join(d, 'game', 'icon.png')))
+
+    def test_jobs_only_where_you_said_so(self):
+        self.patch(hub, 'faking', lambda: False)
+        with self.assertRaises(hub.Fail):
+            hub.link_answer('job-start', json.dumps({'game': 'valheim'}))
+        with self.assertRaises(hub.Fail):
+            hub.link_answer('tick', '{}')
+        with self.assertRaises(hub.Fail):
+            hub.link_answer('file', json.dumps({'token': 'nope', 'offset': 0}))
+
+    def test_moonlight_quality_and_its_numbers(self):
+        text = '[Root]\nx=1\n\n[General]\nwidth=1280\nbitrate=5000\nvsync=true\n'
+        out = hub.ini_set(text, 'General', {'width': '1920', 'height': '1080', 'fps': '60', 'bitrate': '20000'})
+        self.assertIn('[Root]\nx=1', out)
+        self.assertIn('width=1920', out)
+        self.assertIn('bitrate=20000', out)
+        self.assertIn('vsync=true', out)
+        self.assertEqual(out.count('width='), 1)
+        self.assertIn('[General]\nwidth=1920', hub.ini_set('', 'General', {'width': '1920'}))
+        log = ('Global video stats\n----\nFrames dropped by your network connection: 0.30%\nFrames dropped due to network jitter: 0.10%\n'
+               'Average network latency: 9 ms (variance: 1 ms)\n')
+        self.assertEqual(hub.moonlight_stats(log), {'ontime': 99.6, 'delay': 9})
+
+    def test_remote_play_board(self):
+        self.board()
+        v = hub.play_view()
+        self.assertEqual(v['pc']['ontime'], 99.6)
+        self.assertTrue(v['now']['shot'].endswith('.png'))
+        self.assertEqual(v['target']['name'], 'ROG Ally')
+        self.assertEqual(v['devices'][3]['rows'][3], ['Last played', 'Mon on break · 41 min'])
+
+    def test_retro_games_listed(self):
+        d = os.path.join(self.tmp.name, 'retrodeck', 'roms', 'snes')
+        os.makedirs(d)
+        open(os.path.join(d, 'Super Game (USA).sfc'), 'w').close()
+        open(os.path.join(d, 'readme.txt'), 'w').close()
+        self.patch(hub, 'RETRO_ROOTS', [os.path.join(self.tmp.name, 'retrodeck', 'roms')])
+        g = hub.retro_games()
+        self.assertEqual([(x['name'], x['kind'], x['system']) for x in g], [('Super Game', 'retro', 'snes')])
+
+    def test_sleep_only_when_it_can_wake_and_nobody_is_there(self):
+        s = hub.settings()
+        s['play']['sleepAfter'] = True
+        st, did = {}, []
+        self.patch(hub, 'my_mac', lambda: '')
+        hub.sleep_tick(s, st, did)
+        self.assertNotIn('quietSince', st)          # can't be woken again: never sleeps
+        self.assertIn('Wake-on-LAN', hub.sleep_note(s['play']))
+
+    def test_media_names_and_ad_breaks(self):
+        self.assertEqual(hub.safe_name('Winter Line: The Return (1948)'), 'Winter Line The Return (1948)')
+        self.patch(hub, 'MEDIA', '/m')
+        self.assertEqual(hub.library_path('movie', 'Winter Line (1948)', '.mp4'), '/m/Movies/Winter Line (1948)/Winter Line (1948).mp4')
+        self.assertEqual(hub.library_path('tv', '', '.mkv', 3, 5, 'Night Harbor'), '/m/TV/Night Harbor/Season 03/Night Harbor S03E05.mkv')
+        self.assertEqual(hub.edl_keep('600.0 780.5 0\n1500 1620 0\n', 2400.0), [(0.0, 600.0), (780.5, 1500.0), (1620.0, 2400.0)])
+        docs = [{'identifier': 'a', 'title': 'Winter Line', 'licenseurl': 'http://creativecommons.org/licenses/by/4.0/'},
+                {'identifier': 'b', 'title': 'Winter Line', 'licenseurl': 'http://creativecommons.org/publicdomain/mark/1.0/'}]
+        self.assertEqual(hub.archive_pick('Winter Line (1948)', docs)['identifier'], 'b')
+        self.assertIsNone(hub.archive_pick('Winter Line', docs[:1]))     # never one that isn't public domain
+
+    def test_media_board_from_the_files(self):
+        self.board()
+        v = hub.media_view()
+        self.assertEqual(v['music']['line'], '4,612 songs · 38 GB')
+        self.assertEqual(v['music']['rows'][0][:3], ['Your CDs, ripped', '312 albums · 31 GB', '3,880'])
+        self.assertEqual(v['photos']['line'], '23,418 photos and videos · 312 GB')
+        self.assertEqual(v['photos']['rows'][-1], ['Same photo twice', '412 found · ', 'Look through them'])
+
+    def test_week_from_the_samples(self):
+        t = 1795000000 // 300 * 300
+        samples = {str(t - 300 * i): (0 if 10 <= i < 20 else 1) for i in range(40)}
+        segs = hub.week_segments(samples, t)
+        self.assertEqual([x['on'] for x in segs], [True, False, True])
+
+    def test_bedrock_in_the_catalog_and_its_firewall_port(self):
+        self.assertIn('bedrock', hub.sa().CATALOG)
+        self.assertIn(19132, hh.GAME_UDP)
+        t = hh.games_nft_text()
+        self.assertIn('set kicked { type ipv4_addr; flags timeout; }', t)
+        self.assertIn('ip saddr @kicked', t)
+
+
+class CacheFromTheStore(unittest.TestCase):
+    def test_store_names(self):
+        self.assertEqual(dns.store_game('epicgames', '/Builds/Fortnite/CloudDir/ChunksV4/1/AB.chunk'), 'Fortnite')
+        self.assertEqual(dns.store_game('epicgames', '/Builds/Org/o-abc/8a4bd1b0a0cf4c7b8e2b7d0d3b2a1f00/default/x.chunk'), '')
+        self.assertEqual(dns.store_game('blizzard', '/tpr/wow/data/ab/cd/abcd'), 'World of Warcraft')
+        self.assertEqual(dns.store_game('xboxlive', '/5/abc/Microsoft.SeaofThieves_2.140.123.0_x64__8wekyb3d8bbwe.msixvc'), 'Sea of Thieves')
+
+    def test_least_used_switch_and_keep(self):
+        d = tempfile.mkdtemp()
+        old = dns.STATE
+        dns.STATE = d
+        try:
+            conf = {'cache': {'on': True, 'sizeGB': 100, 'dropOld': False}}
+            self.assertTrue(dns.full_check(conf, {'used': 98 * 10 ** 9}))
+            self.assertTrue(dns.cache_full())
+            self.assertNotIn('steamcontent', dns.adguard_yaml(dict(conf, ads={'on': False, 'pausedUntil': 0}, cache=dict(conf['cache'], stores={'steam': True})), '192.168.1.2', ''))
+            self.assertFalse(dns.full_check(conf, {'used': 96 * 10 ** 9}))   # stays full until below 95%
+            self.assertTrue(dns.full_check(conf, {'used': 90 * 10 ** 9}))
+            self.assertFalse(dns.cache_full())
+            self.assertEqual(dns.disk_size_gb({'sizeGB': 100, 'dropOld': False}), 107)
+            self.assertEqual(dns.disk_size_gb({'sizeGB': 100, 'dropOld': True}), 100)
+            data = os.path.join(d, 'cache', 'data', 'ab')
+            os.makedirs(data)
+            with open(os.path.join(data, 'f1'), 'wb') as f:
+                f.write(b'\x05' * 40 + b'\nKEY: steam/depot/1086941/chunk/abcbytes=1048576-2097151\nHTTP/1.1 200 OK\n')
+            got = []
+            old_sg = dns.steam_game
+            dns.steam_game = lambda path, cache: "Baldur's Gate 3"
+            try:
+                r = dns.keep_run({'cache': {'on': True, 'dir': os.path.join(d, 'cache'), 'keep': ["Baldur's Gate 3"]}}, get=lambda *a: got.append(a))
+            finally:
+                dns.steam_game = old_sg
+            self.assertEqual(got, [('steam', '/depot/1086941/chunk/abc', 1048576)])
+            self.assertEqual(r['kept'], {"Baldur's Gate 3": 1})
+        finally:
+            dns.STATE = old
+
+    def test_cache_units_from_the_helper(self):
+        u = hh.cache_unit_texts()
+        self.assertEqual(sorted(u), ['hearth-lancache.service', 'hearth-server-dns-start.service', 'hearth-server-dns-watch.service',
+                                     'hearth-server-dns.service', 'hearth-server-dns.timer'])
+        for n, t in u.items():
+            if n.endswith('.service'):
+                self.assertNotIn('[Install]', t, n)        # never part of starting the PC
+                self.assertIn(hh.CACHE_ENGINE, t)
+        self.assertIn('OnBootSec=60', u['hearth-server-dns.timer'])
+
+
 if __name__ == '__main__':
     unittest.main()

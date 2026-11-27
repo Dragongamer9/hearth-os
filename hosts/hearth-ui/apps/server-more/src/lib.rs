@@ -94,6 +94,8 @@ pub enum Msg {
     Copy(String),
     /// a list opened on a page (the cache's drives), or closed with ""
     Pick(&'static str),
+    /// Remote play: the game whose "on the … ▾" list is open (pick a device to start it on)
+    PGame(String),
     Tick,
 }
 
@@ -110,6 +112,7 @@ pub struct Hub {
     pub console: Vec<String>,
     pub typed: String,
     pub pick: &'static str,
+    pub pgame: String,
 }
 
 impl Default for Hub {
@@ -125,6 +128,7 @@ impl Default for Hub {
             console: vec![],
             typed: String::new(),
             pick: "",
+            pgame: String::new(),
         }
     }
 }
@@ -198,7 +202,9 @@ impl Hub {
                         if let Some(u) = v.get("open").and_then(Value::as_str) {
                             open_url(u);
                         }
-                        if let Some(a) = v.get("address").and_then(Value::as_str) {
+                        if let Some(x) = v.get("say").and_then(Value::as_str) {
+                            self.said = x.to_string();
+                        } else if let Some(a) = v.get("address").and_then(Value::as_str) {
                             self.said = format!("{ok} {a}");
                         } else {
                             self.said = ok;
@@ -214,6 +220,7 @@ impl Hub {
             Msg::GTab(x) => self.gtab = x,
             Msg::Pick(x) => self.pick = if self.pick == x { "" } else { x },
             Msg::PTab(x) => self.ptab = x,
+            Msg::PGame(g) => self.pgame = if self.pgame == g { String::new() } else { g },
             Msg::Typed(x) => self.typed = x.chars().take(200).collect(),
             Msg::Open(u) => open_url(&u),
             Msg::Copy(x) => {

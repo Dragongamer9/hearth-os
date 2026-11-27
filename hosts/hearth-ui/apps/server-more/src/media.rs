@@ -92,7 +92,13 @@ fn board<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
     l.push(kit::caps(&p, "Added this week"));
     let mut posters = Row::new().spacing(8.0);
     let tones = [("#2a3a5a", "#10141e"), ("#6a3a2a", "#1e100c"), ("#2a5a5a", "#0c1a1a"), ("#5a5a2a", "#1a1a0c")];
-    for (i, _n) in list(lib, "latest").iter().enumerate() {
+    for (i, n) in list(lib, "latest").iter().enumerate() {
+        // Each item's own poster from Jellyfin (kept small in ~/.cache); a colour where it has none yet.
+        let poster = s(n, "poster");
+        if !poster.is_empty() && std::path::Path::new(&poster).exists() {
+            posters = posters.push(container(iced::widget::image(iced::widget::image::Handle::from_path(poster)).content_fit(iced::ContentFit::Cover).width(Length::Fixed(44.0)).height(Length::Fixed(64.0))).clip(true).style(ui::boxed(p.panel2, 6.0, None)));
+            continue;
+        }
         let (a, b) = tones[i % 4];
         posters = posters.push(container(Space::new()).width(Length::Fixed(44.0)).height(Length::Fixed(64.0)).style(kit::gradient(160.0, kit::hex(a).unwrap_or(p.panel2), kit::hex(b).unwrap_or(p.bg), 6.0, None)));
     }
@@ -149,7 +155,7 @@ fn photos<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
         let right: E<'a, Msg> = if link.is_empty() {
             t(sv(at(r, "/1")), 12.0, p.muted).into()
         } else {
-            row![t(sv(at(r, "/1")), 12.0, p.muted), kit::click(t(link, 12.0, p.accent), Some(Msg::Open("hearth-settings://photos".into())))].into()
+            row![t(sv(at(r, "/1")), 12.0, p.muted), kit::click(t(link, 12.0, p.accent), Some(act(P, &["media-dupes"], "Opened: each group in its own folder, nothing moved or deleted.")))].into()
         };
         rows = rows.push(line(t(sv(at(r, "/0")), 13.0, p.text).into(), right));
     }

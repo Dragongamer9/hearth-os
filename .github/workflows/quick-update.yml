@@ -127,6 +127,10 @@ jobs:
               mkdir -p /tmp/part/hearth-server-parts
               cp os/system_files/usr/libexec/nimbus/hearth-server-parts/* /tmp/part/hearth-server-parts/
               rm -rf /tmp/part/hearth-server-parts/__pycache__
+              # The game cache's engine (hearth-server-dns, docs/SERVER-HUB.md) comes with it too, so the cache updates
+              # through the Store: cache-setup points the cache's services at a root-owned copy of it.
+              python3 -m py_compile os/system_files/usr/libexec/nimbus/hearth-server-dns
+              cp os/system_files/usr/libexec/nimbus/hearth-server-dns /tmp/part/hearth-server-parts/server-dns.py
               chmod 644 /tmp/part/hearth-server-parts/*
             fi
             echo "INNER=$APP" >> "$GITHUB_ENV"

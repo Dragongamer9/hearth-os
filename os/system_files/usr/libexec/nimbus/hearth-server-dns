@@ -21,6 +21,11 @@ Run through pkexec by hearth-server-mode (49-hearth-memory.rules: the person at 
   hearth-server-dns store STORE on|off   steam | epic | blizzard | xbox
   hearth-server-dns cache-place DIR GB   where the cache lives and how big it may get (the oldest games leave first)
   hearth-server-dns cache-empty SURE     empties it (SURE = "sure": the dashboard asks twice)
+  hearth-server-dns cache-drop on|off    when it's full: drop the least-used games (LANCache's own way, on) or keep
+                                         everything and let new downloads go straight to the internet (off)
+  hearth-server-dns cache-keep NAME on|off   keep a game forever: every night its pieces are read through the cache
+                                         once, so they're always the most recently used and never dropped
+  hearth-server-dns keep-run             what the watcher starts each night for the games kept forever
   hearth-server-dns ads on|off           the ad blocker
   hearth-server-dns ads-pause SECONDS    stop blocking for a while (0: block again now)
   hearth-server-dns allow DOMAIN         let a site that breaks through (from here or your phone)
@@ -94,7 +99,7 @@ STORES = {
                                                             'assets1.xboxlive.cn', 'assets2.xboxlive.cn']},
 }
 DEFAULTS = {'cache': {'on': False, 'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': False},
-                      'dir': '/var/lib/hearth/server-dns/cache', 'sizeGB': 500},
+                      'dir': '/var/lib/hearth/server-dns/cache', 'sizeGB': 500, 'dropOld': True, 'keep': []},
             'ads': {'on': False, 'pausedUntil': 0, 'allow': [], 'block': [], 'devices': {}, 'lists': {}, 'safeSearch': False}}
 
 
@@ -229,7 +234,14 @@ def adguard_rules(conf, names, now=None):
     return rules
 
 
-def adguard_yaml(conf, lan, ts, names=None, now=None):
+FULL_MARK = 'full'          # in STATE: the cache is full and "drop the least used" is off: new downloads go straight through
+
+
+def cache_full():
+    return os.path.exists(os.path.join(STATE, FULL_MARK))
+
+
+def adguard_yaml(conf, lan, ts, names=None, now=None, full=None):
     """The parts of AdGuardHome.yaml Hearth decides; AdGuard fills in the rest the first time it starts."""
     now = now or time.time()
     names = names if names is not None else {}
@@ -240,7 +252,8 @@ def adguard_yaml(conf, lan, ts, names=None, now=None):
         rewrites.append(('lan.' + MARKER, lan))
     if ts:
         rewrites.append(('ts.' + MARKER, ts))
-    if cache['on'] and lan:
+    full = cache_full() if full is None else full
+    if cache['on'] and lan and not full:
         for sid, s in STORES.items():
             if cache['stores'].get(sid):
                 rewrites += [(d, lan) for d in s['domains']]
@@ -322,6 +335,14 @@ def cmd_run_dns():
                        DNS_IMAGE, '-c', '/opt/adguardhome/conf/AdGuardHome.yaml', '-w', '/opt/adguardhome/work', '--no-check-update'])
 
 
+def disk_size_gb(c):
+    """LANCache's own limit. With "drop the least used" on it's your size (nginx drops the least-used pieces past it);
+    off, it's 6% more, and Hearth stops sending new downloads to the cache at 97% of your size (the watcher), so
+    nothing is ever dropped."""
+    gb = int(c['sizeGB'])
+    return gb if c.get('dropOld', True) else int(gb * 1.06) + 1
+
+
 def cmd_run_cache():
     conf = read_conf()[0]
     c = conf['cache']
@@ -336,7 +357,7 @@ def cmd_run_cache():
     run([PODMAN, 'rm', '-f', 'hearth-lancache'], timeout=60)
     # Its own lookups go straight to the internet (never back to Hearth's DNS, which sends the stores here).
     os.execvp(PODMAN, [PODMAN, 'run', '--rm', '--name', 'hearth-lancache', '--pull', 'never', *ports,
-                       '-e', 'UPSTREAM_DNS=9.9.9.9 1.1.1.1', '-e', 'CACHE_DISK_SIZE=%dg' % int(c['sizeGB']),
+                       '-e', 'UPSTREAM_DNS=9.9.9.9 1.1.1.1', '-e', 'CACHE_DISK_SIZE=%dg' % disk_size_gb(c),
                        '-e', 'CACHE_INDEX_SIZE=%dm' % max(250, int(c['sizeGB']) // 4), '-e', 'CACHE_MAX_AGE=3650d',
                        '-v', '%s:/data/cache:Z' % os.path.join(d, 'data'), '-v', '%s:/data/logs:Z' % os.path.join(d, 'logs'),
                        CACHE_IMAGE])
@@ -400,6 +421,43 @@ def steam_game(path, cache):
     return name
 
 
+# Battle.net's products by their folder on its download servers (tpr/<product>); others show as "Battle.net · CODE".
+BNET = {'wow': 'World of Warcraft', 'wowc': 'World of Warcraft Classic', 'pro': 'Overwatch 2', 'd3': 'Diablo III',
+        'fenris': 'Diablo IV', 'osi': 'Diablo II: Resurrected', 'hero': 'Heroes of the Storm', 'hsb': 'Hearthstone',
+        's2': 'StarCraft II', 'w3': 'Warcraft III: Reforged', 's1': 'StarCraft: Remastered', 'agent': 'the Battle.net app',
+        'bna': 'the Battle.net app'}
+
+
+def words_of(name):
+    """'SeaofThieves' / 'Sea_of_Thieves' → 'Sea of Thieves' (a package's or a build's own name, made readable)."""
+    name = re.sub(r'[_\-]+', ' ', name)
+    name = re.sub(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])', ' ', name)
+    name = re.sub(r'(?<=[a-z]{2})(of|the|and) ', r' \1 ', name + ' ')
+    return re.sub(r'\s+', ' ', name).strip()
+
+
+def store_game(store, path):
+    """A download's game where its address names it: Epic's builds (/Builds/<Game>/… or /Builds/Org/<org>/<game>/…
+    when that's a name, not a number), Battle.net's products (/tpr/<product>/…) and the Xbox app's packages
+    (<Publisher>.<Game>_<version>_….msixvc). '' when the address only has numbers (Epic's newer games)."""
+    if store == 'epicgames':
+        m = re.match(r'/Builds/(?:Org/[^/]+/)?([^/]+)/', path)
+        if m and not re.fullmatch(r'[0-9a-fA-F]{16,}|[0-9]+|[A-Za-z0-9]{32}', m.group(1)) and m.group(1).lower() not in ('default', 'clouddir'):
+            return words_of(urllib.parse.unquote(m.group(1)))
+        return ''
+    if store == 'blizzard':
+        m = re.match(r'/tpr/([a-z0-9_]+)/', path)
+        if m:
+            return BNET.get(m.group(1), 'Battle.net · %s' % m.group(1).upper())
+        return ''
+    if store in ('xboxlive', 'windowsupdate', 'wsus'):
+        m = re.search(r'/([A-Za-z0-9]+)\.([A-Za-z0-9.]+?)_\d+\.\d+\.\d+\.\d+_[^/]*\.(?:msixvc|xvc|appx|msix|appxbundle|msixbundle)\b', path)
+        if m and not re.fullmatch(r'[0-9A-F]{8,}', m.group(2)):
+            return words_of(m.group(2).split('.')[-1])
+        return ''
+    return ''
+
+
 def cache_tick(stats, conf, names, now=None):
     """Reads what LANCache wrote since last time: bytes per day (from the cache = saved; from the internet once),
     and who's downloading right now."""
@@ -435,6 +493,8 @@ def cache_tick(stats, conf, names, now=None):
         lv['at'] = now
         if m.group('store') == 'steam' and not lv.get('game'):
             lv['game'] = steam_game(m.group('path'), games)
+        elif not lv.get('game'):
+            lv['game'] = store_game(m.group('store'), m.group('path'))
         # The Home server helper's Game cache page (docs/SERVER-HUB.md): totals since the cache started, each game's
         # (what was fetched once is what it keeps; what came from the cache is saved) and each device's this month.
         tot = stats.setdefault('total', {'hit': 0, 'miss': 0, 'since': int(now)})
@@ -490,11 +550,21 @@ def cache_view(stats, conf, names, now=None):
     return {'savedWeek': hit, 'internetWeek': miss, 'devicesWeek': hit + miss, 'bars': bars, 'now': rows[:6],
             'used': stats.get('used', 0), 'sizeGB': conf['cache']['sizeGB'], 'dir': conf['cache']['dir'],
             'drive': drive_name(conf['cache']['dir']),
+            'dropOld': conf['cache'].get('dropOld', True), 'keep': conf['cache'].get('keep') or [], 'full': cache_full(),
+            'kept': _read_json(os.path.join(STATE, 'keep.json')),
             # the Home server helper's Game cache page
             'total': stats.get('total') or {'hit': 0, 'miss': 0, 'since': 0}, 'games': games,
             'devicesMonth': (stats.get('devMonth') or {}).get(month) or {},
             'monthDays': month_days, 'monthHit': sum(x.get('hit', 0) for x in month_days), 'monthMiss': sum(x.get('miss', 0) for x in month_days),
             'devices': [{'name': n, 'rate': live_by.get(n, 0)} for n in list(live_by) + [x for x in ((stats.get('devMonth') or {}).get(month) or {}) if x not in live_by]][:4]}
+
+
+def _read_json(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
 
 
 def drive_name(path):
@@ -633,6 +703,127 @@ def status(stats=None):
             'settingsReadable': readable, 'lan': lan_ip(), 'at': int(time.time())}
 
 
+# ---------------------------------------------------------------------- full, and games kept forever
+
+# The Host each cache identifier is asked with when a kept game's pieces are read through the cache (LANCache maps
+# the store's download names to these identifiers itself: uklans/cache-domains).
+KEEP_HOST = {'steam': 'lancache.steamcontent.com', 'epicgames': 'epicgames-download1.akamaized.net',
+             'blizzard': 'level3.blizzard.com', 'xboxlive': 'assets1.xboxlive.com'}
+KEY_RE = re.compile(r'^([a-z0-9]+)(/\S*?)(?:bytes=(\d+)-(\d+))?$')
+
+
+def full_check(conf, stats):
+    """With "drop the least used" off: at 97% of your size the stores' names stop going to the cache (downloads go
+    straight to the internet, nothing cached is dropped) and come back below 95%. True when that changed."""
+    c = conf['cache']
+    used, size = int(stats.get('used') or 0), int(c['sizeGB']) * 10 ** 9
+    was = cache_full()
+    if c.get('dropOld', True) or not c['on'] or not size:
+        now_full = False
+    else:
+        now_full = used >= 0.97 * size or (was and used >= 0.95 * size)
+    if now_full == was:
+        return False
+    mark = os.path.join(STATE, FULL_MARK)
+    if now_full:
+        os.makedirs(STATE, exist_ok=True)
+        open(mark, 'w').write('%d\n' % int(time.time()))
+    elif os.path.exists(mark):
+        os.remove(mark)
+    return True
+
+
+def cache_key(path):
+    """The key nginx wrote at the top of a cache file (LANCache: $cacheidentifier$uri$slice_range)."""
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(4096)
+    except OSError:
+        return ''
+    i = head.find(b'\nKEY: ')
+    if i < 0:
+        return ''
+    j = head.find(b'\n', i + 6)
+    return head[i + 6:j if j > 0 else None].decode('utf-8', 'replace').strip()
+
+
+def game_of_key(ident, uri, names):
+    if ident == 'steam':
+        return steam_game(uri, names)
+    return store_game(ident, uri)
+
+
+def keep_index(conf, stats, budget=600):
+    """Each kept game's pieces in the cache ({game: [[ident, uri, start]]}), found by reading the top of each cache
+    file once (new files only after the first time), for at most `budget` seconds a night."""
+    path = os.path.join(STATE, 'keep-index.json')
+    try:
+        idx = json.load(open(path))
+    except (OSError, ValueError):
+        idx = {}
+    seen, pieces = idx.get('scanned', 0), idx.get('pieces') or {}
+    names = stats.setdefault('games', {})
+    data = os.path.join(conf['cache']['dir'], 'data')
+    started, newest = time.time(), seen
+    for dirpath, _dirs, files in os.walk(data):
+        for n in files:
+            p = os.path.join(dirpath, n)
+            try:
+                mt = os.path.getmtime(p)
+            except OSError:
+                continue
+            if mt <= seen:
+                continue
+            newest = max(newest, mt)
+            m = KEY_RE.match(cache_key(p))
+            if not m:
+                continue
+            g = game_of_key(m.group(1), m.group(2), names)
+            if g:
+                pieces.setdefault(g, []).append([m.group(1), m.group(2), int(m.group(3) or 0)])
+        if time.time() - started > budget:
+            break
+    idx = {'scanned': newest, 'pieces': {g: v[-400000:] for g, v in pieces.items()}}
+    write_json(path, idx)
+    return idx['pieces']
+
+
+def keep_run(conf=None, get=None):
+    """The games kept forever: each piece asked from the cache once (one byte of it), so nginx counts it as just
+    used and its least-used rule never picks it. Only from this PC to its own cache; nothing goes to the internet
+    (a piece that's already gone is fetched again only if the store is still sending it to the cache)."""
+    conf = conf or read_conf()[0]
+    keep = [k for k in conf['cache'].get('keep') or [] if isinstance(k, str)]
+    if not keep or not conf['cache']['on']:
+        return {'ok': True, 'kept': {}}
+    try:
+        stats = json.load(open(os.path.join(STATE, 'stats.json')))
+    except (OSError, ValueError):
+        stats = {}
+    pieces = keep_index(conf, stats)
+    host = lan_ip() or '127.0.0.1'
+    out = {}
+
+    def one(ident, uri, start):
+        req = urllib.request.Request('http://%s%s' % (host, uri), headers={'Host': KEEP_HOST.get(ident, ident), 'Range': 'bytes=%d-%d' % (start, start),
+                                                                           'User-Agent': 'Valve/Steam HTTP Client 1.0' if ident == 'steam' else 'Hearth'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            r.read(16)
+    get = get or one
+    for g in keep:
+        n = 0
+        for ident, uri, start in pieces.get(g) or []:
+            try:
+                get(ident, uri, start)
+                n += 1
+            except (OSError, ValueError):
+                pass
+        out[g] = n
+    stats_path = os.path.join(STATE, 'keep.json')
+    write_json(stats_path, {'at': int(time.time()), 'kept': out})
+    return {'ok': True, 'kept': out}
+
+
 def cmd_watch(once=False):
     """The numbers, every few seconds, for the dashboard (readable without root) while either is on."""
     path = os.path.join(STATE, 'stats.json')
@@ -649,6 +840,18 @@ def cmd_watch(once=False):
             rc, out, _ = run(['du', '-sb', os.path.join(conf['cache']['dir'], 'data')], timeout=120)
             if rc == 0 and out.split():
                 stats['used'] = int(out.split()[0])
+            if full_check(conf, stats):
+                write_adguard(conf)
+                unit('restart', 'hearth-server-dns.service')
+        # Each night at 3 AM: the games kept forever are read through the cache once (its own process, low priority).
+        lt = time.localtime()
+        if conf['cache']['on'] and conf['cache'].get('keep') and lt.tm_hour == 3 and stats.get('keptDay') != time.strftime('%Y-%m-%d', lt):
+            stats['keptDay'] = time.strftime('%Y-%m-%d', lt)
+            try:
+                subprocess.Popen(['nice', '-n', '15', 'ionice', '-c', '3', sys.executable, '-I', os.path.realpath(__file__), 'keep-run'],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            except OSError:
+                pass
         # The ad blocker's pause, and each device's hour, end by themselves (what they were before comes back).
         ended = conf['ads']['pausedUntil'] and conf['ads']['pausedUntil'] <= time.time()
         ended_devs = [k for k, dv in (conf['ads'].get('devices') or {}).items() if dv.get('pausedUntil') and dv['pausedUntil'] <= time.time()]
@@ -738,6 +941,21 @@ def main(argv):
                 if not d.startswith(('/var/', '/run/media/', '/mnt/', '/media/')) or d.startswith('/var/lib/hearth/server-dns/adguard'):
                     raise Fail('pick a folder on a drive (under /run/media, /mnt, /media or /var)')
                 out = changed(lambda c: section(c, 'cache').update(dir=d, sizeGB=gb))
+            elif cmd == 'cache-drop' and len(a) == 2:
+                on = onoff(a[1])
+                out = changed(lambda c: section(c, 'cache').update(dropOld=on))
+            elif cmd == 'cache-keep' and len(a) == 3 and re.fullmatch(r"[A-Za-z0-9 _.:'()&!+-]{1,80}", a[1]):
+                on = onoff(a[2])
+                name = a[1]
+
+                def ch(c):
+                    cc = section(c, 'cache')
+                    cur = [x for x in cc.get('keep') or [] if x != name]
+                    cc['keep'] = (cur + [name])[-40:] if on else cur
+                set_conf(ch)            # nothing to restart: the nightly read uses it
+                out = status()
+            elif cmd == 'keep-run' and len(a) == 1:
+                out = keep_run()
             elif cmd == 'cache-empty' and len(a) == 2 and a[1] == 'sure':
                 conf = read_conf()[0]
                 data = os.path.join(conf['cache']['dir'], 'data')

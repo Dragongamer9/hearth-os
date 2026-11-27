@@ -57,6 +57,7 @@ fn card<'a>(h: &'a Hub, p: Pal, c: &'a Value, sel: bool) -> E<'a, Msg> {
             "console" => act(P, &["game-console", &id], ""),
             "build" => act(P, &["game-build", &id], "The newest build is in place."),
             "make" => act(P, &["game-make", &id], "Your game's server build is made by its own build:"),
+            "back" => act(P, &["game-back", &id], "Back on this PC: its world came home first."),
             w => act(P, &["game", w, &id], match w {
                 "stop" => "Stopped. Its world was backed up first.",
                 "start" => "Starting: friends can join in a minute.",
@@ -178,6 +179,16 @@ fn mods<'a>(h: &'a Hub, p: Pal, d: &'a Value, add: bool) -> E<'a, Msg> {
         );
     }
     c = c.push(t(s(m, "note"), 12.0, p.muted));
+    // Friends without Hearth: the same mods through a Thunderstore profile code (r2modman imports it).
+    let code = s(m, "code");
+    if !items.is_empty() {
+        let r: E<'a, Msg> = if code.is_empty() {
+            row![t("Friends without Hearth: a profile code for r2modman", 12.0, p.muted).width(Length::Fill), kit::click(t("Make one", 12.0, p.accent), Some(act(P, &["mods-code", &id], "Made: friends import it in r2modman.")))].align_y(iced::Center).into()
+        } else {
+            row![t(format!("Profile code for r2modman · {code}"), 12.0, p.muted).width(Length::Fill), kit::click(t("Copy", 12.0, p.accent), Some(Msg::Copy(code.clone())))].align_y(iced::Center).into()
+        };
+        c = c.push(r);
+    }
     c.into()
 }
 
@@ -212,17 +223,40 @@ fn settings_tab<'a>(h: &'a Hub, p: Pal, d: &'a Value) -> E<'a, Msg> {
     c.into()
 }
 
-fn invite<'a>(p: Pal, v: &'a Value, sel: &str) -> E<'a, Msg> {
+fn invite<'a>(h: &'a Hub, p: Pal, v: &'a Value, sel: &str) -> E<'a, Msg> {
     let i = at(v, "/invite");
+    let who = h.typed.trim().to_string();
+    // Whom it's for (kept: Shared with), when you say; the link itself is Tailscale's share page.
+    let make: E<'a, Msg> = if h.pick == "invite" {
+        row![
+            text_input("Who is it for?", &h.typed).on_input(Msg::Typed).size(12.0).width(Length::Fixed(130.0)).padding(pad(5.0, 8.0, 5.0, 8.0)).style(kit::field_style(&p)),
+            kit::chip_acc(&p, "Make an invite link", Some(act(P, if who.is_empty() { vec!["invite", sel] } else { vec!["invite", sel, who.as_str()] }.as_slice(), "Share it from Tailscale's page:")))
+        ]
+        .spacing(6.0)
+        .align_y(iced::Center)
+        .into()
+    } else {
+        kit::chip_acc(&p, "Make an invite link", Some(Msg::Pick("invite")))
+    };
+    let mut joins = Column::new().spacing(2.0);
+    for j in list(v, "join") {
+        let (peer, gid) = (s(j, "peer"), s(j, "id"));
+        let mods = at(j, "/mods").as_u64().unwrap_or(0);
+        joins = joins.push(line(
+            t(format!("On {}: {}{}", s(j, "pc"), s(j, "name"), if mods > 0 { format!(" · its {mods} mods first") } else { String::new() }), 12.0, p.text).into(),
+            kit::click(t("Join from here", 12.0, p.accent), Some(act(P, &["game-join", &peer, &gid], "Joining: its mods are in, the game is starting."))),
+        ));
+    }
     kit::card(
         &p,
         column![
             kit::caps(&p, "Invite friends · over Tailscale"),
-            line(two(p, "Share this server with a friend's Tailscale".into(), "they only see this one game, nothing else of yours".into()), kit::chip_acc(&p, "Make an invite link", Some(act(P, &["invite", sel], "Share it from Tailscale's page:")))),
+            line(two(p, "Share this server with a friend's Tailscale".into(), "they only see this one game, nothing else of yours".into()), make),
             container(row![t(s(i, "address"), 13.0, p.text).width(Length::Fill), kit::click(t("Copy", 12.0, p.accent), Some(Msg::Copy(s(i, "address").split(" · ").next().unwrap_or("").to_string())))].align_y(iced::Center))
                 .padding(pad(7.0, 10.0, 7.0, 10.0))
                 .style(ui::boxed(p.bg2, 8.0, Some((p.line, 1.0)))),
             line(t("Shared with", 12.0, p.muted).into(), t(s(i, "shared"), 13.0, p.text).into()),
+            joins,
         ]
         .spacing(6.0),
     )
@@ -302,9 +336,22 @@ fn side<'a>(h: &'a Hub, d: &'a Describe, p: Pal) -> E<'a, Msg> {
     for x in list(v, "catalog") {
         let gid = sv(at(x, "/0"));
         let label = sv(at(x, "/1"));
-        let m = if gid == "more" { Msg::GTab("more") } else { act(P, &["game", "install", &gid], "Getting it ready: it's off until you start it.") };
+        // Minecraft: Java Edition or Bedrock (Mojang's own Bedrock Dedicated Server), picked under its row.
+        let two_kinds = !at(x, "/2").is_null();
+        let m = if gid == "more" { Msg::GTab("more") } else if two_kinds { Msg::GTab("mc") } else { act(P, &["game", "install", &gid], "Getting it ready: it's off until you start it.") };
         let c = container(row![t(label, 13.0, p.text), Space::new().width(Length::Fill), t("›", 13.0, p.muted)].align_y(iced::Center)).padding(pad(8.0, 12.0, 8.0, 12.0)).width(Length::Fill).style(ui::boxed(p.panel2, 8.0, Some((p.line, 1.0))));
         cat = cat.push(kit::click(c, Some(m)));
+        if two_kinds && h.gtab == "mc" {
+            let other = sv(at(x, "/2"));
+            cat = cat.push(
+                container(row![
+                    kit::chip(&p, "Java Edition", Some(act(P, &["game", "install", &gid], "Getting it ready: it's off until you start it."))),
+                    kit::chip(&p, "Bedrock Edition", Some(act(P, &["game", "install", &other], "Getting it ready: it's off until you start it.")))
+                ]
+                .spacing(6.0))
+                .padding(pad(0.0, 0.0, 0.0, 16.0)),
+            );
+        }
         if gid == "more" && h.gtab == "more" {
             for (g, n) in [("terraria", "Terraria"), ("sevendays", "7 Days to Die"), ("ark", "Ark")] {
                 cat = cat.push(container(kit::chip(&p, n, Some(act(P, &["game", "install", g], "Getting it ready: it's off until you start it.")))).padding(pad(0.0, 0.0, 0.0, 16.0)));
@@ -362,7 +409,7 @@ pub fn view<'a>(h: &'a Hub, d: &'a Describe, p: Pal) -> E<'a, Msg> {
         ("head", hd),
         ("cards", cols(cards, 12.0)),
         ("detail", detail(h, p, at(v, "/detail"))),
-        ("invite", invite(p, v, &sel)),
+        ("invite", invite(h, p, v, &sel)),
         ("backups", backups(p, v, &sel)),
         ("schedule", schedule(p, v)),
         ("week", week(p, v)),

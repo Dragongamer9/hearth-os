@@ -48,7 +48,16 @@ fx['players.valheim'] = {'n': 3, 'max': 10, 'names': [{'name': 'Dragongamer9', '
 fx['players.minecraft'] = {'n': 2, 'max': 8, 'names': [{'name': 'Dad', 'secs': 0}, {'name': 'Sam', 'secs': 0}]}
 fx['players.palworld'] = {'n': 2, 'max': 16, 'names': []}
 fx['world.valheim'] = {'day': 214, 'seed': 'f8Kq2Lm'}
-fx['ts'] = {'dns': 'valheim.hearth-pc.ts.net', 'peers': [{'name': 'sam-pc', 'online': True, 'shared': True}, {'name': 'jordan-laptop', 'online': True, 'shared': True}]}
+# Tailscale as `tailscale status --json` says it: your devices and the ones only there because you shared this PC with
+# their owner (ShareeNode, whose they are), each with its address; the players' addresses on Valheim (Podman's
+# forwarding) and who the timer learned is on which.
+fx['ts'] = {'dns': 'valheim.hearth-pc.ts.net', 'peers': [
+    {'name': 'rog-ally', 'ip': '100.101.1.5', 'ips': ['100.101.1.5'], 'online': True, 'shared': False, 'addr': '192.168.1.41:41641', 'os': 'linux'},
+    {'name': 'sam-pc', 'ip': '100.88.0.7', 'ips': ['100.88.0.7'], 'online': True, 'shared': True, 'owner': 'Sam'},
+    {'name': 'jordan-laptop', 'ip': '100.88.0.9', 'ips': ['100.88.0.9'], 'online': True, 'shared': True, 'owner': 'Jordan'},
+    {'name': 'truck-laptop', 'ip': '100.101.1.9', 'ips': ['100.101.1.9'], 'online': True, 'shared': False, 'addr': '172.58.20.4:41641', 'os': 'linux'}]}
+fx['addrs.valheim'] = ['100.101.1.5', '100.88.0.7', '100.88.0.9']
+fx['whoIs.valheim'] = {'Dragongamer9': '100.101.1.5', 'Sam': '100.88.0.7', 'Jordan': '100.88.0.9'}
 fx['worlds.valheim'] = [{'file': '2026-11-26 0400 nightly.tar.gz', 'size': 212e6}, {'file': '2026-11-25 2338 stopped.tar.gz', 'size': 209e6},
                         {'file': '2026-11-25 0400 nightly.tar.gz', 'size': 206e6}]
 fx['worldsCfg'] = {'on': True, 'at': '04:00', 'keep': 30}
@@ -75,14 +84,14 @@ games = [("Baldur's Gate 3", 'Steam', 148, 296, ['Nvidia PC', 'Ally', 'laptop'],
          ('Forza Horizon 5', 'Xbox app', 110, 110, ['Xbox', 'Nvidia PC'], at(2026, 11, 20, 18)),
          ('Valheim', 'Steam', 1.6, 4.8, ['everyone'], at(2026, 11, 26, 0, 5)),
          ('Fortnite', 'Epic', 54, 54, ['Nvidia PC', 'Ally'], at(2026, 11, 18, 16)),
-         ('Hearth OS updates and Store apps', 'Hearth', 11, 38, ['every Hearth device'], at(2026, 11, 26, 1, 0))]
+         ('Hearth OS updates', 'Hearth', 11, 38, ['every Hearth device'], at(2026, 11, 26, 1, 0))]
 more = [{'game': 'game %d' % i, 'store': 'Steam', 'miss': 114 * GB / 34, 'hit': 1150 * GB / 34, 'devices': [], 'last': at(2026, 10, 1)} for i in range(34)]
 month_days = []
 for d in range(1, 27):
     hit = [14, 52, 50, 4, 9, 37, 30, 34, 26, 24, 22, 2, 46, 45, 30, 32, 10, 30, 3, 9, 21, 9, 42, 38, 6, 16][d - 1] * GB
     month_days.append({'hit': hit, 'miss': hit * 0.19})
 fx['dns'] = {'cache': {'on': True, 'running': True, 'sizeGB': 1000, 'dir': '/run/media/games/Hearth game cache',
-                       'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': True},
+                       'stores': {'steam': True, 'epic': True, 'blizzard': True, 'xbox': True}, 'dropOld': True, 'keep': ["Baldur's Gate 3", 'Valheim'],
                        'view': {'used': 612 * GB, 'total': {'hit': 1.9e12, 'miss': 0.4e12, 'since': at(2026, 9, 2, 12)},
                                 'monthHit': 642 * GB, 'monthMiss': 121 * GB, 'monthDays': month_days, 'internetMbps': 300, 'waitMbps': 103,
                                 'lanSpeed': '2.5 Gb/s', 'driveLabel': 'Games drive · 4 TB',
@@ -93,9 +102,10 @@ fx['dns'] = {'cache': {'on': True, 'running': True, 'sizeGB': 1000, 'dir': '/run
                                 'notes': {'Truck laptop': 'at home', "flow:Dad's PC": 'its own internet (away)', 'flow:Xbox': 'idle · cached too'},
                                 'devices': [{'name': 'ROG Ally', 'rate': 117.5e6}, {'name': 'Laptop', 'rate': 0}, {'name': "Dad's PC", 'rate': 0}, {'name': 'Xbox', 'rate': 0}]}}}
 fx['cacheInstalled'] = False
+fx['updatesOn'] = True
 
 # ---- remote play
-fx['rd'] = {'stream': {'on': True, 'device': 'TCL 55" TV', 'app': 'Gravesleep', 'since': at(2026, 11, 26, 0, 12), 'height': 2160, 'fps': 60, 'hdr': True,
+fx['rd'] = {'clients': [{'name': 'TCL 55" TV'}, {'name': 'ROG Ally'}, {'name': 'Phone'}, {'name': 'Truck laptop'}], 'stream': {'on': True, 'device': 'TCL 55" TV', 'app': 'Gravesleep', 'since': at(2026, 11, 26, 0, 12), 'height': 2160, 'fps': 60, 'hdr': True,
                        'mbps': 38, 'delay': 9, 'pad': 'Xbox controller', 'ontime': 99.6}}
 fx['gpu'] = {'enc': 22, 'gpu': 71}
 fx['delays'] = [round(9 + 1.6 * math.sin(i / 3.0) + (1.2 if i % 11 == 0 else 0)) for i in range(60)]
@@ -106,6 +116,19 @@ fx['library'] = [{'id': 'gravesleep', 'name': 'Gravesleep', 'art': ['#5a3a2a', '
 fx['libraryCount'] = 86
 fx['truckLast'] = 'Mon on break · 41 min'
 fx['sunshineInstalled'] = False
+fx['state.truck'] = 'away · 5G'
+# The stream's own picture (what the frame grab keeps while streaming): a small PNG of the board's scene, made here.
+import struct, zlib
+W, H = 320, 180
+rows = b''
+for y in range(H):
+    rows += b'\x00' + bytes(v for x in range(W) for v in (min(255, 40 + x // 4 + (60 if 60 < y < 120 and 120 < x < 200 else 0)), 30 + y // 6, max(0, 60 - y // 4)))
+def chunk(k, d):
+    return struct.pack('>I', len(d)) + k + d + struct.pack('>I', zlib.crc32(k + d) & 0xffffffff)
+png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')
+shot = os.path.join(os.path.dirname(out) or '/tmp', 'server-hub-shot.png')
+open(shot, 'wb').write(png)
+fx['shot'] = shot
 
 # ---- media
 fx['jf.counts'] = {'MovieCount': 418, 'SeriesCount': 64, 'EpisodeCount': 2190, 'SongCount': 4612}
@@ -123,15 +146,15 @@ fx['jobs'] = [
     {'id': 'j4', 'state': 'ready', 'title': 'Ironwood · disc 1', 'line': 'named, art found, subtitles in English', 'ask': 'is this "Ironwood (2021)"?', 'guess': 'Ironwood (2021)', 'art': ['#5a3a7a', '#1a1028']},
     {'id': 'j5', 'state': 'ready', 'title': 'Night Harbor · s3 e3', 'line': 'ads cut out · 42 min', 'line2': 'going into Jellyfin in 2 min', 'art': ['#2a3a5a', '#10141e']},
     {'id': 'j6', 'state': 'ready', 'title': 'Truck trip, Nov 8', 'line': 'your own video · 3 clips joined', 'art': ['#5a5a2a', '#1a1a0c']}]
-fx['music'] = [['Hearth trailer music', 'from hearthos.fun · New Horizons, Never Frozen, Feels Like Home…', '12', ['#ff9a4a', '#c0501a']],
-               ['Your CDs, ripped', 'named and given covers by themselves', '3,880', ['#5ec8ff', '#2c7fd8']],
-               ['Beat Maker songs', 'from Hearth Beat Maker', '31', ['#9be36b', '#3ba55c']],
-               ['Truck drive mix', 'playlist · on the truck laptop offline', '96', ['#e36bd3', '#8a2a9a']]]
-fx['musicLine'] = '4,612 songs · 38 GB · on the phone too'
-fx['photos'] = {'done': True, 'line': '23,418 photos and videos · 312 GB', 'syncing': True,
-                'rows': [['Moved from iCloud Photos and iCloud Drive', 'finished Nov 19 · keeps syncing new ones', ''],
-                         ['Found by AI photos: people, places, things', 'Dad · the truck · Thanksgiving 2025', ''],
-                         ['Same photo twice', '412 found · ', 'Look through them']]}
+# What media-scan counted from the files themselves (Music's top folders, Pictures, each kind's size, the same photo
+# kept twice), and what Immich's own AI found.
+fx['scan'] = {'at': NOW - 3600,
+              'music': {'n': 4612, 'bytes': 38 * GB, 'rows': [['Your CDs, ripped', '312 albums · 31 GB', 3880], ['Truck drive mix', '8 albums · 0.9 GB', 96],
+                                                              ['Beat Maker songs', '2 albums · 0.4 GB', 31], ['Hearth trailer music', '1 album · 0.2 GB', 12]]},
+              'photos': {'n': 21960, 'videos': 1458, 'bytes': 312 * GB, 'newest': at(2026, 11, 25, 22)},
+              'dupes': {'n': 412, 'groups': []},
+              'kinds': {'TV and movies': 3.4e12, 'photos': 0.31e12, 'music': 0.04e12}}
+fx['immich'] = {'people': ['Dad'], 'places': ['the truck', 'Thanksgiving 2025'], 'peopleN': 14, 'placesN': 31}
 fx['space'] = {'title': 'Media drive · 6 TB', 'used': 0.63, 'line': '3.8 TB used · TV and movies 3.4, photos 0.31, music 0.04'}
 fx['mediaInstalled'] = False
 
@@ -143,6 +166,8 @@ fx['self'] = {'name': 'Nvidia PC', 'gpu': {'name': 'RTX 5070 12 GB', 'use': 41},
                        {'name': 'Valheim, Palworld', 'kind': 'games', 'share': {'games': ['Valheim', 'Palworld']}},
                        {'name': 'Model vault · Backups (first copy)', 'kind': 'storage', 'share': {'backups': ['first copy']}}]}
 fx['peers'] = [
+    {'id': 'a' * 64, 'name': 'ROG Ally', 'online': True, 'kind': 'handheld', 'relation': 'mine'},
+    {'id': 'b' * 64, 'name': 'Truck laptop', 'online': True, 'kind': 'laptop', 'net': '5G', 'relation': 'mine'},
     {'hearthServer': True, 'name': "Dad's PC", 'gpu': {'name': 'Radeon RX 6750 XT 12 GB', 'use': 35}, 'ram': {'total': 32}, 'drives': [{'total': 2000}],
      'where': "at Dad's", 'via': 'tailscale', 'cpu': {'use': 26, 'temp': 48}, 'note': "Dad's using it", 'limited': True, 'mood': 'blue',
      'jobs': [{'name': 'Ollama small model and Listen for the family', 'kind': 'AI', 'share': {'AI': ['Ollama', 'Listen']}},

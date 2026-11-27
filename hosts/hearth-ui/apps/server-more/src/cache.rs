@@ -149,6 +149,10 @@ fn side<'a>(h: &'a Hub, d: &'a Describe, p: Pal) -> E<'a, Msg> {
     settings = settings
         .push(crate::line(t("When full, drop the least used", 13.0, p.text).into(), sw(p, P, "dropOld", on(st, "dropOld"))))
         .push(crate::line(crate::two(p, "Keep a game forever".into(), s(st, "keep")), kit::click(t("Pick", 12.0, p.accent), Some(Msg::Pick("keep")))));
+    if on(st, "full") {
+        // "Drop the least used" off and the cache is full: nothing is dropped, new downloads go straight through.
+        settings = settings.push(t("Full: new downloads come straight from the internet, nothing kept is dropped", 11.0, kit::YELLOW));
+    }
     if h.pick == "keep" {
         for g in list(v, "games").iter().filter(|g| !on(g, "more")).take(7) {
             let name = s(g, "game");

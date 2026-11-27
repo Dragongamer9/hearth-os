@@ -140,6 +140,21 @@ CATALOG = {
                                'label': 'Crossplay (Xbox and PC Game Pass players)'}},
         'password': {'env': 'SERVER_PASS', 'min': 5, 'required': True},
     },
+    # Minecraft: Bedrock Edition (phones, tablets, Xbox, Switch and Windows players): Mojang's own Bedrock Dedicated
+    # Server, downloaded by itzg/minecraft-bedrock-server from minecraft.net when it starts (you accept Mojang's EULA by
+    # installing it, as with Java Edition). Kick and other commands through its console (send-command).
+    'bedrock': {
+        'name': 'Minecraft Bedrock', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 200 MB, plus your world',
+        'desc': 'A Minecraft: Bedrock Edition server (Mojang\'s Bedrock Dedicated Server, through itzg/minecraft-bedrock-server) for phones, tablets, Xbox, Switch and Windows players. Add it in Play › Servers › Add server with this PC\'s address.',
+        'images': ['docker.io/itzg/minecraft-bedrock-server:latest'],
+        'ports': [(19132, 'udp')], 'volumes': [('world', '/data')],
+        'env': {'EULA': 'TRUE', 'ONLINE_MODE': 'true'},
+        'opts': {'serverName': {'default': 'Hearth', 'text': True, 'env': 'SERVER_NAME', 'label': 'Server name'},
+                 'worldName': {'default': 'Hearth', 'text': True, 'env': 'LEVEL_NAME', 'label': 'World name'},
+                 'mode': {'default': 'survival', 'choices': ['survival', 'creative', 'adventure'], 'env': 'GAMEMODE', 'label': 'Game mode'},
+                 'players': {'default': '10', 'choices': ['5', '10', '20', '30'], 'env': 'MAX_PLAYERS', 'label': 'Players'}},
+        'password': None, 'eula': 'https://aka.ms/MinecraftEULA',
+    },
     'terraria': {
         'name': 'Terraria', 'kind': 'game', 'icon': 'pad', 'reach': 'home', 'size': 'about 500 MB',
         'desc': 'A Terraria server with TShock (ryshe/terraria). Join from Multiplayer › Join via IP.',
@@ -859,7 +874,7 @@ def stop(aid):
 
 # ------------------------------------------------------------------ world backups (1.13)
 # What holds each game server's world (a volume, and a folder in it; the servers' own program files are left out).
-WORLDS = {'minecraft': ('world', ''), 'horizon': ('world', ''), 'valheim': ('config', ''), 'terraria': ('worlds', ''),
+WORLDS = {'minecraft': ('world', ''), 'bedrock': ('world', 'worlds'), 'horizon': ('world', ''), 'valheim': ('config', ''), 'terraria': ('worlds', ''),
           'palworld': ('server', 'Pal/Saved'), 'sevendays': ('saves', ''), 'ark': ('server', 'ShooterGame/Saved'),
           'gravesleep': ('saves', ''), 'noclip': ('saves', ''), 'quadmech': ('saves', '')}
 TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')

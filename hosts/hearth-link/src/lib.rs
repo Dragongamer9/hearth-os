@@ -67,6 +67,7 @@ pub mod moonlight;
 pub mod node;
 pub mod pair;
 pub mod saves;
+pub mod server;
 pub mod shortcode;
 pub mod state;
 pub mod status;

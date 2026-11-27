@@ -134,7 +134,7 @@ fn off<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
     kit::card(&p, c.spacing(4.0)).into()
 }
 
-fn week<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
+fn week<'a>(h: &'a Hub, p: Pal, v: &'a Value) -> E<'a, Msg> {
     let mut c = Column::new().spacing(6.0).push(row![kit::caps(&p, "The last 7 days"), Space::new().width(Length::Fill), t("on · off · moves", 12.0, p.muted)].align_y(iced::Center));
     for w in list(v, "week") {
         let col = mood(&s(w, "mood"));
@@ -147,6 +147,16 @@ fn week<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
         c = c.push(row![container(t(s(w, "name"), 12.0, p.text)).width(Length::Fixed(130.0)), container(bar).width(Length::Fill).clip(true).style(ui::boxed(p.line, 6.0, None)), container(t(s(w, "note"), 12.0, p.muted)).width(Length::Fixed(210.0)).align_x(iced::alignment::Horizontal::Right)].spacing(12.0).align_y(iced::Center));
     }
     c = c.push(row![t(format!("{} · ", s(v, "weekNote")), 12.0, p.muted), kit::click(t("See every move", 12.0, p.accent), Some(Msg::Pick("moves")))]);
+    if h.pick == "moves" {
+        let mut ml = Column::new().spacing(0.0);
+        for m in list(v, "moveList") {
+            ml = ml.push(line(t(s(m, "what"), 12.0, p.text).into(), t(format!("{} · {}", s(m, "when"), s(m, "why")), 12.0, p.muted).into()));
+        }
+        if list(v, "moveList").is_empty() {
+            ml = ml.push(t("Nothing moved in the last 7 days.", 12.0, p.muted));
+        }
+        c = c.push(boxed(p, ml));
+    }
     kit::card(&p, c).into()
 }
 
@@ -177,6 +187,8 @@ fn side<'a>(h: &'a Hub, d: &'a Describe, p: Pal) -> E<'a, Msg> {
         line(t("Move work by itself when one's busy", 13.0, p.text).into(), sw(p, P, "autoMove", on(l, "autoMove"))),
         line(t("Tell me each time something moves", 13.0, p.text).into(), sw(p, P, "tell", on(l, "tell"))),
         line(t("Move it back when it's free", 13.0, p.text).into(), kit::seg(&p, vec![("Ask".into(), back == "ask", Some(Msg::Set(P, "moveBack", "\"ask\"".into()))), ("Always".into(), back == "always", Some(Msg::Set(P, "moveBack", "\"always\"".into())))])),
+        // On a PC that helps (Dad's PC, the old laptop): it takes whole jobs from your other PCs only with this on.
+        line(crate::two(p, "Let this PC take jobs".into(), "game servers from your other PCs, whole".into()), sw(p, P, "helper", on(v, "helper"))),
     ]
     .spacing(2.0);
     let store = crate::store_box(p, row![tb("Hearth Server", 12.0, p.text), t(" on each PC · its own Store app", 12.0, p.text)].into(), "Updates in the Hearth Store, on every PC at once or one at a time.", false, Msg::Pick("add"));
@@ -195,7 +207,7 @@ pub fn view<'a>(h: &'a Hub, d: &'a Describe, p: Pal) -> E<'a, Msg> {
     if h.pick == "how" {
         hd_col = hd_col.push(boxed(p, t("Each kind of work goes, whole, to the PC that suits it: the big AI model to the PC with the most graphics memory, small models and voices to the next, storage by free space, game servers where the players are, a second backup copy away from home, and the always-on services to the PC that's never off. When a PC goes off, its work moves to the main PC (a game's world saved first) and comes back when it's on again. Nothing is split over the internet.", 12.0, p.muted).line_height(1.5)));
     }
-    let items: Vec<(&'static str, E<'a, Msg>)> = vec![("head", hd_col.into()), ("cards", crate::cols(cards, 14.0)), ("share", share(p, v)), ("off", off(p, v)), ("week", week(p, v))];
+    let items: Vec<(&'static str, E<'a, Msg>)> = vec![("head", hd_col.into()), ("cards", crate::cols(cards, 14.0)), ("share", share(p, v)), ("off", off(p, v)), ("week", week(h, p, v))];
     let main = hearth_ui::arrange::parts(d, &p, "srv-pcs", items, |ps| {
         iced::widget::scrollable(
             column![

@@ -877,10 +877,16 @@ impl Node {
         let len = req["len"].as_u64().unwrap_or(wire::CHUNK).min(READ_MAX);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(4);
         tokio::task::spawn_blocking(move || read_range(full, off, len, tx));
+        let update = req["op"] == "updates.read";
+        let mut sent = 0u64;
         while let Some(b) = rx.recv().await {
+            let n = b.len() as u64;
             s.write_chunk(b).await.map_err(|e| e.to_string())?;
+            sent += n;
             self.storage.touch();
         }
+        // Hearth OS updates your devices got from here instead of the internet (the Game cache page counts them).
+        if update { self.server_count_update(peer, sent); }
         Ok(())
     }
 

@@ -24,7 +24,9 @@ The status (protocol 1; a reader ignores fields it doesn't know):
    "ram": {"used", "total"} (GB), "drives": [{"name", "used", "total"}] (GB), "uptime": seconds,
    "history": [{"t": ms, "cpu", "gpu", "ram" (%), "cpuTemp", "gpuTemp", "battery"}] (the last hour), "updated": ms,
    "server": {"status", "services": [{"title", "engine", "state", "chip", "big", "unit"}], "alerts", "apps", "playing",
-              "since", "web": 8460} (only on a PC that uses Server mode; docs/SERVER-APPS.md)}
+              "since", "web": 8460} (only on a PC that uses Server mode; docs/SERVER-APPS.md),
+   "hearthServer": {"games": [{"id", "name", "mods"}], "jobs": [{"id", "name", "kind", "share", "moves"}], "watts", "busy",
+                    "helper", "canHost", "hosting"} (Hearth Server, hearth-server-hub agent-status; docs/SERVER-HUB.md)}
 No secrets: no addresses, accounts, keys, file or folder names (drives are named "System", "Home" or their label).
 
 Stand-in devices (checks and screenshots only): HEARTH_DEVICES_SAMPLE=<file> makes `devices` print that file.
@@ -318,6 +320,54 @@ def status(now_ms=None, settings=None):
     srv = server_summary(out['mode'])
     if srv:
         out['server'] = srv
+    hs = hearth_server()
+    if hs:
+        out['hearthServer'] = hs
+    nk = net_kind()
+    if nk:
+        out['net'] = nk
+    return out
+
+
+def net_kind(run=subprocess.run):
+    """How this device is online, in a word (Remote play's AWAY · 5G): wired, Wi-Fi, or mobile data (5G or LTE when
+    ModemManager says which). Only the kind, never which network."""
+    try:
+        p = run(['nmcli', '-t', '-f', 'TYPE,STATE', 'device'], capture_output=True, text=True, timeout=4)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    kinds = [ln.split(':')[0] for ln in (p.stdout or '').splitlines() if ln.endswith(':connected')]
+    if 'gsm' in kinds or 'cdma' in kinds:
+        try:
+            m = run(['mmcli', '-m', 'any', '-K'], capture_output=True, text=True, timeout=4).stdout or ''
+        except (OSError, subprocess.SubprocessError):
+            m = ''
+        return '5G' if '5gnr' in m else 'LTE' if 'lte' in m else 'mobile data'
+    if 'ethernet' in kinds:
+        return 'wired'
+    if 'wifi' in kinds:
+        return 'Wi-Fi'
+    return ''
+
+
+def hearth_server(run=subprocess.run):
+    """Hearth Server's part (docs/SERVER-HUB.md): the game servers here to join, each job and what it counts as, this
+    PC's watts, whether it's busy and whether it takes jobs from your other PCs. Only when it has something to say
+    (a game server or an app running, or "Let this PC take jobs" on). No addresses but the game servers' own."""
+    hub = os.path.join(HERE, 'hearth-server-hub')
+    if not os.path.exists(hub):
+        return None
+    try:
+        p = run([sys.executable, hub, 'agent-status'], capture_output=True, text=True, timeout=8)
+        v = json.loads(p.stdout.strip().splitlines()[-1]) if p.returncode == 0 and p.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+    if not isinstance(v, dict) or not (v.get('games') or v.get('jobs') or v.get('helper')):
+        return None
+    keep = ('protocol', 'games', 'jobs', 'watts', 'busy', 'helper', 'canHost', 'hosting')
+    out = {k: v[k] for k in keep if k in v}
+    # The game's address is asked for over Hearth Link only when someone joins (server.ask games), never in the status.
+    out['games'] = [{k: g[k] for k in ('id', 'name', 'mods') if k in g} for g in out.get('games') or [] if isinstance(g, dict)]
     return out
 
 

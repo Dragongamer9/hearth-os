@@ -77,7 +77,16 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
                         servers' ports only from this PC, the home network and Tailscale (/etc/hearth/games.nft, loaded
                         again at start by /etc/systemd/system/hearth-games-firewall.service); games-off takes them away
   play-setup            Remote play: Sunshine when it's missing, and its screen-capture permission
-  media-setup           Media: ffmpeg, cdparanoia, abcde and flac to copy your own discs and CDs
+  media-setup           Media: ffmpeg, cdparanoia, abcde and flac to copy your own discs and CDs (and comskip, to find
+                        a recording's ad breaks, where this Debian has it)
+  games-kick IP         a player off a game server that has no console for it (Valheim, Palworld…): their address can't
+                        reach the game servers' ports for 2 minutes (an element with a timeout in hearth_games' own set,
+                        so it goes by itself); their game says the connection was lost
+  cache-setup           the game cache's services from this helper (the Store's copy): /etc/systemd/system units for
+                        hearth-server-dns*, hearth-lancache that run a root-owned copy of the engine this helper carries
+                        (/var/lib/hearth/server-dns/engine, refreshed whenever this helper runs `server-part server-dns`
+                        as root), so the cache updates with this Store part, never with a Hearth OS update; no [Install] but
+                        the timer's (enabled only while the cache or the ad blocker is on); cache-unsetup takes them away
 
 The user is always the one who ran pkexec (PKEXEC_UID), never an argument. Nothing here goes through a shell: every
 command is an argument list. Paths and names are checked here again (the Mantel helper checks them first): a share
@@ -103,6 +112,30 @@ if len(_hsp_sys.argv) >= 3 and _hsp_sys.argv[1] == 'server-part':
         print('{"ok": false, "error": "not one of the server\'s parts"}')
         _hsp_sys.exit(1)
     _eng = _hsp_os.path.join(_hsp_os.path.dirname(_hsp_os.path.realpath(__file__)), 'hearth-server-parts', _hsp_sys.argv[2] + '.py')
+    if _hsp_sys.argv[2] == 'server-dns' and _hsp_os.path.isfile(_eng) and _hsp_os.geteuid() == 0 \
+            and _hsp_os.path.isfile('/etc/hearth/server-dns-from-store'):
+        # The game cache's services run a root-owned copy of this engine (cache-setup); a newer one from the Store
+        # takes its place here, so the cache always runs the engine this helper brought (and never one from your home).
+        _cp = '/var/lib/hearth/server-dns/engine/hearth-server-dns'
+        try:
+            with open(_eng, 'rb') as _f:
+                _new = _f.read()
+            try:
+                with open(_cp, 'rb') as _f:
+                    _old = _f.read()
+            except OSError:
+                _old = b''
+            if _new != _old:
+                _hsp_os.makedirs(_hsp_os.path.dirname(_cp), mode=0o755, exist_ok=True)
+                with open(_cp + '.new', 'wb') as _f:
+                    _f.write(_new)
+                _hsp_os.chmod(_cp + '.new', 0o644)
+                _hsp_os.replace(_cp + '.new', _cp)
+        except OSError:
+            pass
+    if not _hsp_os.path.isfile(_eng) and _hsp_sys.argv[2] == 'server-dns' and _hsp_os.path.isfile('/usr/libexec/nimbus/hearth-server-dns'):
+        # The game cache's engine before it came with this helper: the one built into Hearth OS.
+        _hsp_os.execv('/usr/bin/python3', ['python3', '-I', '/usr/libexec/nimbus/hearth-server-dns'] + _hsp_sys.argv[3:])
     if not _hsp_os.path.isfile(_eng):
         print('{"ok": false, "error": "that part isn\'t in this version of the Home server helper"}')
         _hsp_sys.exit(1)
@@ -3632,7 +3665,8 @@ GAMES_UNIT_FILE = '/etc/systemd/system/' + GAMES_UNIT
 UNLOCK_TOOL = '/usr/bin/hearth-unlock'
 # The game servers' ports (hearth-server-hub's catalog and hearth-server-apps'): TCP and UDP.
 GAME_TCP = [25565, 7777, 26900]
-GAME_UDP = [2456, 2457, 7777, 7778, 8211, 27015, 27016, 26900, 26901, 26902, 7350, 7360, 33450]
+GAME_UDP = [2456, 2457, 7777, 7778, 8211, 27015, 27016, 26900, 26901, 26902, 7350, 7360, 33450, 19132, 19133]
+KICK_SECONDS = 120
 LAN_NETS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
 
 
@@ -3645,8 +3679,13 @@ def games_nft_text():
                       'table inet %s' % GAMES_NFT_TABLE,
                       'delete table inet %s' % GAMES_NFT_TABLE,
                       'table inet %s {' % GAMES_NFT_TABLE,
+                      # A kicked player (games-kick): their address, for 2 minutes, then it goes by itself.
+                      '\tset kicked { type ipv4_addr; flags timeout; }',
+                      '\tset kicked6 { type ipv6_addr; flags timeout; }',
                       '\tchain input {',
                       '\t\ttype filter hook input priority -10; policy accept;',
+                      '\t\tip saddr @kicked meta l4proto { tcp, udp } th dport { %s } drop' % ', '.join(str(x) for x in sorted(set(GAME_TCP + GAME_UDP))),
+                      '\t\tip6 saddr @kicked6 meta l4proto { tcp, udp } th dport { %s } drop' % ', '.join(str(x) for x in sorted(set(GAME_TCP + GAME_UDP))),
                       '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE,
                       '\t\tip saddr { %s } accept' % ', '.join(LAN_NETS),
                       '\t\tip6 saddr { fc00::/7, fe80::/10 } accept',
@@ -3713,6 +3752,105 @@ def games_off():
     return {'ok': True}
 
 
+def games_kick(ip):
+    """A player off the game servers for KICK_SECONDS: their address in hearth_games' kicked set (with a timeout, so
+    it leaves by itself). Never this PC, never a loopback or a broadcast address."""
+    caller()
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        raise Fail("that isn't a player's address")
+    if a.is_loopback or a.is_multicast or a.is_unspecified or str(a).endswith('.255'):
+        raise Fail("that isn't a player's address")
+    if not os.path.exists(GAMES_NFT_FILE):
+        raise Fail('Install the game server helper first')
+    sname = 'kicked6' if a.version == 6 else 'kicked'
+    code, _out = run(['nft', 'list', 'set', 'inet', GAMES_NFT_TABLE, sname])
+    if code != 0:
+        # set up before kicking existed: the rule again, with its sets
+        write(GAMES_NFT_FILE, games_nft_text())
+        code, _out = run(['nft', '-f', GAMES_NFT_FILE])
+        if code != 0:
+            raise Fail("the game servers' firewall rule didn't load")
+    code, out = run(['nft', 'add', 'element', 'inet', GAMES_NFT_TABLE, sname, '{ %s timeout %ds }' % (a.compressed, KICK_SECONDS)])
+    if code != 0:
+        raise Fail("the kick didn't take: %s" % (out.strip().splitlines() or [''])[-1][:160])
+    return {'ok': True, 'seconds': KICK_SECONDS}
+
+
+# The game cache's units, from this helper (cache-setup). Same names as the ones built into Hearth OS (/etc wins over
+# /usr/lib), so everything that starts or stops them (hearth-server-dns' own apply, the dashboard) keeps working.
+CACHE_UNITS_DIR = '/etc/systemd/system'
+CACHE_MARK = '/etc/hearth/server-dns-from-store'
+
+
+CACHE_ENGINE = '/var/lib/hearth/server-dns/engine/hearth-server-dns'
+
+
+def cache_unit_texts():
+    # A root-owned copy of the engine this helper carries (refreshed each time the helper runs it as root), so the
+    # services keep working even if the Store's copy of this helper is ever taken away.
+    me = '/usr/bin/python3 -I ' + CACHE_ENGINE
+    head = '# Written by hearth-home-server-helper cache-setup: the game cache from the Home server helper\'s Store part.\n'
+    return {
+        'hearth-server-dns.service': head + (
+            '# Off until you turn it on; never part of starting the PC (no [Install]).\n[Unit]\n'
+            'Description=Hearth server: DNS for the ad blocker and the game download cache\nAfter=network-online.target\n'
+            'StartLimitIntervalSec=15min\nStartLimitBurst=4\n\n[Service]\nExecStart=%s run-dns\n'
+            'ExecStop=-/usr/bin/podman stop -t 5 hearth-dns\nRestart=on-failure\nRestartSec=15\nNice=5\nTimeoutStartSec=30min\n' % me),
+        'hearth-lancache.service': head + (
+            '[Unit]\nDescription=Hearth server: game download cache (LANCache)\nAfter=network-online.target\n'
+            'StartLimitIntervalSec=15min\nStartLimitBurst=4\n\n[Service]\nExecStart=%s run-cache\n'
+            'ExecStop=-/usr/bin/podman stop -t 10 hearth-lancache\nRestart=on-failure\nRestartSec=15\nNice=5\n'
+            'IOSchedulingClass=best-effort\nIOSchedulingPriority=6\nTimeoutStartSec=30min\n' % me),
+        'hearth-server-dns-watch.service': head + (
+            '[Unit]\nDescription=Hearth server: download cache and ad blocker numbers\n\n[Service]\nExecStart=%s watch\n'
+            'Restart=on-failure\nRestartSec=30\nNice=10\n' % me),
+        'hearth-server-dns-start.service': head + (
+            '[Unit]\nDescription=Hearth server: start the ad blocker and the game download cache if they\'re on\n\n'
+            '[Service]\nType=oneshot\nExecStart=-%s start\n' % me),
+        'hearth-server-dns.timer': head + (
+            '# Enabled only while the ad blocker or the game download cache is on: a minute after the PC starts.\n[Unit]\n'
+            'Description=Hearth server: start the ad blocker and the game download cache after starting\n\n'
+            '[Timer]\nOnBootSec=60\nUnit=hearth-server-dns-start.service\n\n[Install]\nWantedBy=timers.target\n'),
+    }
+
+
+def cache_setup():
+    caller()
+    eng = os.path.join(HERE, 'hearth-server-parts', 'server-dns.py')
+    if not os.path.isfile(eng):
+        raise Fail("this version of the Home server helper doesn't carry the game cache yet: update it in the Hearth Store")
+    if not which('podman'):
+        packages_add(['podman'])
+    os.makedirs(os.path.dirname(CACHE_ENGINE), mode=0o755, exist_ok=True)
+    with open(eng, encoding='utf-8') as f:
+        write(CACHE_ENGINE, f.read(), 0o644)
+    for n, text in cache_unit_texts().items():
+        write(os.path.join(CACHE_UNITS_DIR, n), text)
+    write(CACHE_MARK, 'the game cache runs from the Home server helper (cache-setup)\n')
+    run(['systemctl', 'daemon-reload'])
+    return {'ok': True, 'units': sorted(cache_unit_texts())}
+
+
+def cache_unsetup():
+    caller()
+    for n in cache_unit_texts():
+        p = os.path.join(CACHE_UNITS_DIR, n)
+        try:
+            with open(p, encoding='utf-8') as f:
+                mine = 'hearth-home-server-helper cache-setup' in f.read(400)
+        except OSError:
+            mine = False
+        if mine:
+            remove(p)
+    remove(CACHE_MARK)
+    remove(CACHE_ENGINE)
+    run(['systemctl', 'daemon-reload'])
+    return {'ok': True}
+
+
 def play_setup():
     """Remote play: Sunshine (Debian's package; it usually comes with Hearth OS) and its screen-capture permission."""
     caller()
@@ -3731,7 +3869,14 @@ def media_setup():
     """Media: copying your own discs and CDs (ffmpeg with libbluray, cdparanoia and abcde with flac). Nothing that
     unlocks copy-protected discs."""
     caller()
-    return {'ok': True, 'added': packages_add(['ffmpeg', 'cdparanoia', 'abcde', 'flac'])}
+    added = packages_add(['ffmpeg', 'cdparanoia', 'abcde', 'flac'])
+    # comskip finds a recording's ad breaks; it isn't in every Debian (contrib), so it's only added where it is.
+    if not which('comskip') and run(['apt-cache', 'show', 'comskip'])[0] == 0:
+        try:
+            added += packages_add(['comskip'])
+        except Fail:
+            pass
+    return {'ok': True, 'added': added, 'comskip': bool(which('comskip'))}
 
 
 # ------------------------------------------------------------------ the ransomware guard
@@ -3891,8 +4036,11 @@ def main(argv):
             res = gpu_limit(a[1])
         elif a == ['guard-reset']:
             res = guard_reset()
-        elif a in (['games-setup'], ['games-off'], ['play-setup'], ['media-setup']):
-            res = {'games-setup': games_setup, 'games-off': games_off, 'play-setup': play_setup, 'media-setup': media_setup}[a[0]]()
+        elif a in (['games-setup'], ['games-off'], ['play-setup'], ['media-setup'], ['cache-setup'], ['cache-unsetup']):
+            res = {'games-setup': games_setup, 'games-off': games_off, 'play-setup': play_setup, 'media-setup': media_setup,
+                   'cache-setup': cache_setup, 'cache-unsetup': cache_unsetup}[a[0]]()
+        elif len(a) == 2 and a[0] == 'games-kick':
+            res = games_kick(a[1])
         elif len(a) in (2, 3) and a[0] == 'remote-fw' and a[1] in ('tailscale', 'local', 'off', 'load'):
             if a[1] == 'load' and os.environ.get('PKEXEC_UID'):
                 raise Fail('remote-fw load is for the boot unit only')
@@ -3904,7 +4052,8 @@ def main(argv):
                        'backup-now ID | backup-snapshots ID | backup-restore | receive-add NAME | receive-remove USER | '
                        'alerts run|test | power run | ups-status | app-install NAME | app-remove NAME | services run | guard-reset | '
                        'svc stop|start|restart ollama|jellyfin | gpu-limit WATTS|reset | '
-                       'remote-fw tailscale|local [PORT]|off|load | games-setup | games-off | play-setup | media-setup')
+                       'remote-fw tailscale|local [PORT]|off|load | games-setup | games-off | play-setup | media-setup | '
+                       'games-kick IP | cache-setup | cache-unsetup')
         print(json.dumps(res))
         return 0
     except FAILS as e:

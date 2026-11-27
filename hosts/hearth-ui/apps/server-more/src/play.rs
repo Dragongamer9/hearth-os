@@ -58,12 +58,15 @@ fn now<'a>(h: &'a Hub, p: Pal, n: &'a Value) -> E<'a, Msg> {
         row![t(s(n, "line"), 13.0, Color::from_rgba8(255, 255, 255, 0.85)), Space::new().width(Length::Fill), btns].align_y(iced::Center)
     ]
     .spacing(8.0);
-    container(column![tags, Space::new().height(Length::Fill), bottom])
-        .padding(pad(16.0, 18.0, 16.0, 18.0))
-        .width(Length::Fill)
-        .height(Length::Fixed(300.0))
-        .style(kit::gradient_n(vec![kit::rgb(0x3a, 0x2a, 0x20), kit::rgb(0x2a, 0x1d, 0x15), kit::rgb(0x55, 0x38, 0x22), kit::rgb(0x1a, 0x12, 0x0c)], 14.0))
-        .into()
+    let words = container(column![tags, Space::new().height(Length::Fill), bottom]).padding(pad(16.0, 18.0, 16.0, 18.0)).width(Length::Fill).height(Length::Fixed(300.0));
+    // The stream's own picture (a small frame grab of this PC's screen while it streams), darkened under the words.
+    let shot = s(n, "shot");
+    if live && !shot.is_empty() && std::path::Path::new(&shot).exists() {
+        let pic = iced::widget::image(iced::widget::image::Handle::from_path(shot)).content_fit(iced::ContentFit::Cover).width(Length::Fill).height(Length::Fixed(300.0));
+        let shade = container(Space::new()).width(Length::Fill).height(Length::Fixed(300.0)).style(kit::gradient_n(vec![Color::from_rgba8(0, 0, 0, 0.15), Color::from_rgba8(0, 0, 0, 0.7)], 14.0));
+        return container(iced::widget::stack![pic, shade, words]).clip(true).width(Length::Fill).height(Length::Fixed(300.0)).style(ui::boxed(kit::rgb(0x1a, 0x12, 0x0c), 14.0, None)).into();
+    }
+    words.style(kit::gradient_n(vec![kit::rgb(0x3a, 0x2a, 0x20), kit::rgb(0x2a, 0x1d, 0x15), kit::rgb(0x55, 0x38, 0x22), kit::rgb(0x1a, 0x12, 0x0c)], 14.0)).into()
 }
 
 fn pc<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
@@ -82,7 +85,7 @@ fn pc<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
             kit::caps(&p, "The Nvidia PC while streaming"),
             meter(p, "Video encoder (NVENC)".into(), e, p.accent, es, 200.0),
             meter(p, "GPU".into(), g, p.accent, gs, 160.0),
-            meter(p, "Frames sent on time".into(), o, kit::GREEN, os, 200.0),
+            meter(p, if s(c, "ontimeWords").is_empty() { "Frames sent on time".into() } else { format!("Frames sent on time · {}", s(c, "ontimeWords")) }, o, kit::GREEN, os, 200.0),
             line_chart(pts, kit::GREEN, p.line, 60.0),
             t(s(c, "delayWords"), 12.0, p.muted),
             container(kit::caps(&p, "While someone's playing")).padding(pad(8.0, 0.0, 0.0, 0.0)),
@@ -148,8 +151,22 @@ fn library<'a>(h: &'a Hub, p: Pal, v: &'a Value) -> E<'a, Msg> {
             .width(Length::Fill)
             .height(Length::Fixed(150.0))
             .style(kit::gradient(160.0, crate::colour(at(g, "/art/0"), kit::rgb(0x4a, 0x3a, 0x30)), crate::colour(at(g, "/art/1"), kit::rgb(0x14, 0x10, 0x0c)), 10.0, None));
-        let picks = row![kit::chip_acc(&p, "Play", Some(act(P, &["play-launch", &gid], "It's in Moonlight's list on every device: pick it there."))), kit::chip(&p, "on the TV ▾", Some(Msg::Pick("device")))].spacing(6.0);
-        grid = grid.push(container(column![cover, picks].spacing(8.0)).width(Length::FillPortion(1)));
+        let target = at(v, "/target");
+        let tname = if target.is_null() { "a device".to_string() } else { s(target, "name") };
+        let tid = s(target, "id");
+        let play_m = if tid.is_empty() { act(P, &["play-launch", &gid], "It's in Moonlight's list on every device: pick it there.") } else { act(P, &["play-open", &tid, &gid], "It's in Moonlight's list.") };
+        let picks = row![kit::chip_acc(&p, "Play", Some(play_m)), kit::chip(&p, format!("on the {tname} ▾"), Some(Msg::PGame(gid.clone())))].spacing(6.0);
+        let mut cell = column![cover, picks].spacing(8.0);
+        if h.pgame == gid {
+            // Start it on a picked device: a Hearth device's Moonlight opens it by itself; another opens it from its list.
+            let mut pick = Column::new().spacing(4.0);
+            for d in list(v, "devices") {
+                let did = s(d, "id");
+                pick = pick.push(kit::chip(&p, format!("{} · {}", s(d, "name"), s(d, "state")), Some(act(P, &["play-open", &did, &gid], "It's in Moonlight's list."))));
+            }
+            cell = cell.push(pick);
+        }
+        grid = grid.push(container(cell).width(Length::FillPortion(1)));
     }
     for _ in games.len()..6 {
         grid = grid.push(Space::new().width(Length::FillPortion(1)));
@@ -173,6 +190,7 @@ fn side<'a>(h: &'a Hub, d: &'a Describe, p: Pal) -> E<'a, Msg> {
         line(crate::two(p, "Wake it from any device".into(), "Moonlight's wake button · or the phone's Home server page".into()), sw(p, P, "wakeAny", on(k, "any"))),
         line(t("Wake it from away, over Tailscale", 13.0, p.text).into(), sw(p, P, "wakeAway", on(k, "away"))),
         line(t("Let it sleep after 30 min with nobody", 13.0, p.text).into(), sw(p, P, "sleepAfter", on(k, "sleep"))),
+        t(s(k, "sleepNote"), 11.0, p.muted),
     ]
     .spacing(2.0);
     let mut week = Column::new().spacing(0.0).push(container(kit::caps(&p, "Played this week")).padding(pad(0.0, 0.0, 4.0, 0.0)));
