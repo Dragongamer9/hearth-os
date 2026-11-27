@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 37,
+  "serial": 38,
   "apps": [
     {
       "id": "command-center",
@@ -1272,6 +1272,27 @@
       },
       "group": "apps",
       "open": "hearth-retro-app"
+    },
+    {
+      "id": "part-hearth-retro-to-steam-app",
+      "name": "Retro to Steam",
+      "kind": "builtin",
+      "part": {
+        "id": "hearth-retro-to-steam-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-retro-to-steam-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-retro-to-steam-app-1.18.1/hearth-retro-to-steam-app-1.18.1.tar.gz",
+        "sha256": "b30881ce8440a2def4b997d7d64048645fbd64f43004087b14008b4b6af71cf8",
+        "size": 7348080,
+        "notes": [
+          "New: your emulator games added to Steam with their art",
+          "Built on Steam ROM Manager (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-retro-to-steam-app"
     }
   ],
   "tests": [
