@@ -122,6 +122,11 @@ fn off<'a>(p: Pal, v: &'a Value) -> E<'a, Msg> {
         };
         c = c.push(container(row![container(icon).width(Length::Fixed(16.0)), t(sv(at(m, "/1")), 13.0, p.text).width(Length::Fill), t(sv(at(m, "/2")), 12.0, p.muted)].spacing(8.0).align_y(iced::Center)).padding(pad(8.0, 0.0, 8.0, 0.0))).push(ui::hline(crate::ROWLINE));
     }
+    // What runs here now for a PC that went off, with Move it back (when you chose Ask).
+    for w in list(v, "standin") {
+        let id = s(w, "id");
+        c = c.push(line(t(format!("{} · since {}", s(w, "line"), s(w, "since")), 12.0, p.text).into(), kit::click(t("Move it back", 12.0, p.accent), Some(crate::act(P, &["pcs-back", &id], "")))));
+    }
     let tried = s(v, "tried");
     if !tried.is_empty() {
         c = c.push(

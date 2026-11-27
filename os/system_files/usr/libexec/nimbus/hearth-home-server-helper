@@ -3795,7 +3795,7 @@ def cache_unit_texts():
     head = '# Written by hearth-home-server-helper cache-setup: the game cache from the Home server helper\'s Store part.\n'
     return {
         'hearth-server-dns.service': head + (
-            '# Off until you turn it on; never part of starting the PC (no [Install]).\n[Unit]\n'
+            '# Off until you turn it on; never part of starting the PC (nothing wants it at start-up).\n[Unit]\n'
             'Description=Hearth server: DNS for the ad blocker and the game download cache\nAfter=network-online.target\n'
             'StartLimitIntervalSec=15min\nStartLimitBurst=4\n\n[Service]\nExecStart=%s run-dns\n'
             'ExecStop=-/usr/bin/podman stop -t 5 hearth-dns\nRestart=on-failure\nRestartSec=15\nNice=5\nTimeoutStartSec=30min\n' % me),

@@ -838,7 +838,7 @@ def game_view():
                    'sub': ' · '.join(bits), 'players': plist, 'running': bool(a.get('running')), 'kick': sel == 'minecraft',
                    'opts': [{'key': o['key'], 'label': o.get('label', o['key']), 'value': o.get('value', ''), 'choices': o.get('choices') or []}
                             for o in a.get('opts') or [] if o.get('choices')],
-                   'mods': {'caption': 'Mods · %d on · from Thunderstore, checked' % len([m for m in mods if m.get('on', True)]), 'list': mods,
+                   'mods': {'caption': 'Mods · %d on · from Thunderstore, checked' % len(mods), 'list': mods,
                             'note': "Players' games get the same mods by themselves when they join from Hearth",
                             'code': ((seen().get('modsCode') or {}).get(sel) or {}).get('code', '') if mods else ''} if sel == 'valheim' else None},
         'invite': {'address': ('%s:%d' % (dns, port) if dns else 'Tailscale is off') + (' · password ••••••' if (a.get('password') or {}).get('set') else ''),
@@ -1526,12 +1526,19 @@ def agent_status():
         else:
             kind = 'AI' if gid in ('ollama', 'colibri', 'imagine', 'kokoro') else 'services'
             jobs.append({'id': gid, 'name': nm, 'kind': kind, 'share': {kind: [nm]}, 'moves': False})
+    # Hearth's AI engines run as your user units: each is a whole job another PC with the same engine can stand in
+    # for (one model never split over the internet).
+    for unit_, nm, kind in AI_UNITS:
+        if src('unit.' + unit_, lambda: cmd(['systemctl', '--user', 'is-active', '--quiet', unit_], 5)[0] == 0, False):
+            jobs.append({'id': unit_, 'name': nm, 'kind': kind, 'share': {kind: [nm]}, 'moves': True, 'unit': unit_})
     busy = busy_here()
     return {'protocol': 1, 'games': games, 'jobs': jobs, 'watts': watts_now(), 'busy': busy,
             'helper': bool(s.get('helper')), 'canHost': bool(s.get('helper')) and not busy and have('podman'),
             'hosting': sorted(hosting)}
 
 
+AI_UNITS = [('hearth-colibri.service', 'Colibri', 'AI'), ('hearth-ollama.service', 'Ollama', 'AI'), ('hearth-imagine.service', 'Imagine', 'AI'),
+            ('hearth-kokoro.service', 'Kokoro', 'AI'), ('hearth-listen.service', 'Listen', 'AI')]
 OUTBOX_SECS = 3600
 FILE_CHUNK = 3 << 20
 
@@ -1753,6 +1760,7 @@ def jobs_tick(s, st, did):
     st['pcsWeek'] = week
     catalog()
     m = sa()
+    standins_tick(s, st, did, devs, on, m, t)
     for gid, w in list((st.get('away') or {}).items()):
         if not isinstance(w, dict):
             continue
@@ -1788,6 +1796,82 @@ def jobs_tick(s, st, did):
             elif not w.get('asked'):
                 w['asked'] = True
                 cmd(['notify-send', '-a', 'Hearth', 'Home server', '%s is still on %s. Bring it back from Game servers when you like.' % (m.CATALOG[gid]['name'], w.get('name'))], 10)
+
+
+def standins_tick(s, st, did, devs, on, m, t):
+    """Your other PCs' own jobs: what each runs is remembered while it's on (and, for a game server with nobody on,
+    a copy of its world every hour, where that PC lets this one take jobs); when it goes off, this PC stands in with
+    each whole job it can run (the game from its last copy, an AI engine this PC has too), and hands them back when
+    it's on again (by itself or after asking, as you chose)."""
+    last = st.setdefault('lastJobs', {})
+    copies = st.setdefault('copies', {})
+    stand = st.setdefault('standin', {})
+    for d in devs:
+        pid = d.get('id') or ''
+        hs = d.get('hearthServer') if isinstance(d.get('hearthServer'), dict) else None
+        if not pid or d.get('relation') not in (None, 'mine'):
+            continue
+        if d.get('online') and hs is not None:
+            last[pid] = {'name': d.get('name') or 'another PC', 'jobs': [j for j in hs.get('jobs') or [] if isinstance(j, dict) and j.get('moves')][:12],
+                         'helper': bool(hs.get('helper')), 'at': int(t), 'off': 0}
+            for j in last[pid]['jobs']:
+                gid = j.get('id') or ''
+                if j.get('kind') == 'games' and hs.get('helper') and gid in m.WORLDS and t - int((copies.get(pid) or {}).get(gid) or 0) >= 3600:
+                    try:
+                        r = link_ask(pid, 'job-world', {'game': gid}, 900)
+                        if r.get('token'):
+                            link_pull(pid, r, gid, 'copy from another pc')
+                            copies.setdefault(pid, {})[gid] = int(t)
+                    except Fail:
+                        pass
+            # It's back: what stood in for it goes home.
+            for key, w in list(stand.items()):
+                if w.get('for') != pid:
+                    continue
+                if s['pcs'].get('moveBack') == 'always' or w.get('backOk'):
+                    try:
+                        if w.get('kind') == 'games':
+                            m.switch(key, False)
+                            r = m.world_backup(key, 'moved back')
+                            info = outbox_add(os.path.join(m.world_dir(key), r['file'])) if r.get('file') else {}
+                            link_ask(pid, 'job-start', dict(info, game=key, **{'from': my_link_id(), 'name': socket.gethostname()}), 900)
+                        else:
+                            cmd(['systemctl', '--user', 'stop', key], 60)
+                        stand.pop(key, None)
+                        st.setdefault('moved', []).append({'at': int(t), 'what': w.get('what') or key, 'from': 'this PC', 'to': w.get('name'), 'why': 'it was on again'})
+                        did.append('%s went back to %s' % (key, w.get('name')))
+                    except Fail:
+                        pass
+                elif not w.get('asked'):
+                    w['asked'] = True
+                    cmd(['notify-send', '-a', 'Hearth', 'Home server', '%s is on again. Its %s runs here for now: move it back from PCs.' % (w.get('name'), w.get('what') or key)], 10)
+        elif pid in last and not on.get(pid):
+            last[pid]['off'] = int(last[pid].get('off') or 0) + 1
+            if last[pid]['off'] < 2 or not s['pcs'].get('autoMove'):
+                continue
+            for j in last[pid]['jobs']:
+                key = j.get('unit') or j.get('id') or ''
+                if not key or key in stand:
+                    continue
+                try:
+                    if j.get('kind') == 'games' and key in m.CATALOG:
+                        mine_ = [b for b in m.world_list(key) if 'copy from another pc' in b['file'] or 'moved' in b['file']]
+                        if not mine_:
+                            continue                  # no copy of its world here: it waits for that PC
+                        if not m.installed(key):
+                            m.install(key)
+                            continue                  # its image first; it starts on the next round
+                        m.world_restore(key, mine_[0]['file'])
+                        m.switch(key, True)
+                    elif j.get('unit') and re.fullmatch(r'hearth-[a-z]+\.service', key) and cmd(['systemctl', '--user', 'cat', key], 10)[0] == 0:
+                        cmd(['systemctl', '--user', 'start', '--no-block', key], 30)
+                    else:
+                        continue
+                    stand[key] = {'for': pid, 'name': last[pid]['name'], 'what': j.get('name') or key, 'kind': j.get('kind'), 'at': int(t)}
+                    st.setdefault('moved', []).append({'at': int(t), 'what': j.get('name') or key, 'from': last[pid]['name'], 'to': 'this PC', 'why': '%s went off' % last[pid]['name']})
+                    did.append('%s runs here: %s went off' % (key, last[pid]['name']))
+                except Fail:
+                    pass
 
 
 def own_history():
@@ -2093,7 +2177,7 @@ def tick(t=None):
         play_watch_start()
 
     def change(d):
-        for k in ('whoIs', 'flows', 'pcsWeek', 'away', 'moved', 'quietSince', 'sleepTold'):
+        for k in ('whoIs', 'flows', 'pcsWeek', 'away', 'moved', 'quietSince', 'sleepTold', 'lastJobs', 'copies', 'standin'):
             if k in st2:
                 d[k] = st2[k]
             else:
@@ -3691,13 +3775,26 @@ def pcs_view():
     found = found_on_network({p.get('id') for p in ps}, [c['name'] for c in cards])
     return {'tag': '%d PCs · one server' % len(cards), 'count': '%d PCs' % len(cards), 'cards': cards, 'share': share_of(cards), 'sel': sel, 'names': names,
             'legend': [[c['name'], c['mood']] for c in cards],
-            'moves': moves_if_off(cards, sel, s), 'tried': src('tried', lambda: None, None) or seen().get('tried') or '',
-            'triedWhen': src('triedWhen', lambda: None, None) or seen().get('triedWhen') or '',
+            'moves': moves_if_off(cards, sel, s), 'tried': src('tried', lambda: None, None) or tried_words(moved)[0],
+            'triedWhen': src('triedWhen', lambda: None, None) or tried_words(moved)[1],
             'week': w_rows, 'weekNote': '%d moves this week, all told to you, none lost anything' % len(moved) if moved else 'nothing moved this week',
             'found': found, 'moveList': [{'when': day_clock(x.get('at') or 0), 'what': '%s · %s → %s' % (x.get('what', ''), x.get('from', ''), x.get('to', '')),
                                           'why': x.get('why', '')} for x in reversed(moved)][:20],
             'helper': bool(s.get('helper')),
+            'standin': [{'id': k, 'line': '%s runs here for %s' % (w.get('what') or k, w.get('name') or 'another PC'), 'since': clock(w.get('at') or t)}
+                        for k, w in (src('standin', lambda: seen().get('standin'), {}) or {}).items() if isinstance(w, dict)],
             'limits': {k: s.get(k) for k in ('dadMax', 'onlyIdle', 'laptopOn', 'autoMove', 'tell', 'moveBack')}}
+
+
+def tried_words(moved):
+    """The last time a PC went off and its work moved: what moved, and when it went back (from the moves' record)."""
+    off = [m for m in moved if str(m.get('why', '')).endswith('went off')]
+    if not off:
+        return '', ''
+    m = off[-1]
+    back = next((b for b in moved if b.get('at', 0) > m.get('at', 0) and b.get('what') == m.get('what') and b.get('to') == m.get('from')), None)
+    text = '%s turned off. %s moved to %s%s' % (m.get('from'), m.get('what'), m.get('to'), ', and moved back at %s.' % clock(back['at']) if back else ' and runs there until it\'s back.')
+    return text, short_day(m.get('at') or 0)
 
 
 def pcs_add(name):
@@ -3813,6 +3910,14 @@ def main(argv):
             res = media_rip()
         elif c == 'media-setup' and len(a) == 1:
             res = root(['media-setup'])
+        elif c == 'pcs-back' and len(a) == 2 and re.fullmatch(r'[a-z0-9.@-]{1,60}', a[1]):
+            # Move it back (Move it back when it's free: Ask): the next round hands it to its own PC.
+            def change(d):
+                w = (d.get('standin') or {}).get(a[1])
+                if isinstance(w, dict):
+                    w['backOk'] = True
+            seen_update(change)
+            res = {'ok': True, 'say': 'It goes back within 5 minutes.'}
         elif c == 'pcs-add' and len(a) == 2:
             res = pcs_add(a[1])
         elif c == 'tick' and len(a) == 1:
