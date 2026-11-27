@@ -140,9 +140,16 @@ pub fn daily() -> i32 {
         for e in cat.apps.iter().filter(|e| !e.test) {
             // (never system parts: they ask for the admin password, so only when you press Update)
             let Some(p) = e.part.as_ref().filter(|p| !p.system) else { continue };
-            let Some(up) = crate::parts::offer(p, crate::parts::have(&p.id).as_ref(), &hearth) else { continue };
+            // A Store app (not in this Hearth OS) only updates once you've got it: never installed by itself.
+            let store = e.kind == crate::catalog::Kind::Store;
+            let have = crate::parts::have(&p.id);
+            let up = if store { crate::parts::store_offer(p, have.as_ref(), &hearth) } else { crate::parts::offer(p, have.as_ref(), &hearth) };
+            let Some(up) = up else { continue };
             match crate::parts::install(up) {
                 Ok(_) => {
+                    if store {
+                        let _ = crate::parts::store_menu(e);
+                    }
                     println!("hearth-store: {} updated to {} by itself", e.name, up.version);
                     let _ = net::run_short(5, &["notify-send", "-a", "Hearth Store", "-i", "system-software-update", &format!("{} is on {}", e.name, up.version), "Updated by itself (Store settings › Install updates by themselves)."]);
                 }

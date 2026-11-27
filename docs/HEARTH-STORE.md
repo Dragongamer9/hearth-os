@@ -43,6 +43,36 @@ Why AppImages and not .rpm, system extensions or Flatpaks: rpm-ostree / bootc la
 needs a restart, and a systemd-sysext is merged at every start and needs root (both touch starting, which is a red
 flag); the apps make no Flatpaks, and Command Center's own updater only knows the AppImage.
 
+## Store apps: Hearth's apps that aren't built in
+
+The owner (Nov 27): "Forge isn't a built in app also it shows it's installed when it's not", and "just because we add
+apps don't make them built in or installed by default". Only what was in the Hearth OS 1.18 image is built in. Every
+Hearth app made since (Hearth Forge, Game Fixer, Proton Manager, Overlay, Bottles, 3D, Imagine, Retro, Retro to Steam,
+Studio, Beat Maker, Lights, Remap, Mouse, Shield, Listen, Passwords, Cloud, Home) is a **Store app**:
+
+- Not in the image: `os-bases/peppermint/build.sh` names them in `STORE_ONLY_APPS` and installs only the 1.18 apps; their
+  menu entries are taken out of the image too. `hosts/linux/test/test_store_only_apps.py` fails when a new app is put in
+  the image or listed as built in without being on its lists of built-in apps (the owner's call).
+- In the list: `"kind": "app"`, `"inImage": false`, with the app's `"part"` (its Store copy) and `"open"` (its program).
+  `quick-update.yml` writes them that way (its `store_apps`, the same list) and fills in the name, icon and words from
+  the image's list. An older Store reads `"app"` as an app with no release: it shows **Coming**, never built in.
+- On a PC the Store doesn't trust the field alone: an entry with a Store copy whose program isn't in this Hearth OS
+  (`/usr/libexec/hearth/apps/<it>` or `/usr/bin/<it>`, never the home folder) is a Store app, even if it says
+  `"builtin"` (`catalog.rs` `settle`); one whose program is in the image stays built in, exactly as before.
+- **Get** installs its Store copy exactly as a quick update does (`hearth-part install`: the SHA-256 the signed list
+  gives, made for this Hearth OS, into `~/.local/share/hearth/parts/<program>`), then writes its menu entry
+  (`~/.local/share/applications/hearth-store-<id>.desktop`, from the `.desktop` that came in the copy's
+  `share/applications`, its Exec pointed at `hearth-part run <program> /usr/libexec/hearth/apps/<program>`), its icon
+  (from the copy's `share/icons`, else drawn) and `~/.local/bin/<program>` (so anything that starts it by name finds the
+  Store copy; one of your own with that name is never replaced). Then it's **Installed**: Open, Update when a newer copy
+  for this Hearth OS is out, Check and repair (gets it again), Uninstall (the copy to the Trash, the menu entry, icon and
+  command removed; its own folders kept unless you untick that). "Install updates by themselves" never installs one
+  you haven't got.
+- Its page says "Hearth app · from the Hearth Store", never "Built into Hearth OS" or "Hearth part", and it isn't on the
+  Hearth parts page.
+- Not yet: user services the image starts only for built-in programs (Lights', Mouse's and Remap's runners check
+  `/usr/bin/<program>`) don't start for a Store copy.
+
 ## Apps that update themselves (Command Center)
 
 The owner (Nov 19): "Leave it to the app". The Store installs Command Center's AppImage from its GitHub release (checked

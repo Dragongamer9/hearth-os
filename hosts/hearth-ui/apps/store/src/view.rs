@@ -26,6 +26,14 @@ fn lit(a: &App, id: &str) -> bool {
     a.focus == id && a.dlg.is_none() && !a.menu
 }
 
+/// How it's kept on this PC: an AppImage, or a Hearth app's files (a Store app: its Store copy, not part of Hearth OS).
+pub fn installs_as(e: &Entry) -> &'static str {
+    if e.kind == Kind::Store { "Hearth app files in your home folder" } else { "AppImage in your home folder" }
+}
+fn kind_word(e: &Entry) -> &'static str {
+    if e.kind == Kind::Store { "Hearth app" } else { "AppImage" }
+}
+
 /// The one thing pressing an app does from a list: install, update (or open, for an app that updates itself), open.
 pub fn primary(e: &Entry, st: &State) -> Option<Msg> {
     match st {
@@ -67,7 +75,7 @@ fn parts_gave_up(a: &App) -> Vec<Entry> {
 }
 
 fn installed(a: &App) -> Vec<Entry> {
-    a.cat.apps.iter().filter(|e| a.inst.contains_key(&e.id)).cloned().collect()
+    a.cat.apps.iter().filter(|e| a.got(e)).cloned().collect()
 }
 
 fn matches_search(a: &App, e: &Entry) -> bool {
@@ -416,7 +424,7 @@ pub fn view(a: &App) -> E<'_, Msg> {
         Page::Settings => w11::settings(a),
         Page::App(id) if a.dlg.is_none() => match a.entry(id) {
             Some(e) if e.test => w11::test_page(a, e),
-            Some(e) if e.part.is_none() => w11::app_page(a, e),
+            Some(e) if e.part.is_none() || e.kind == Kind::Store => w11::app_page(a, e),
             _ => page_body(a),
         },
         _ => page_body(a),
@@ -588,8 +596,8 @@ fn tile_sub(a: &App, e: &Entry, st: &State) -> String {
     match st {
         State::BuiltIn => "Comes with Hearth OS".into(),
         State::Coming => "Not out yet".into(),
-        State::Get(r) | State::Ready(_, r) => format!("AppImage · {}", dl_size(e, r.size)),
-        State::UpToDate(i) => format!("AppImage · {}", mb(i.size, false)),
+        State::Get(r) | State::Ready(_, r) => format!("{} · {}", kind_word(e), dl_size(e, r.size)),
+        State::UpToDate(i) => format!("{} · {}", kind_word(e), mb(i.size, false)),
     }
 }
 
@@ -768,8 +776,8 @@ fn yours(a: &App) -> E<'_, Msg> {
     for e in mine {
         let st = a.state(&e);
         let (sub, end): (String, E<Msg>) = match &st {
-            State::Ready(i, r) => (format!("{} → {} · AppImage in your home folder", i.version, r.version), row![chip(&p, "Update ready", Chip::Up), btn(&p, if e.self_updates { "Open to update" } else { "Update" }, B::Normal, false, false, primary(&e, &st))].spacing(z(10.0)).align_y(iced::Center).into()),
-            State::UpToDate(i) => (format!("{} · {}", i.version, if e.self_updates { "updates itself" } else { "AppImage in your home folder" }), row![chip(&p, "Up to date", Chip::Ok), btn(&p, "Open", B::Normal, false, false, Some(Msg::Launch(e.id.clone())))].spacing(z(10.0)).align_y(iced::Center).into()),
+            State::Ready(i, r) => (format!("{} → {} · {}", i.version, r.version, installs_as(&e)), row![chip(&p, "Update ready", Chip::Up), btn(&p, if e.self_updates { "Open to update" } else { "Update" }, B::Normal, false, false, primary(&e, &st))].spacing(z(10.0)).align_y(iced::Center).into()),
+            State::UpToDate(i) => (format!("{} · {}", i.version, if e.self_updates { "updates itself" } else { installs_as(&e) }), row![chip(&p, "Up to date", Chip::Ok), btn(&p, "Open", B::Normal, false, false, Some(Msg::Launch(e.id.clone())))].spacing(z(10.0)).align_y(iced::Center).into()),
             _ => (String::new(), gap(1.0, 1.0)),
         };
         let id = format!("y-{}", e.id);
@@ -856,6 +864,8 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         format!("Test version · by {}", e.author)
     } else if e.tag == "rust" {
         format!("Rust · from the Hearth Store · by {}", e.author)
+    } else if e.kind == Kind::Store {
+        format!("Hearth app · from the Hearth Store · by {}", e.author)
     } else if e.part.is_some() {
         format!("Built into Hearth OS · by {}", e.author)
     } else if e.tagline.is_empty() {
@@ -868,14 +878,18 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         right = right.push(look::chip(&p, "TEST", look::Chip::Test));
     } else if a.dlg.is_none() {
         let on = if matches!(st, State::Coming) { None } else { primary(e, &st) };
-        right = right.push(btn(&p, open_label(e, &st), B::Primary, true, lit(a, "open"), if a.offline() && matches!(st, State::Get(_) | State::Ready(..)) && !e.self_updates { None } else { on }));
-        if a.inst.contains_key(&e.id) {
+        if a.part_busy.contains(&e.id) {
+            right = right.push(btn(&p, if a.got(e) { "Updating…" } else { "Getting…" }, B::Primary, true, lit(a, "open"), None));
+        } else {
+            right = right.push(btn(&p, open_label(e, &st), B::Primary, true, lit(a, "open"), if a.offline() && matches!(st, State::Get(_) | State::Ready(..)) && !e.self_updates { None } else { on }));
+        }
+        if a.got(e) {
             right = right.push(btn(&p, "⋯", B::Normal, true, lit(a, "more") || a.menu, Some(Msg::Menu)));
         }
     }
     let head = row![
         app_icon(e, z(104.0)),
-        if e.part.is_some() {
+        if e.part.is_some() && e.kind != Kind::Store {
             column![tb(e.name.clone(), f(38.0), tn.text), container(t(line, f(17.0), tn.muted)).padding(look::pad(z(6.0), 0.0, 0.0, 0.0))].width(Length::Fill)
         } else {
             column![tb(e.name.clone(), f(38.0), tn.text), container(t(line, f(17.0), tn.muted)).padding(look::pad(z(6.0), 0.0, z(12.0), 0.0)), app_chips(a, e, &st)].width(Length::Fill)
@@ -991,7 +1005,7 @@ fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     if e.test {
         return test_page(a, e);
     }
-    if e.part.is_some() {
+    if e.part.is_some() && e.kind != Kind::Store {
         return part_page(a, e);
     }
     let p = a.p;
@@ -1029,7 +1043,7 @@ fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         }
         State::Coming => {
             facts = facts.push(kv(&p, "Version", "Not out yet", None, false));
-            facts = facts.push(kv(&p, "Installs as", "AppImage in your home folder", Some(pc_line), true));
+            facts = facts.push(kv(&p, "Installs as", installs_as(e), Some(pc_line), true));
         }
         _ => {
             let (ver, date, size) = match (&st, rel.as_ref()) {
@@ -1040,9 +1054,9 @@ fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
             let rd = released(&date);
             facts = facts.push(kv(&p, "Version", if rd.is_empty() { ver } else { format!("{ver} · {rd}") }, None, false));
             facts = facts.push(kv(&p, "Download", mb(size, false), None, false));
-            facts = facts.push(kv(&p, "Installs as", "AppImage in your home folder", Some(pc_line), false));
+            facts = facts.push(kv(&p, "Installs as", installs_as(e), Some(pc_line), false));
             facts = facts.push(kv(&p, "Updates", if e.self_updates { "By itself, from the same release" } else { "From the Store, when you say so" }, None, false));
-            facts = facts.push(kv(&p, "Checked with", if e.pin.is_some() { "The SHA-256 in Hearth OS's list" } else { "The release's SHA-256 list" }, None, true));
+            facts = facts.push(kv(&p, "Checked with", if e.kind == Kind::Store { "The signed list from hearthos.fun" } else if e.pin.is_some() { "The SHA-256 in Hearth OS's list" } else { "The release's SHA-256 list" }, None, true));
         }
     }
     let lower = row![card(&p, left, false).into_width(135), card(&p, facts, false).into_width(100)].spacing(z(22.0));
@@ -1143,7 +1157,7 @@ fn updates(a: &App) -> E<'_, Msg> {
             container(t(if shown { "Hide what's new ▴" } else { "What's new ▾" }, f(14.0), Pal::mix(tn.text, tn.muted, 0.2))).padding(look::pad(z(8.0), z(14.0), z(8.0), z(14.0))).style(look::bx(Color::TRANSPARENT, 14.0, Some((Pal::mix(tn.line, tn.text, 0.08), 1.0)))),
             Some(Msg::ToggleNew(e.id.clone())),
         );
-        let mut body = Column::new().push(t(e.name.clone(), f(22.0), tn.text)).push(t(format!("{} → {} · {} · AppImage in your home folder", i.version, r.version, dl_size(e, r.size)), f(15.0), tn.muted));
+        let mut body = Column::new().push(t(e.name.clone(), f(22.0), tn.text)).push(t(format!("{} → {} · {} · {}", i.version, r.version, dl_size(e, r.size), installs_as(&e)), f(15.0), tn.muted));
         if shown {
             body = body.push(container(ts(format!("What's new in {}", short_version(&r.version)), f(18.0), tn.text)).padding(look::pad(z(22.0), 0.0, z(8.0), 0.0)));
             body = body.push(bullets(&p, &r.notes, f(16.0)));
@@ -1170,8 +1184,8 @@ fn updates(a: &App) -> E<'_, Msg> {
         list = list.push(srow(&p, app_icon(&e, z(54.0)), e.name.clone(), format!("{ver} · this app updates itself. When it has a new version, the button here is \"Open to update\"."), end, lit(a, &id), None));
     }
     for e in installed(a).into_iter().filter(|e| !e.self_updates && matches!(a.state(e), State::UpToDate(_))) {
-        let v = a.inst.get(&e.id).map(|i| i.version.clone()).unwrap_or_default();
-        list = list.push(srow(&p, app_icon(&e, z(54.0)), e.name.clone(), format!("{v} · AppImage in your home folder"), chip(&p, "Up to date", Chip::Ok), false, None));
+        let v = a.inst.get(&e.id).map(|i| i.version.clone()).or_else(|| a.parts.get(&e.id).map(|h| h.version.clone())).unwrap_or_default();
+        list = list.push(srow(&p, app_icon(&e, z(54.0)), e.name.clone(), format!("{v} · {}", installs_as(&e)), chip(&p, "Up to date", Chip::Ok), false, None));
     }
     c = c.push(list);
     // Hearth's own apps and desktops (mockup 1.17-quick-updates 1): the ones up to date in one row, and each one
@@ -1447,7 +1461,7 @@ fn uninstall_dialog(a: &App) -> E<'_, Msg> {
         .style(look::bx(Pal::mix(tn.card, tn.text, 0.02), 9.0, None));
     let keep_row = ring(d.focus == 0, 9.0, click(keep_row, Some(Msg::DlgKeep)));
     let facts = column![
-        kv(&p, "The app", format!("{} {} · AppImage in your home folder · {}", e.name, i.version, mb(i.size, false)), None, false),
+        kv(&p, "The app", if e.kind == Kind::Store { format!("{} {} · {}", e.name, a.parts.get(&e.id).map(|h| h.version.clone()).unwrap_or_default(), installs_as(e)) } else { format!("{} {} · AppImage in your home folder · {}", e.name, i.version, mb(i.size, false)) }, None, false),
         kv(&p, "Its menu entry and icon", "Yes", None, false),
         kv(&p, "Settings and data", if d.keep { "Kept (turn the switch off to move them to the Trash)" } else { "Moved to the Trash (not deleted)" }, None, false),
     ];
@@ -1582,7 +1596,7 @@ fn pad_home(a: &App) -> E<'_, Msg> {
         first = first.push(ring(lit(a, "hero"), 12.0, card_));
         if let State::Ready(_, r) | State::Get(r) = st {
             let mut facts = Column::new();
-            facts = facts.push(kv(&p, "Installs as", "AppImage in your home folder", None, false));
+            facts = facts.push(kv(&p, "Installs as", installs_as(e), None, false));
             facts = facts.push(kv(&p, "Download", dl_size(e, r.size), None, false));
             facts = facts.push(kv(&p, if e.data_note.is_empty() { "Its settings and data".to_string() } else { e.data_note.clone() }, "Stay as they are", None, true));
             let notes: Vec<String> = r.notes.iter().take(2).cloned().collect();
