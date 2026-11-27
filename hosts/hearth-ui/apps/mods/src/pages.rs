@@ -1084,7 +1084,7 @@ fn crash_page(a: &App) -> E<'_, Msg> {
     for (i, l) in shown {
         let mk = c.marked.contains(&i);
         let col = if l.contains("Unhandled") { k::RED } else if mk { k::YELLOW } else { k::rgb("#cfc5bc") };
-        lines = lines.push(container(t(l, 11.0, col).font(MONO).wrapping(Wrapping::None)).width(Length::Fill).style(ui::boxed(if mk { Pal::mix(p.bg, k::YELLOW, 0.12) } else { Color::TRANSPARENT }, 2.0, None)));
+        lines = lines.push(container(t(l, 11.0, col).font(MONO).wrapping(Wrapping::None)).style(ui::boxed(if mk { Pal::mix(p.bg, k::YELLOW, 0.12) } else { Color::TRANSPARENT }, 2.0, None)));
     }
     let what = box_note(&p, "What happened", format!("{} {} inside {}.", a.game().map(|g| g.short()).unwrap_or_default(), logic::exception_words(&c.exception), if c.at.is_empty() { first.clone() } else { c.at.clone() }), p.muted);
     let logc = k::card(

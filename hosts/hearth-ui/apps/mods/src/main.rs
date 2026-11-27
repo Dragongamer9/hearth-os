@@ -448,9 +448,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 if a.starts.is_empty() {
                     a.starts = a.detail.s["executables"].as_array().and_then(|e| e.first()).and_then(|e| e["title"].as_str()).unwrap_or("").to_string();
                 }
+                let sort = if app::flag("--sort") && a.sort.is_none() { update(a, Msg::Sort) } else { Task::none() };
                 if let Some(id) = a.inst_id() {
                     if !a.picked.is_empty() {
-                        return Task::perform(back::organizer(vec![id, "conflicts".into(), a.picked.clone()]), Msg::Lens);
+                        return Task::batch([sort, Task::perform(back::organizer(vec![id, "conflicts".into(), a.picked.clone()]), Msg::Lens)]);
                     }
                 }
             }

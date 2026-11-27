@@ -14,7 +14,8 @@ import sys
 home = sys.argv[1]
 data = os.path.join(home, ".local/share/nimbus")
 inst = os.path.join(data, "mods/organizer/skyrimse")
-game = os.path.join(home, "games/Skyrim Special Edition")
+steam = os.path.join(home, ".local/share/Steam")
+game = os.path.join(steam, "steamapps/common/Skyrim Special Edition")
 pfx = os.path.join(home, "prefix/pfx")
 docs = os.path.join(pfx, "drive_c/users/steamuser/Documents/My Games/Skyrim Special Edition")
 own = os.path.join(data, "mods/manager")
@@ -54,6 +55,12 @@ for m in ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Drago
 w(os.path.join(game, "Data/ccBGSSSE001-Fish.esm"), esp(0x201, ["Skyrim.esm"], "Bethesda"), "wb")
 for i in range(40):
     w(os.path.join(game, "Data/textures/architecture/whiterun/wrwood%02d.dds" % i), "game")
+
+# ---- Steam's library: the games the Mod Manager finds by itself (appmanifest files, as Steam writes them)
+for app, name in [(489830, "Skyrim Special Edition"), (377160, "Fallout 4"), (1091500, "Cyberpunk 2077"), (1086940, "Baldur's Gate 3"), (413150, "Stardew Valley"), (892970, "Valheim"), (1716740, "Starfield"), (1245620, "ELDEN RING"), (1145350, "Hades II")]:
+    w(os.path.join(steam, "steamapps/appmanifest_%d.acf" % app), '"AppState"\n{\n\t"appid"\t\t"%d"\n\t"name"\t\t"%s"\n\t"installdir"\t\t"%s"\n\t"StateFlags"\t\t"4"\n\t"SizeOnDisk"\t\t"1000"\n}\n' % (app, name, name))
+    w(os.path.join(steam, "steamapps/common", name, "game.txt"), name)
+w(os.path.join(steam, "steamapps/libraryfolders.vdf"), '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n' % steam)
 
 # ---- the mods (separators and all), lowest priority first
 S = "separator"
@@ -119,7 +126,7 @@ for prof, local in [("Survival playthrough", True), ("Vanilla+ (Ally)", True), (
     w(os.path.join(pd, "loadorder.txt"), "\n".join(["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm", "ccBGSSSE001-Fish.esm"] + plugins) + "\n")
     w(os.path.join(pd, "settings.ini"), "[General]\nLocalSaves=%s\nLocalSettings=%s\n" % ("true" if local else "false", "true" if local else "false"))
     w(os.path.join(pd, "Skyrim.ini"), "[Display]\nfShadowDistance=3000\n")
-reg = {"instances": [{"id": "skyrimse", "title": "Skyrim Special Edition", "dir": inst, "kind": "skyrimse", "gameDir": game, "libraryId": "", "prefix": pfx, "steamApp": 489830, "wabbajack": "", "launcher": "hearth", "added": 1763700000}]}
+reg = {"instances": [{"id": "skyrimse", "title": "Skyrim Special Edition", "dir": inst, "kind": "skyrimse", "gameDir": game, "libraryId": "steam:489830", "prefix": pfx, "steamApp": 489830, "wabbajack": "", "launcher": "hearth", "added": 1763700000}]}
 w(os.path.join(data, "mods/organizer/instances.json"), json.dumps(reg, indent=1))
 
 # ---- earlier snapshots (the format logic.rs takes them in)

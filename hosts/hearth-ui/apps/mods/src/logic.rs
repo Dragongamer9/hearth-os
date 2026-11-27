@@ -12,9 +12,9 @@ use std::path::{Path, PathBuf};
 /// SHA-256 is the pinned one. `PIN` is (game folder at github.com/loot, commit, sha256); an empty commit means not
 /// pinned yet, and Sort then uses only what the plugins say themselves (their masters).
 pub const PIN: &[(&str, &str, &str, &str)] = &[
-    // (kinds.rs id, loot repo, commit, sha256)
-    ("skyrimse", "skyrimse", "", ""),
-    ("fallout4", "fallout4", "", ""),
+    // (kinds.rs id, loot repo, commit, sha256): branch v0.26 as fetched by CI on Nov 26, 2026
+    ("skyrimse", "skyrimse", "d8bd34be6321e32bd7d38a5770ec45eb91fa4337", "78c9fa462f1f26b7f8105c019b7bac4354bcafa6bb36848369a6f745177a7f65"),
+    ("fallout4", "fallout4", "b519c56dab5791dc7141d9ef178552817664bfe8", "c56da222811981021029e61482f55086c25f6b32cc1922e92ff4afd45491b3b7"),
 ];
 
 pub fn masterlist_url(kind: &str) -> Option<(String, String)> {

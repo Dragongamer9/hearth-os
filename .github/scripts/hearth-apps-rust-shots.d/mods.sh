@@ -13,7 +13,7 @@ mm() { # NAME ARGS…: pictured in that world
   run "$n" hearth-mods 0 env HOME="$MH" XDG_CONFIG_HOME="$MH/.config" XDG_DATA_HOME="$MH/.local/share" HEARTH_DESKTOP_JSON="$MH/.local/share/nimbus/desktop.json" "$@"
 }
 swaymsg output HEADLESS-1 resolution 1920x1080 >/dev/null 2>&1
-before=$(cd "$MH/games" && find . -type f -exec md5sum {} + | sort | md5sum)
+before=$(cd "$MH/.local/share/Steam/steamapps/common" && find . -type f -exec md5sum {} + | sort | md5sum)
 
 # What the organizer reads from the pretend instance (the command line the old Hearth Mods had, unchanged)
 sum=$(env HOME="$MH" XDG_CONFIG_HOME="$MH/.config" XDG_DATA_HOME="$MH/.local/share" "$MM" --organizer skyrimse summary 2>&1)
@@ -34,18 +34,18 @@ for r in skyrimse fallout4; do
 done
 echo "::notice title=mods thunderstore::$(curl -sS -m 20 -w ' HTTP %{http_code}' 'https://thunderstore.io/api/cyberstorm/listing/valheim/?q=map&ordering=most-downloaded' 2>&1 | head -c 700)"
 
-mm mods-01-game "$MM" --game instance:skyrimse --mod "Noble Skyrim"
-mm mods-02-install "$MM" --game instance:skyrimse --page downloads --step 1
-mm mods-03-find "$MM" --game instance:skyrimse --page find --find map
-mm mods-04-updates "$MM" --game instance:skyrimse --page updates --snap 2
-mm mods-05-crash "$MM" --game instance:skyrimse --page crashes
-mm mods-06-describe "$MM" --game instance:skyrimse --page describe
-mm mods-07-game-mode "$MM" --game instance:skyrimse --mod "Noble Skyrim" --fullscreen --lift
+SHOT_WAIT=6 mm mods-01-game "$MM" --game steam:489830 --mod "Noble Skyrim" --sort
+mm mods-02-install "$MM" --game steam:489830 --page downloads --step 1
+SHOT_WAIT=8 mm mods-03-find "$MM" --game steam:489830 --page find --find map
+mm mods-04-updates "$MM" --game steam:489830 --page updates --snap 2
+mm mods-05-crash "$MM" --game steam:489830 --page crashes
+mm mods-06-describe "$MM" --game steam:489830 --page describe
+mm mods-07-game-mode "$MM" --game steam:489830 --mod "Noble Skyrim" --fullscreen --lift
 mm mods-08-every-game "$MM" --page every
-SHOT_WAIT=4.5 mm mods-09-editing env HEARTH_ARRANGE_OPEN=mods:game HEARTH_STUDIO_STAGE=mods:none "$MM" --game instance:skyrimse
+SHOT_WAIT=4.5 mm mods-09-editing env HEARTH_ARRANGE_OPEN=mods:game HEARTH_STUDIO_STAGE=mods:none "$MM" --game steam:489830
 
 # The game folder is never touched, and opening it wrote no setting (red flag 9)
-after=$(cd "$MH/games" && find . -type f -exec md5sum {} + | sort | md5sum)
+after=$(cd "$MH/.local/share/Steam/steamapps/common" && find . -type f -exec md5sum {} + | sort | md5sum)
 [ "$before" = "$after" ] || echo "::error title=mods::opening the Mod Manager changed the game's own folder"
 [ -e "$MH/.config/nimbus/mods.json" ] && echo "::error title=mods::opening it wrote a setting: $(head -c 300 "$MH/.config/nimbus/mods.json")"
 for n in 01-game 02-install 05-crash; do
