@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 55,
+  "serial": 56,
   "apps": [
     {
       "id": "command-center",
@@ -925,7 +925,20 @@
       "kind": "builtin",
       "short": "Game Mode host",
       "tagline": "Hearth's own Game Mode, first-time setup",
-      "about": "Hearth's own Game Mode, first-time setup. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates."
+      "about": "Hearth's own Game Mode, first-time setup. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates.",
+      "part": {
+        "id": "hearth-game-mode",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "nimbus",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-game-mode-1.18.1/hearth-game-mode-1.18.1.tar.gz",
+        "sha256": "f3223bccf041ea06e284ed9fa1cfde6eae4fe4579af2d9e4ef5c41a15be03136",
+        "size": 8652177,
+        "notes": [
+          "Fix: files a move put aside are never deleted by themselves after 30 days",
+          "Only Delete now, when you press it, deletes them"
+        ]
+      }
     },
     {
       "id": "decky-hearth-sync",
