@@ -260,6 +260,7 @@ fn view<'a>(a: &'a App) -> E<'a> {
     for x in arr(d, "byDevice") {
         byd = byd.push(row![container(t(s(&x, "name"), 12.0, p.text)).width(Length::Fill), draw::mini(&p, f(&x, "frac") as f32), container(t(s(&x, "size"), 12.0, p.muted)).width(Length::Fixed(64.0)).align_x(iced::alignment::Horizontal::Right)].spacing(10.0).align_y(iced::Center));
     }
+    let space = column![space, byd].spacing(4.0);
     let r2 = b(d, "r2");
     let second = column![cap(&p, "A second copy away from home"), draw::lr(t("Copy backups to Cloudflare R2", 12.0, p.text), w::sw(&p, r2, Some(act("backups", &["set", "-", "r2", if r2 { "off" } else { "on" }], "")))), t(s(d, "r2Line"), 12.0, p.muted)].spacing(6.0);
     let phone = column![cap(&p, "Phone and Xbox"), t("The phone's photos and files go to Hearth Cloud. The Xbox keeps its saves in its own cloud: nothing to do here.", 12.0, p.muted)].spacing(6.0);
