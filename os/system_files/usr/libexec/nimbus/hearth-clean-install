@@ -29,9 +29,15 @@ Every step is safe to run again: if the PC loses power halfway, the next start c
              Heroic's and Lutris' game folders (Heroic's ~/Games/Heroic and its installed lists, Lutris' pga.db)
              ~/.steam's links to the Steam folder (so the new system's Steam finds the games there)
              games you added to Hearth yourself (their folder under the install folder, or just the file)
-           Everything else is MOVED (not deleted) to ~/.old-hearth-<date>, with a list of what came from where
-           (.hearth-old-files.json). Hearth offers "Delete now" and "Restore a folder" in Settings › System, and
-           deletes it by itself after 30 days. Steam libraries outside your home folder aren't touched.
+           Only what the person picked (the plan's "putAside": top-level things, or paths in the home folder) is
+           MOVED (not deleted) to ~/.old-hearth-<date>, with a list of what came from where
+           (.hearth-old-files.json); a plan without that list puts nothing aside. The folder is kept until the
+           person deletes it (Settings › System › Storage: Bring back, Keep, Delete now): nothing ever deletes it by
+           itself. Steam libraries outside your home folder aren't touched.
+           RED FLAG 9 (Nov 27, 2026): a move between Hearth editions (Fedora → Debian, by hand or the automatic
+           move, Debian → Fedora) NEVER does this step, whatever the plan says: only a plan from the Bazzite-based
+           Hearth (fromEdition "bazzite", or none) can. On Nov 24, 2026 the owner's PC moved from Fedora to an older
+           Debian image whose copy of this step didn't know "keepHome" and put nearly his whole home folder aside.
   4. done  The plan is renamed to clean-install.done.json, so this never runs again.
 
   1.15, the Anatase test (switched to from Debian, or back): the plan says keepHome, and step 3 is skipped: the home
@@ -62,7 +68,8 @@ DONE = 'var/lib/hearth/clean-install.done.json'
 STATE = 'var/lib/hearth/clean-install-state.json'
 OLD_HOME_PREFIX = '.old-hearth-'
 MANIFEST = '.hearth-old-files.json'
-KEEP_DAYS = 30
+# Editions (a plan from one of these is a move between editions: the home folder is never touched).
+EDITIONS = ('anatase', 'ubuntu', 'cachyos', 'peppermint')
 
 # /etc entries kept as they are (relative to /etc; a folder keeps everything in it; shell patterns allowed).
 KEEP_ETC = [
@@ -557,13 +564,19 @@ def clean_home(plan, state):
     gid = pw.pw_gid if pw else os.getgid()
     old = os.path.join(home, OLD_HOME_PREFIX + state['stamp'])
     keep = keep_list(home)
-    todo = plan_home(home, keep)
-    log('home: keeping %d game folders, moving %d items to %s' % (len(keep), len(todo), old))
+    picked = [r for r in (plan.get('putAside') or []) if isinstance(r, str) and r and not r.startswith('/')
+              and all(x not in ('', '.', '..') for x in r.split('/'))]
+    # Only what the person picked goes aside (and never what keeps the games).
+    todo = [r for r in plan_home(home, keep) if any(r == k or r.startswith(k + '/') for k in picked)]
+    if not todo:
+        log('home: nothing was picked to put aside: your home folder is left exactly as it is')
+        return
+    log('home: keeping %d game folders, putting aside %d items you picked in %s' % (len(keep), len(todo), old))
     for k in keep:
         log('home: keep ' + k)
     man_file = os.path.join(old, MANIFEST)
     man = read_json(man_file, None) or {'version': 1, 'user': user, 'created': int(time.time()),
-                                         'deleteAfter': int(time.time()) + KEEP_DAYS * 86400, 'from': plan.get('from'), 'moved': [], 'kept': keep}
+                                         'keptUntilDeleted': True, 'from': plan.get('from'), 'moved': [], 'kept': keep}
     if not DRY:
         os.makedirs(old, mode=0o700, exist_ok=True)
         os.chown(old, uid, gid)
@@ -588,7 +601,10 @@ def clean_home(plan, state):
                 os.chown(d, uid, gid)
             parent = os.path.dirname(parent)
         write_json(man_file, man, mode=0o600)
-    trim_library(home, old)
+    # Hearth's own library list is trimmed only when the person picked it (or a folder it's in).
+    lib = '.local/share/nimbus/library.json'
+    if any(lib == k or lib.startswith(k + '/') for k in picked):
+        trim_library(home, old)
     if not DRY:
         write_json(man_file, man, mode=0o600)
         os.chown(man_file, uid, gid)
@@ -637,6 +653,15 @@ def arrival_plan():
     return None
 
 
+def home_kept(plan):
+    """The home step never runs for a move between editions (red flag 9): keepHome, an arrival, or a plan from any
+    edition (only the Bazzite-based Hearth's plans, fromEdition "bazzite" or none, may put things aside)."""
+    if plan.get('keepHome') or plan.get('arrival'):
+        return True
+    fe = plan.get('fromEdition')
+    return fe not in (None, '', 'bazzite')
+
+
 def main(argv):
     global ROOT, DRY
     args = argv[1:]
@@ -677,8 +702,8 @@ def main(argv):
     for name, fn in STEPS:
         if name in state['done']:
             continue
-        if name == 'home' and plan.get('keepHome'):
-            log('home: a switch to or from the Anatase test: your home folder is left exactly as it is')
+        if name == 'home' and home_kept(plan):
+            log('home: a move between Hearth editions: your home folder is left exactly as it is')
         else:
             fn(plan, state)
         if not DRY:

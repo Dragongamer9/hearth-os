@@ -123,7 +123,9 @@ class HomePlan(unittest.TestCase):
         fake_home_records['gogInstalls'] = {'1': os.path.join(home, 'Games/GOG/Witcher')}
         fake_home_records['manual'] = [{'id': 'manual:1', 'path': os.path.join(home, 'Games/Mine/run.sh')}]
         write(os.path.join(home, '.local/share/nimbus/library.json'), json.dumps(fake_home_records))
-        write(os.path.join(root, 'var/lib/hearth/clean-install.json'), json.dumps({'version': 1, 'user': 'sam', 'uid': os.getuid(), 'home': '/var/home/sam', 'from': 'Hearth OS (based on Bazzite)'}))
+        write(os.path.join(root, 'var/lib/hearth/clean-install.json'), json.dumps({'version': 1, 'user': 'sam', 'uid': os.getuid(), 'home': '/var/home/sam', 'from': 'Hearth OS (based on Bazzite)',
+                                                                                 # Only what the person picked goes aside.
+                                                                                 'putAside': ['Documents', '.local/share/Steam/config', '.local/share/nimbus']}))
         write(os.path.join(root, 'etc/hostname'), 'deck')
         write(os.path.join(root, 'usr/etc/hostname'), 'localhost')
         write(os.path.join(root, 'usr/etc/os-release'), 'NAME=Hearth')
@@ -154,7 +156,12 @@ class HomePlan(unittest.TestCase):
         self.assertEqual(slurp(os.path.join(root, 'etc/hostname')), 'deck')
         man = jload(os.path.join(old, ci.MANIFEST))
         self.assertIn('Documents', man['moved'])
-        self.assertEqual(man['deleteAfter'] - man['created'], 30 * 86400)
+        # Kept until the person deletes it: no date it goes by itself.
+        self.assertNotIn('deleteAfter', man)
+        self.assertTrue(man['keptUntilDeleted'])
+        # What wasn't picked stays where it is.
+        for f in ('Pictures/cat.png', '.bashrc', '.config/kdeglobals', '.mozilla/firefox/profile/x', '.local/share/Steam/logs/a.txt'):
+            self.assertTrue(os.path.isfile(os.path.join(home, f)), f)
         # library.json trimmed to what finds the games; the whole one kept in the old folder.
         self.assertEqual(sorted(jload(os.path.join(home, '.local/share/nimbus/library.json'))), ['gogInstalls', 'manual'])
         self.assertIn('favorites', jload(os.path.join(old, '.local/share/nimbus/library.json')))
@@ -401,7 +408,8 @@ class Admin(unittest.TestCase):
     def test_plan(self):
         user = types.SimpleNamespace(pw_name='sam', pw_uid=1000, pw_dir='/var/home/sam')
         p = ha.clean_install_plan(user, ['org.mozilla.firefox'], 'ghcr.io/dragongamer9/hearth-os:latest', now=1700000000)
-        self.assertEqual((p['user'], p['uid'], p['home'], p['created'], p['oldFilesDays']), ('sam', 1000, '/var/home/sam', 1700000000, 30))
+        self.assertEqual((p['user'], p['uid'], p['home'], p['created'], p['putAside']), ('sam', 1000, '/var/home/sam', 1700000000, []))
+        self.assertNotIn('oldFilesDays', p)
         self.assertIn('steam-library', p['keep'])
         self.assertEqual(p['edition'], 'anatase')
         self.assertEqual(ha.clean_install_plan(user, [], 'x', now=1, edition='ubuntu')['edition'], 'ubuntu')

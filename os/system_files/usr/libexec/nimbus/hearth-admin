@@ -81,8 +81,9 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      edition, the main one from 1.16) ghcr.io/dragongamer9/hearth-os:stable only
                                      (never :latest or :testing); peppermint (Debian, archived in 1.16: the way
                                      back) hearth-peppermint:testing.
-                                     To or from the Fedora edition the home folder is left as it is, the Debian
-                                     version is pinned so it stays in the boot menu, and going back to Debian
+                                     Between editions (Fedora ⇄ Debian, by hand or auto-move-to-debian) the whole
+                                     home folder is left exactly as it is (red flag 9: nothing is put aside), the
+                                     Debian version is pinned so it stays in the boot menu, and going back to Debian
                                      starts that very version again when it's still there. Ubuntu and CachyOS are
                                      archived: refused. Download progress like update; the new system
                                      starts at the next restart
@@ -2394,7 +2395,7 @@ AUTO_MOVE_TRIES = 3
 def auto_move_to_debian():
     """1.18 (the owner, Nov 24: "Move them automatically"; Fedora is abandoned): a PC on Hearth OS on Fedora moves to
     Hearth OS on Debian by itself, once, with the same move as Settings › Updates › Switch edition (the very Debian
-    version it came from when that's still there, else Debian fresh, keeping the home folder). Run as root by
+    version it came from when that's still there, else Debian fresh, keeping the whole home folder: red flag 9). Run as root by
     hearth-auto-move-to-debian.service a few minutes after the PC starts; it never restarts the PC: the move is used
     at the next restart, and Fedora stays in the boot menu (red flag 2). Gives up after AUTO_MOVE_TRIES starts that
     didn't work, and says so."""
@@ -2475,10 +2476,22 @@ def own_edition(info='/usr/share/nimbus/image-info.json'):
     return base if base in NEW_OS_EDITIONS else None
 
 
-def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_edition=None):
+# RED FLAG 9 (Nov 27, 2026): a move between editions names this account in its plan instead of yours, and a home
+# folder that's never there, so that even an older Hearth OS's first start (one whose hearth-clean-install doesn't
+# know "keepHome", like the Debian 1.13 image hearth-peppermint:testing pointed at on Nov 24) finds no home folder to
+# clean: its home step looks the account up, doesn't find it, and stops at "no home folder here". Your account is in
+# "account", for the record; the new system's accounts come from /etc, not from the plan.
+KEPT_HOME_USER = 'hearth-home-kept'
+KEPT_HOME_DIR = '/nonexistent/hearth-home-kept'
+
+
+def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_edition=None, put_aside=None):
     """What the new Hearth OS does at its first start (/var/lib/hearth/clean-install.json, read by
-    hearth-clean-install there): which account, when, and that only games and saves are kept."""
-    return {
+    hearth-clean-install there): which account, when, and what's put aside. A move between editions keeps the whole
+    home folder (keepHome, and an account no older first start can find); from the Bazzite-based Hearth only what
+    the person picked (put_aside) is put aside, and kept until they delete it."""
+    edition_move = from_edition is not None
+    plan = {
         'version': 1,
         'user': user.pw_name, 'uid': user.pw_uid, 'home': user.pw_dir,
         'created': int(now if now is not None else time.time()),
@@ -2488,10 +2501,15 @@ def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_
         'fromEdition': from_edition or 'bazzite',
         'keep': CLEAN_INSTALL_KEEPS,
         'removeFlatpaks': flatpaks,
-        'oldFilesDays': 30,
-        # A test switch (to or from Anatase, 1.15): the home folder is left exactly as it is.
-        'keepHome': keeps_home(edition, from_edition),
+        # Only what the person picked goes aside (nothing, unless they picked something), kept until they delete it.
+        'putAside': [] if edition_move else list(put_aside or []),
+        # Every move between editions leaves the home folder exactly as it is.
+        'keepHome': edition_move or keeps_home(edition, from_edition),
     }
+    if edition_move:
+        plan['account'] = {'user': user.pw_name, 'uid': user.pw_uid, 'home': user.pw_dir}
+        plan['user'], plan['home'] = KEPT_HOME_USER, KEPT_HOME_DIR
+    return plan
 
 
 OSTREE_REPO = '/sysroot/ostree/repo'
@@ -2582,10 +2600,10 @@ def move_to_new_os(edition='peppermint', testing=False):
         os.remove(CLEAN_INSTALL)
     except OSError:
         pass
-    if plan['keepHome']:
+    if plan['keepHome'] or not plan['putAside']:
         print('log: Your home folder stays exactly as it is', flush=True)
     else:
-        print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
+        print('log: The new Hearth OS keeps your games and saves; what you picked is put aside until you delete it', flush=True)
     progress(0, 'Getting the new Hearth OS')
     ensure_podman()
     if current is not None:

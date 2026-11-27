@@ -1824,7 +1824,7 @@ const MOCK = (()=>{
     'newos.move':async({edition})=>{ const label={anatase:'Hearth OS, Fedora edition',ubuntu:'Ubuntu',cachyos:'CachyOS',peppermint:'Hearth OS on Debian'}[edition]||'the new Hearth OS';
       st.newos={eligible:true,published:true,canAdmin:true,state:'moving',edition,label,progress:0.3,line:'Downloading',phases:{download:{pct:30,done:1.2e9,total:4e9,bps:3.1e7,eta:90},install:{pct:0}},stage:{phase:'download'},speeds:[]};
       setTimeout(()=>{ st.newos={eligible:true,published:true,canAdmin:true,state:'done',edition,label,line:'Restart to start the new Hearth OS.'}; onSysEvent('newOs',clone(st.newos)); },2500); return clone(st.newos); },
-    'oldfiles.status':async()=>clone(st.oldf||{folders:[{name:'.old-hearth-2026-10-19',date:'2026-10-19',daysLeft:27,moved:['Documents','Downloads','Pictures','.config','.local/share/flatpak'],from:'Hearth OS (based on Bazzite)'}]}),
+    'oldfiles.status':async()=>clone(st.oldf||{folders:[{name:'.old-hearth-2026-10-19',date:'2026-10-19',kept:true,moved:['Documents','Downloads','Pictures','.config','.local/share/flatpak'],from:'Hearth OS (based on Bazzite)'}]}),
     'oldfiles.delete':async()=>{ st.oldf={folders:[]}; await wait(400); return clone(st.oldf); },
     'oldfiles.restore':async({item})=>{ const f=await MOCK.call('oldfiles.status'); f.folders[0].moved=f.folders[0].moved.filter(x=>x!==item); st.oldf=clone(f); return Object.assign(f,{restored:'/home/you/'+item}); },
     'game.options.set':async({id,options})=>{ MOCKOPT[id]=Object.assign(MOCKOPT[id]||{},options); return MOCK.call('game.options.get',{id}); },
@@ -7104,17 +7104,18 @@ function sysRollback(undo){
 // Debian (recommended) or, from 1.15, Hearth OS on Anatase as a test (its home folder kept, Debian kept in the boot
 // menu to go back to; newos.rs keeps_home). A choice lights up once its
 // image is published ("Not ready yet" until then). Picking one shows what's kept and what's put aside, then asks
-// once more; hearth-admin move-to-new-os --edition downloads it, and its first start keeps the games and puts
-// everything else aside for 30 days.
+// once more; hearth-admin move-to-new-os --edition downloads it, and its first start keeps the games and the whole
+// home folder (red flag 9, Nov 27, 2026: nothing is put aside unless the person picked it, and nothing put aside is
+// ever deleted by itself).
 const NEWOS = {s:null, pick:''};
 const NEWOS_KEEPS = [
   ['Your Steam games and saves','Installed games, their Proton prefixes and shader caches, and your Steam saves and settings. Steam libraries on other drives aren\'t touched.'],
   ['Games '+APP+' installed','Epic and GOG games, with their Windows (Wine) settings and saves'],
   ['Heroic and Lutris games','The game folders they installed'],
   ['Games you added yourself','Their folder in your games folder (or just the game\'s file)'],
-  ['You','Your account and password, device name, Wi-Fi networks, language and time zone']];
+  ['You','Your account and password, device name, Wi-Fi networks, language and time zone'],
+  ['The rest of your home folder','Documents, downloads, pictures, other apps and their settings and sign-ins stay exactly where they are. Nothing is put aside and nothing is deleted.']];
 const NEWOS_MOVES = [
-  ['Everything else in your home folder','Documents, downloads, pictures, other apps and their settings, sign-ins (Steam and the stores ask you to sign in again). Moved to a folder named .old-hearth- and the date, not deleted: for 30 days you can restore any of it from Settings › System, then it\'s deleted.'],
   ['The old system\'s apps and changes','Bazzite\'s preinstalled apps, packages added on top, and changed system settings: back to the new system\'s defaults']];
 function loadNewOs(){ if(LINUX && (!host || (HOSTINFO.system && /^(amd|nvidia|anatase|ubuntu|cachyos|peppermint)$/.test(HOSTINFO.edition||'')))) call('newos.status',{},90000).then(r=>{ NEWOS.s=r; if(S.view==='settings'&&S.settingsTab==='updates') render(null,true); }).catch(()=>{}); }
 function newOsChoice(id){ return ((NEWOS.s&&NEWOS.s.editions)||[]).find(e=>e.id===id); }
@@ -7170,13 +7171,13 @@ function newOsAsk(){
 const OLDF = {s:null, busy:false, told:false};
 function loadOldFiles(notify){ if(LINUX && (!host || HOSTINFO.edition==='anatase')) call('oldfiles.status',{},20000).then(r=>{ OLDF.s=r;
   const f=(r&&r.folders||[])[0];
-  if(notify && f && !OLDF.told){ OLDF.told=true; NOTIFS.unshift({i:'dl', t:'Your files from the old Hearth OS are kept for '+f.daysLeft+' more day'+(f.daysLeft===1?'':'s'), s:'Restore a folder or delete them in Settings › System', go:'system'}); updateBadge(); }
+  if(notify && f && !OLDF.told){ OLDF.told=true; NOTIFS.unshift({i:'dl', t:'Your files from the old Hearth OS are kept until you delete them', s:'Restore a folder or delete them in Settings › System', go:'system'}); updateBadge(); }
   if(S.view==='settings'&&S.settingsTab==='system') render(null,true); }).catch(()=>{}); }
 function oldFilesRows(){
   const fs=(OLDF.s&&OLDF.s.folders)||[]; if(!fs.length) return '';
   let h=shead('Files from the old Hearth OS', OLDF.busy);
   for(const f of fs){
-    h += `<div class="row"><span class="ricon">${I.clock}</span><div class="rt"><b>~/${esc(f.name)}</b><small>Moved aside on ${esc(f.date)} so the new Hearth OS could start fresh. Deleted by itself in ${f.daysLeft} day${f.daysLeft===1?'':'s'}.</small></div></div>`;
+    h += `<div class="row"><span class="ricon">${I.clock}</span><div class="rt"><b>~/${esc(f.name)}</b><small>Moved aside on ${esc(f.date)} so the new Hearth OS could start fresh. Kept until you delete it.</small></div></div>`;
     h += sgrid(((f.moved||[]).length ? `<button class="row" data-f data-k="of-r-${hk(f.name)}" data-act="oldRestore" data-n="${esc(f.name)}"><span class="ricon">${I.refresh}</span><div class="rt"><b>Restore a folder</b><small>Puts it back where it was (beside it, if there's something new there now)</small></div><div class="rv">${f.moved.length} ›</div></button>` : '')
       + `<button class="row" data-f data-k="of-d-${hk(f.name)}" data-act="oldDelete" data-n="${esc(f.name)}"><span class="ricon">${I.trash}</span><div class="rt"><b>Delete now</b><small>Frees the space straight away. Your games aren't in there.</small></div></button>`);
   }

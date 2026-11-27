@@ -261,10 +261,15 @@ and Peppermint images; it only runs where `/usr/share/nimbus/image-info.json` ex
    system's own, with your account, password and group memberships added (Fedora's system accounts don't fit
    there), then `systemd-sysusers` and `ldconfig` run.
 2. **/var**: Bazzite's preinstalled Flatpak apps and Bazzite-only folders are removed.
-3. **Home**: only games stay where they are: Steam's `steamapps` and `userdata` (and `~/.steam`'s links to it),
-   Hearth's Epic and GOG games and their Wine prefixes, Heroic's and Lutris' games, and games added by hand.
-   Everything else goes to `~/.old-hearth-<date>` for 30 days. Settings › System has "Restore a folder" and
-   "Delete now".
+3. **Home**: left exactly as it is (red flag 9, Nov 27, 2026). A move between editions (Fedora ⇄ Debian, by hand or
+   the automatic move) never touches it, whatever its plan says, and its plan names an account no older first start
+   can find, so even an older image can't clean it. Only a move from the Bazzite-based Hearth may put things aside,
+   and only what the person picked (the plan's `putAside`; none unless picked), into `~/.old-hearth-<date>`, kept
+   until the person deletes it: nothing deletes it by itself. Settings › System › Storage has "Bring back" (puts back
+   everything not in the home folder now, never replacing anything), "Keep" and "Delete now".
+   (On Nov 24, 2026 the owner's PC moved from Fedora 1.17 to Debian while `hearth-peppermint:testing` still pointed
+   at 1.13, whose first start didn't know "keep the home folder": it put nearly his whole home folder aside. That
+   can't happen again: the plan, the first start and `image-point.yml` (never back before 1.18) all guard it.)
 
 Every step can run again after a power cut; the log is `journalctl -u hearth-clean-install`.
 

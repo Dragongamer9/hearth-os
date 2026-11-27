@@ -1,0 +1,318 @@
+#!/usr/bin/python3
+"""hearth-old-files: the folders a move to another Hearth OS put aside (~/.old-hearth-<date>), as you (no root).
+Used by Settings › System › Storage ("Files a move put aside") and OldFilesWatch.qml (the notice after signing in).
+
+Why (red flag 9, Nov 27, 2026): the owner's Nvidia PC moved from the Fedora edition to Debian on Nov 24 and its first
+start on Debian put nearly his whole home folder into ~/.old-hearth-2026-11-24 (the Debian image it landed on was an
+older one whose hearth-clean-install didn't know "keep the home folder"). Nothing here is ever done by itself: these
+folders are kept until the person deletes them, and what's in them comes back only when the person asks.
+
+  hearth-old-files status            JSON: {folders: [{name, date, from, items, back, ask, kept, brought}]}
+                                     items: what the folder holds; back: how many of them aren't in your home folder
+                                     now (what Bring back would put there); ask: show the notice (not answered yet)
+  hearth-old-files bring-back NAME   Puts back everything in ~/NAME that isn't in your home folder now. Never
+                                     replaces anything: a file that's there now stays as it is, and a folder that's
+                                     there gets only what it's missing. Hard links (same drive: no extra space, the
+                                     old folder stays as it was) or, across drives, copies. Steam's own folders, caches
+                                     and the folder's own lists stay out (the Steam you have now keeps its files).
+                                     JSON: {name, linked, copied, folders, skipped, failed: [...]}
+  hearth-old-files keep NAME         "Keep": don't ask again; the folder stays until you delete it.
+  hearth-old-files asked NAME        The notice was shown (asked again a day later until it's answered).
+  hearth-old-files delete NAME --yes Deletes ~/NAME for good (only when the person said so; --yes is required).
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import errno
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import time
+
+PREFIX = '.old-hearth-'
+MANIFEST = '.hearth-old-files.json'
+BROUGHT = '.hearth-brought-back.json'
+NAME_RE = re.compile(r'^\.old-hearth-(\d{4}-\d{2}-\d{2})(-\d{1,3})?$')
+# Never brought back: Steam's own folders (the Steam you use now keeps its own; your games were never moved),
+# caches (remade by themselves) and the old folder's own lists.
+SKIP = ('.cache', '.steam', '.steampath', '.steampid', '.local/share/Steam', '.var/app/com.valvesoftware.Steam',
+        MANIFEST, BROUGHT)
+ASK_AGAIN = 86400
+
+
+class Fail(Exception):
+    pass
+
+
+def home():
+    return os.path.realpath(os.environ.get('HEARTH_HOME') or os.path.expanduser('~'))
+
+
+def state_path():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(home(), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'old-files.json')
+
+
+def read_json(path, default):
+    try:
+        with open(path, encoding='utf-8') as f:
+            v = json.load(f)
+        return v if isinstance(v, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def write_atomic(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    if os.path.exists(path):
+        try:
+            shutil.copy2(path, path + '.bak')
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def safe_rel(rel):
+    return isinstance(rel, str) and rel and not rel.startswith('/') and len(rel) < 4096 and \
+        all(p not in ('', '.', '..') for p in rel.split('/'))
+
+
+def skipped(rel):
+    return any(rel == s or rel.startswith(s + '/') for s in SKIP)
+
+
+def folder(name):
+    """~/NAME when it's one of the old-files folders (a real folder, not a link)."""
+    if not isinstance(name, str) or not NAME_RE.match(name):
+        raise Fail('not a folder of old files')
+    p = os.path.join(home(), name)
+    if not os.path.isdir(p) or os.path.islink(p):
+        raise Fail("that folder isn't there any more")
+    return p
+
+
+def items_of(old):
+    """What the folder holds, as paths inside it: the manifest's list (what the move put there), else what's in it."""
+    man = read_json(os.path.join(old, MANIFEST), {})
+    out = []
+    for rel in man.get('moved') or []:
+        if safe_rel(rel) and os.path.lexists(os.path.join(old, rel)) and rel not in out:
+            out.append(rel)
+    if not out:
+        try:
+            out = sorted(n for n in os.listdir(old) if n not in (MANIFEST, BROUGHT))
+        except OSError:
+            out = []
+    return [r for r in out if not skipped(r)], man
+
+
+def inside_home(path, h):
+    d = os.path.realpath(os.path.dirname(path))
+    return d == h or d.startswith(h + os.sep)
+
+
+def missing(old, rel, h):
+    """Is anything under ~/.old-hearth-*/rel not in the home folder? (stops at the first one)"""
+    src, dst = os.path.join(old, rel), os.path.join(h, rel)
+    if not os.path.lexists(dst):
+        return True
+    if not (os.path.isdir(src) and not os.path.islink(src) and os.path.isdir(dst) and not os.path.islink(dst)):
+        return False
+    for root, dirs, files in os.walk(src):
+        r = os.path.relpath(root, old)
+        dirs[:] = [d for d in dirs if not skipped(os.path.join(r, d))]
+        for n in dirs + files:
+            if not skipped(os.path.join(r, n)) and not os.path.lexists(os.path.join(h, r, n)):
+                return True
+    return False
+
+
+def status(now=None):
+    now = time.time() if now is None else now
+    h = home()
+    st = read_json(state_path(), {})
+    out = []
+    try:
+        names = sorted(n for n in os.listdir(h) if NAME_RE.match(n))
+    except OSError:
+        names = []
+    for n in names:
+        old = os.path.join(h, n)
+        if not os.path.isdir(old) or os.path.islink(old):
+            continue
+        items, man = items_of(old)
+        back = sum(1 for r in items if missing(old, r, h))
+        s = st.get(n) if isinstance(st.get(n), dict) else {}
+        brought = read_json(os.path.join(old, BROUGHT), {})
+        ask = back > 0 and not s.get('kept') and now - float(s.get('askedAt') or 0) >= ASK_AGAIN
+        out.append({'name': n, 'date': NAME_RE.match(n).group(1), 'from': man.get('from') or '', 'items': len(items),
+                    'back': back, 'ask': ask, 'kept': bool(s.get('kept')), 'brought': brought.get('at') or 0})
+    return {'folders': out}
+
+
+def mark(name, **kv):
+    folder(name)
+    path = state_path()
+    st = read_json(path, {})
+    cur = st.get(name) if isinstance(st.get(name), dict) else {}
+    cur.update(kv)
+    st[name] = cur
+    write_atomic(path, st)
+    return status()
+
+
+def place(src, dst, res):
+    """One file or link from the old folder to dst, which isn't there: a hard link, or a copy across drives."""
+    if os.path.islink(src):
+        os.symlink(os.readlink(src), dst)
+        res['linked'] += 1
+        return
+    try:
+        os.link(src, dst, follow_symlinks=False)
+        res['linked'] += 1
+    except OSError as e:
+        if e.errno not in (errno.EXDEV, errno.EPERM, errno.EMLINK, errno.ENOTSUP):
+            raise
+        shutil.copy2(src, dst, follow_symlinks=False)
+        res['copied'] += 1
+
+
+def bring_back(name):
+    old = folder(name)
+    h = home()
+    items, _ = items_of(old)
+    res = {'name': name, 'linked': 0, 'copied': 0, 'folders': 0, 'skipped': 0, 'failed': []}
+
+    def fail(rel, e):
+        if len(res['failed']) < 50:
+            res['failed'].append({'item': rel, 'why': str(e)[:200]})
+
+    def one(rel):
+        src, dst = os.path.join(old, rel), os.path.join(h, rel)
+        if skipped(rel):
+            return
+        if not inside_home(dst, h):
+            # A link in the home folder now points this somewhere else: left alone.
+            res['skipped'] += 1
+            return
+        try:
+            sst = os.lstat(src)
+        except OSError as e:
+            fail(rel, e)
+            return
+        if stat.S_ISDIR(sst.st_mode):
+            if os.path.lexists(dst):
+                if not os.path.isdir(dst) or os.path.islink(dst):
+                    res['skipped'] += 1      # something else is there now: it stays
+                    return
+            else:
+                try:
+                    os.mkdir(dst, stat.S_IMODE(sst.st_mode))
+                    res['folders'] += 1
+                except OSError as e:
+                    fail(rel, e)
+                    return
+            try:
+                kids = sorted(os.listdir(src))
+            except OSError as e:
+                fail(rel, e)
+                return
+            for k in kids:
+                one(rel + '/' + k)
+            try:
+                os.utime(dst, ns=(sst.st_atime_ns, sst.st_mtime_ns), follow_symlinks=False)
+            except OSError:
+                pass
+            return
+        if os.path.lexists(dst):
+            res['skipped'] += 1              # never replaced
+            return
+        if not (stat.S_ISREG(sst.st_mode) or stat.S_ISLNK(sst.st_mode)):
+            res['skipped'] += 1              # sockets, pipes: nothing to bring back
+            return
+        try:
+            place(src, dst, res)
+        except OSError as e:
+            fail(rel, e)
+
+    for rel in items:
+        parent = os.path.dirname(rel)
+        if parent:
+            # The folders it sits in (made as they were in the old folder, when they're missing).
+            cur = ''
+            ok = True
+            for part in parent.split('/'):
+                cur = cur + '/' + part if cur else part
+                d = os.path.join(h, cur)
+                if os.path.lexists(d):
+                    if not os.path.isdir(d) or not inside_home(os.path.join(d, 'x'), h):
+                        ok = False
+                        break
+                    continue
+                try:
+                    os.mkdir(d, stat.S_IMODE(os.lstat(os.path.join(old, cur)).st_mode) if os.path.isdir(os.path.join(old, cur)) else 0o755)
+                    res['folders'] += 1
+                except OSError as e:
+                    fail(cur, e)
+                    ok = False
+                    break
+            if not ok:
+                res['skipped'] += 1
+                continue
+        one(rel)
+    res['at'] = int(time.time())
+    try:
+        write_atomic(os.path.join(old, BROUGHT), res)
+    except OSError:
+        pass
+    try:
+        mark(name, kept=True, broughtAt=res['at'])
+    except (Fail, OSError):
+        pass
+    return res
+
+
+def delete(name):
+    old = folder(name)
+    shutil.rmtree(old)
+    st = read_json(state_path(), {})
+    if name in st:
+        st.pop(name, None)
+        try:
+            write_atomic(state_path(), st)
+        except OSError:
+            pass
+    return status()
+
+
+def main(argv):
+    a = argv[1:]
+    try:
+        if a == ['status']:
+            r = status()
+        elif len(a) == 2 and a[0] == 'bring-back':
+            r = bring_back(a[1])
+        elif len(a) == 2 and a[0] == 'keep':
+            r = mark(a[1], kept=True, keptAt=int(time.time()))
+        elif len(a) == 2 and a[0] == 'asked':
+            r = mark(a[1], askedAt=int(time.time()))
+        elif len(a) == 3 and a[0] == 'delete' and a[2] == '--yes':
+            r = delete(a[1])
+        else:
+            print('error: usage: hearth-old-files status | bring-back NAME | keep NAME | asked NAME | delete NAME --yes')
+            return 1
+    except (Fail, OSError) as e:
+        print('error: %s' % e)
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
