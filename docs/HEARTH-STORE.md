@@ -95,6 +95,9 @@ Hearth writes or publishes it):
 ]}
 ```
 
+Hearth Forge started on this list (the owner: "would not be public on the store") and went public the same day
+(the owner, Nov 26: "push it to the public"): it is in catalog.json now like the other apps.
+
 When one of them has public releases, its entry gets `"kind": "install"`, `"github": "owner/repo"` and `"file"`, the same
 as the public ones. Private apps are marked "Only on your devices" on their page and never replace a public app.
 

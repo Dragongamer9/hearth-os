@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Forge
+GenericName=3D models from a photo or words
+Comment=Make real 3D models from a photo or a few words on your own Nvidia PC (Hunyuan3D, TRELLIS, TripoSR and the other open models), or with Tripo3D and your own key
+Exec=/usr/bin/hearth-forge-app
+TryExec=/usr/bin/hearth-forge-app
+Icon=hearth-forge
+Categories=Graphics;3DGraphics;
+Keywords=3d;model;mesh;generate;hunyuan3d;trellis;triposr;tripo;glb;stl;print;
+StartupWMClass=hearth-forge

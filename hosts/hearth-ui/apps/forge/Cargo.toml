@@ -1,0 +1,23 @@
+# Hearth Forge (pure Rust, hearth-ui; docs/mockups/checklists/hearth-forge.md, the approved boards
+# docs/mockups/hearth-forge/01-make.png and 02-models.png): real 3D models from a photo or a few words, made on the
+# owner's Nvidia PC by the open models (each under its own licence) through Hearth Forge's own service
+# (helper/hearth-forge.py, built in), or online by Tripo3D with his own key. Private: the Store's private list only.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-forge"
+edition = "2021"
+description = "Hearth Forge: real 3D models from a photo or a few words"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-forge-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-oss-kit = { path = "../oss-kit" }
+hearth-oss-kit-a = { path = "../oss-kit-a" }
+iced = { workspace = true, features = ["canvas", "image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
