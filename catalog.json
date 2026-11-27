@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 40,
+  "serial": 41,
   "apps": [
     {
       "id": "command-center",
@@ -864,16 +864,16 @@
       "about": "The ready-made desktops both Mantels use. It's part of Hearth OS and gets its own updates in the Hearth Store, between Hearth OS updates.",
       "part": {
         "id": "hearth-layout",
-        "version": "1.18.1",
+        "version": "1.18.2",
         "os": "1.18",
         "path": "hearth-layout",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-layout-1.18.1/hearth-layout-1.18.1.tar.gz",
-        "sha256": "459dd4d6e11c09b61680295a3df6ec073143d0237669de9565d77e68dba9ff48",
-        "size": 607159,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-layout-1.18.2/hearth-layout-1.18.2.tar.gz",
+        "sha256": "5380d31eff41b6320efa033cedf5230112c02cdb1fd779761247790c10440b80",
+        "size": 636771,
         "notes": [
-          "Describe it for each of Hearth's apps, with a waiting line and Cancel",
-          "Edit layout: move, resize or hide any part of the app, right on it",
-          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+          "Describe it: answers in a slightly different shape are read (no more 'wasn't a layout or feature')",
+          "Drag and drop layouts kept the safe way",
+          "Ready-made layouts for Edit desktop's Start from"
         ]
       }
     },
