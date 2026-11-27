@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 43,
+  "serial": 44,
   "apps": [
     {
       "id": "command-center",
@@ -1315,6 +1315,27 @@
       },
       "group": "apps",
       "open": "hearth-beat-maker-app"
+    },
+    {
+      "id": "part-hearth-forge-app",
+      "name": "Hearth Forge",
+      "kind": "builtin",
+      "part": {
+        "id": "hearth-forge-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-forge-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-forge-app-1.18.1/hearth-forge-app-1.18.1.tar.gz",
+        "sha256": "246b38d3d2cdc7fa0c61ef2da154b90eea1beb521ee0809de33aac5deea29dfe",
+        "size": 7570684,
+        "notes": [
+          "New: real 3D models from a photo or a few words on your own Nvidia PC, with 22 open models (Hunyuan3D, TRELLIS, TripoSR and more), or Tripo3D with your own key",
+          "Ready them for a game or for printing, send them to Hearth 3D, Godot, O3DE or Hearth CAD",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-forge-app"
     }
   ],
   "tests": [
