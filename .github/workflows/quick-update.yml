@@ -49,6 +49,7 @@ on:
 
 permissions:
   contents: write     # the part's release and the store branch
+  actions: write      # starts Publish the Hearth Store list (a push made with this run's token starts no workflow)
 
 concurrency:
   group: quick-update
@@ -289,9 +290,12 @@ jobs:
               json.dump(d, f, indent=2, ensure_ascii=False)
               f.write("\n")
           os.replace(tmp, p)
-          print(f"::notice title=Quick update::{app} {part['version']} for Hearth OS {part['os']} is in the store branch's list (serial {d['serial']}). Run Publish the Hearth Store list to send it.")
+          print(f"::notice title=Quick update::{app} {part['version']} for Hearth OS {part['os']} is in the store branch's list (serial {d['serial']}). Publish the Hearth Store list starts by itself to send it.")
           PY
           python3 "$GITHUB_WORKSPACE/tools/store-check.py" catalog.json
           [ -f private.json ] && git add private.json
           git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qam "$APP $VER for Hearth OS $OS"
           git push origin HEAD:store
+          # The owner, Nov 24: "publish the store links automatically from now on". The store branch's own publish.yml
+          # doesn't run for this push (GitHub starts no workflow for a push made with a run's token), so start it here.
+          GH_TOKEN="${{ github.token }}" gh workflow run store.yml --ref main -R "$GITHUB_REPOSITORY"
