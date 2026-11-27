@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 41,
+  "serial": 42,
   "apps": [
     {
       "id": "command-center",
@@ -241,15 +241,16 @@
       "open": "hearth-files-app",
       "part": {
         "id": "hearth-files-app",
-        "version": "1.18.1",
+        "version": "1.18.2",
         "os": "1.18",
         "path": "hearth-files-app",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-files-app-1.18.1/hearth-files-app-1.18.1.tar.gz",
-        "sha256": "8a281b87f9f58c5aaaf0845424da2b292471b59059f9df70e11411165a5867a7",
-        "size": 8567239,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-files-app-1.18.2/hearth-files-app-1.18.2.tar.gz",
+        "sha256": "b5b24fe7beb077df9227e5e5850807ccb89dd854127ab91b773fb6cfcf35c717",
+        "size": 8853833,
         "notes": [
-          "Edit layout: move, resize or hide any part of the app, right on it",
-          "Describe it: say how you want it and your AI makes it, with a Cancel button and a waiting line"
+          "Drag and drop: move, size and customize any part of the app, right on it (Customize: look, what it shows, what it does)",
+          "Your own blocks: buttons that run anything, counts, words",
+          "Nothing is kept until Keep this; Cancel and Esc change nothing"
         ]
       }
     },
