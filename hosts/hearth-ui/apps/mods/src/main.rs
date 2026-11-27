@@ -382,8 +382,8 @@ impl App {
         if a.settings["checkUpdates"].as_str() == Some("open") || a.settings["checkUpdates"].as_str().unwrap_or("night") == "night" && a.updates["checked"].as_i64().map(|c| now() - c > 20 * 3600).unwrap_or(false) {
             t.push(Task::perform(back::work(more::check_all), |_| Msg::Reload));
         }
-        if !a.find_q.is_empty() {
-            t.push(Task::done(Msg::FindGo));
+        if a.page == Page::Every {
+            t.push(Task::perform(back::work(sync::server_files), Msg::Server));
         }
         (a, Task::batch(t))
     }
@@ -495,6 +495,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     }
                     if !a.games.iter().any(|g| g.key == a.pick) {
                         a.pick = a.games.first().map(|g| g.key.clone()).unwrap_or_default();
+                    }
+                    // a search asked for when it opened (--find) goes once the games are known
+                    if !a.find_q.is_empty() && a.counts.is_empty() && a.hits.is_empty() {
+                        return Task::batch([a.reload_detail(), update(a, Msg::FindGo)]);
                     }
                 }
                 Err(e) => a.said = e,
@@ -784,7 +788,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         },
         Msg::FomodStep(i) => a.fomod_step = i,
         Msg::FomodPick(s, g, p) => {
-            let kind = a.fomod["fomod"]["steps"][s]["groups"][g]["kind"].as_str().unwrap_or("").to_string();
+            let grp = &a.fomod["fomod"]["steps"][s]["groups"][g];
+            let kind = grp["type"].as_str().or(grp["kind"].as_str()).unwrap_or("").to_string();
             while a.choices.len() <= s {
                 a.choices.push(Vec::new());
             }

@@ -326,14 +326,16 @@ for i in range(3):
     w(os.path.join(mods_share, "skyrimspecialedition/kept-%d.7z" % i), "x" * 4096)
 w(os.path.join(own, "server.json"), json.dumps({"month": "Nov", "savedThisMonth": 229780750336}))
 G = lambda t, n, p: {"title": t, "mods": n, "profile": p}
+import time
+NOW = int(time.time())  # the notes' own times: when each device last opened the Mod Manager (the Ally minutes ago)
 notes = {
-    "rog-ally": {"name": "ROG Ally", "kind": "ALLY", "at": T - 300, "games": [G("Skyrim Special Edition", 147, "Vanilla+ (Ally)"), G("Stardew Valley", 38, "Default"), G("The Battle for Middle-earth II", 2, "Edain")],
+    "rog-ally": {"name": "ROG Ally", "kind": "ALLY", "at": NOW - 300, "games": [G("Skyrim Special Edition", 147, "Vanilla+ (Ally)"), G("Stardew Valley", 38, "Default"), G("The Battle for Middle-earth II", 2, "Edain")],
                  "updates": [{"game": "Skyrim Special Edition", "mod": "SkyUI", "to": "5.2.1"}],
                  "crashes": [{"at": T - 430000, "game": "Skyrim Special Edition", "module": "EngineFixes.dll", "what": "out of memory in Riften", "fixed": True}],
                  "measured": {"settings": "1080p · 15 W · FSR on", "at": T - 4000, "places": [{"name": "Whiterun", "fps": 62}, {"name": "Falkreath forest", "fps": 58}, {"name": "Markarth", "fps": 65}, {"name": "Interiors", "fps": 78}]},
                  "memory": {"total": 17179869184, "used": 12240656384}, "free": 15247757312},
-    "laptop": {"name": "Laptop", "kind": "LAPTOP", "at": T - 7200, "games": [G("Skyrim Special Edition", 412, "Survival playthrough"), G("Minecraft", 220, "All the Mods 10")], "updates": [], "crashes": []},
-    "truck-laptop": {"name": "Truck laptop", "kind": "LAPTOP", "at": T - 900000, "games": [G("Stardew Valley", 38, "Default")], "updates": [], "crashes": []},
+    "laptop": {"name": "Laptop", "kind": "LAPTOP", "at": NOW - 7200, "games": [G("Skyrim Special Edition", 412, "Survival playthrough"), G("Minecraft", 220, "All the Mods 10")], "updates": [], "crashes": []},
+    "truck-laptop": {"name": "Truck laptop", "kind": "LAPTOP", "at": NOW - 900000, "games": [G("Stardew Valley", 38, "Default")], "updates": [], "crashes": []},
 }
 for k_, v_ in notes.items():
     w(os.path.join(mods_share, ".hearth/devices/%s.json" % k_), json.dumps(v_))

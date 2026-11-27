@@ -665,7 +665,8 @@ fn installer(a: &App) -> E<'static, Msg> {
     let st = steps.get(si).cloned().unwrap_or(Value::Null);
     let mut body = Column::new().spacing(10.0);
     for (gi, g) in st["groups"].as_array().cloned().unwrap_or_default().iter().enumerate() {
-        let kind = s(&g["kind"]);
+        // the installer's group kind (FOMOD's own word: "type")
+        let kind = if s(&g["type"]).is_empty() { s(&g["kind"]) } else { s(&g["type"]) };
         let one = kind.contains("Exactly") || kind.contains("AtMost");
         body = body.push(heading(&p, s(&g["name"]), k::mu1(&p, if one { "pick one" } else { "ticked for you · change any" }, 11.0)));
         let sel: Vec<usize> = ev["choices"][si][gi].as_array().cloned().unwrap_or_default().iter().filter_map(|x| x.as_u64().map(|v| v as usize)).collect();
@@ -1378,7 +1379,8 @@ fn describe_page(a: &App) -> E<'_, Msg> {
     if m["places"].as_array().map(|x| x.is_empty()).unwrap_or(true) {
         ally = ally.push(k::mu(&p, format!("Not measured on the {devname} yet: Measure it first asks it to log fps (MangoHud) for 60 seconds the next time it plays, and the numbers come back here."), 11.0));
     } else {
-        ally = ally.push(k::mu(&p, format!("white line: 60 fps · measured {}", hearth_ui::time::when(m["at"].as_i64().unwrap_or(0))), 11.0));
+        let first = m["places"][0].clone();
+        ally = ally.push(k::mu(&p, format!("white line: 60 fps · now, without the set: {} in {} · measured {} (MangoHud)", first["fps"], s(&first["name"]), hearth_ui::time::when(m["at"].as_i64().unwrap_or(0))), 11.0));
     }
     if let Some(mem) = rec["memory"].as_object() {
         ally = ally.push(kvl(&p, format!("Memory (of {} shared)", k::size_words(mem.get("total").and_then(|x| x.as_u64()).unwrap_or(0))), format!("{} · {}", k::size_words(mem.get("used").and_then(|x| x.as_u64()).unwrap_or(0)), if mem.get("used").and_then(|x| x.as_u64()).unwrap_or(0) * 10 < mem.get("total").and_then(|x| x.as_u64()).unwrap_or(1) * 9 { "fine" } else { "tight" }), p.muted));
@@ -1732,7 +1734,7 @@ fn move_line(a: &App, picked: &Value) -> String {
         }
         None
     };
-    let first = |n: &str| n.split_whitespace().last().unwrap_or(n).to_string();
+    let first = |n: &str| ui::fit(n, 26);
     let mut v = Vec::new();
     if let Some((m, c)) = near(false) {
         v.push(format!("Below {}: would win {} more files", first(&m), commas(c as u64)));
