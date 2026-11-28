@@ -1,0 +1,3 @@
+0 errors, 2 warnings, 9 pages at 390/820/1440 px, 8 links to other sites; front page: 259 KB at first, 259 KB once scrolled through (budgets 1200 / 4096 KB)
+warn  index.html phone light: low contrast: "News" 3.23:1, "Hearth OS 1.18 is out" 1.21:1, "Back on Debian, and everything" 1.54:1, "Build anything" 1.21:1, "Make your whole desktop from b" 1.54:1, "Every app your way" 1.21:1, "Move, resize, hide and restyle" 1.54:1, "All in the Store" 1.21:1, "Every Hearth part updates thro" 1.54:1
+warn  index.html desktop light: low contrast: "Hearth OS" 1.21:1, "News" 1.54:1, "Games" 1.54:1, "Apps" 1.54:1, "Updates" 1.54:1, "Roadmap" 1.54:1, "Music" 1.54:1, "Docs" 1.54:1, "News" 3.23:1
