@@ -1,0 +1,31 @@
+[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001H[!p]104\[0m[?7h[1G[0J[6n[32766;32766H[6n[!p]104\[0m[?7h[1G[0J[6n[32766;32766H[6n]3008;start=b1c5f73486fd4babae18e90be4d7f5d3;user=root;hostname=fedora;machineid=16ff86ec85704494997ffb19398df8d7;bootid=3fb67dee3fa74ab2acfc66d4d0143b2f;pid=1194;pidfdid=349;comm=(agetty);servicename=serial-getty@ttyS0.service;invocationid=7a7c163ebbf44da9abb50ccac36e2c2e;type=service\P+q6E616D65\
+Fedora Linux 43 (Forty Three)
+Kernel 7.3.6-100.fc43.x86_64 on x86_64 (ttyS0)
+
+enp0s1: 10.0.2.15 fec0::2a6f:d92e:fc1c:cd98
+Try contacting this VM's SSH server via 'ssh vsock%4294967295' from host.
+
+fedora login: HEARTH-UI screen=welcome
+=== hearth report
+total 0
+drwxr-xr-x. 2 root root      60 Nov 28 06:01 by-path
+crw-rw----+ 1 root video 226, 1 Nov 28 06:01 card1
+cat: /proc/fb: No such file or directory
+bochs                  28672  5
+Nov 28 06:01:30 fedora systemd[1]: Starting hearth-installer.service - Hearth installer (the Hearth app, full screen)...
+Nov 28 06:01:30 fedora systemd[1]: Started hearth-installer.service - Hearth installer (the Hearth app, full screen).
+=== end
+HEARTH-UI screen=wifi
+HEARTH-UI screen=drive
+HEARTH-UI screen=confirm
+HEARTH-UI screen=you
+HEARTH-UI screen=osk
+HEARTH-UI screen=time
+HEARTH-UI screen=review
+HEARTH-UI screen=install
+HEARTH-UI screen=done
+[!p]104\[0m[?7h[1G[0J[6n[32766;32766H[6n]3008;end=b1c5f73486fd4babae18e90be4d7f5d3\[  730.575124] watchdog: watchdog0: watchdog did not stop!
+[  730.644149] systemd-shutdown[1]: Could not detach loopback /dev/loop0: Device or resource busy
+[  730.644162] watchdog: watchdog0: watchdog did not stop!
+[  730.660383] systemd-shutdown[1]: Unable to finalize remaining loop devices, ignoring.
+[  730.668241] reboot: Restarting system
