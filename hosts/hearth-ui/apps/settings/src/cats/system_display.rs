@@ -379,6 +379,12 @@ pub fn view(a: &App) -> El<'_> {
     };
     let hdr_now = vb(gm, "hdr");
     c = c.push(srow(&p, G::Display, "HDR", hdr_sub, switch(&p, hdr_now, if hdr_ok { Some(Msg::Exec(Ex::new(py("hearth-gamemode-display", &["set", &json!({"hdr": !hdr_now}).to_string()])).store("gm").ok(format!("{} · from the next time Game Mode starts", if hdr_now { "HDR off" } else { "HDR on" })))) } else { None })));
+    // The TV fix (settings-windows-11 display.png; the owner, Nov 27): Mantel puts the kept settings back on a screen
+    // that comes back; on unless turned off here (screens.json reconnectRestore, hearth-screens option).
+    if st.has("screens") {
+        let back = sc.get("reconnectRestore").and_then(Value::as_bool).unwrap_or(true);
+        c = c.push(srow(&p, G::Update, "Put my screen settings back when the TV reconnects", "", sw(&p, back, option(json!({"reconnectRestore": !back}), if back { "Screen settings: not put back when a screen reconnects" } else { "Screen settings: put back when a screen reconnects" }))));
+    }
     if night {
         let temp = st.num.get("nighttemp").copied().unwrap_or(sh.d_num("nightTemp", 3700.0) as f32);
         // Further right is warmer: the slider runs from 6500 K (left) down to 2000 K (right).

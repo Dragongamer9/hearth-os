@@ -582,7 +582,9 @@ fn sec_of(page: &str) -> Option<&'static Sec> {
 /// The title over a section page: "Settings › System" (the section in the accent) and its line.
 pub fn title<'a, M: 'a>(p: &Pal, page: &str) -> Option<Element<'a, M>> {
     let sec = sec_of(page).map(|s| (s.title, s.line)).or_else(|| if page == "sec-ai" { Some(("AI", "Everything AI on this PC in one place")) } else { None })?;
-    Some(column![row![tb("Settings", 34.0, p.text), tb(" › ", 34.0, p.text), tb(sec.0, 34.0, p.accent)], t(sec.1, 15.0, p.muted)].spacing(6.0).into())
+    // Windows 11's look (settings-windows-11 system.png): the section's own name, nothing before or under it.
+    let _ = sec.1;
+    Some(tb(sec.0, 34.0, p.text).into())
 }
 
 fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool) -> Vec<Element<'a, Msg>> {

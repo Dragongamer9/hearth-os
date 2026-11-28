@@ -415,7 +415,8 @@ def saved():
         for name, e in parse_display_sh(sh).items():
             outs.setdefault(name, {}).update(e)
     return {'outputs': outs, 'tearing': data.get('tearing'), 'desktopsMainOnly': bool(data.get('desktopsMainOnly')),
-            'autoBrightness': bool(data.get('autoBrightness')), 'autoBrightnessOffset': clamp_offset(data.get('autoBrightnessOffset', 0))}
+            'autoBrightness': bool(data.get('autoBrightness')), 'autoBrightnessOffset': clamp_offset(data.get('autoBrightnessOffset', 0)),
+            'reconnectRestore': data.get('reconnectRestore') is not False}
 
 
 def entry_of(o):
@@ -1332,6 +1333,7 @@ def info(wmname=None, live=None):
         'barrier': barrier_status(wmname),
         'desktops': desktops_status(wmname, sv),
         'autoBrightness': auto_status(sv),
+        'reconnectRestore': sv.get('reconnectRestore', True),
         'switch': switch_state(live),
     }
 
@@ -1769,7 +1771,7 @@ def main(argv):
             print(json.dumps({'mode': mode, 'changes': {'outputs': ch}, 'prev': {'outputs': prev}, 'names': sorted(ch)}))
         elif cmd == 'option':
             # Settings › Display's own switches that aren't a screen's: {"x11Scale": bool, "barrier": {px, corner},
-            # "desktopsMainOnly": bool, "autoBrightness": bool, "autoBrightnessOffset": int}. screens.json keeps Hearth's, KDE's files KDE's.
+            # "desktopsMainOnly": bool, "autoBrightness": bool, "autoBrightnessOffset": int, "reconnectRestore": bool}. screens.json keeps Hearth's, KDE's files KDE's.
             o = json.loads(arg or '{}')
             wmname = wm()
             extra = {}
@@ -1789,6 +1791,9 @@ def main(argv):
                 extra['autoBrightness'] = bool(o['autoBrightness'])
             if 'autoBrightnessOffset' in o:
                 extra['autoBrightnessOffset'] = clamp_offset(o['autoBrightnessOffset'])
+            if 'reconnectRestore' in o:
+                # Mantel puts the kept settings back on a screen that comes back (shell.qml reconnect); on by default.
+                extra['reconnectRestore'] = bool(o['reconnectRestore'])
             if extra:
                 save_entries({}, extra)
             print(json.dumps(info(wmname)))

@@ -640,6 +640,36 @@ ShellRoot {
         Process { running: autoBright.on; command: ["python3", Quickshell.shellDir + "/hearth-screens", "autobright"] }
     }
 
+    // A screen that comes back (the owner's TV, Nov 27: it sleeps or changes input, comes back at its own 4K 60 Hz and his
+    // 2560 × 1440 at 120 Hz was gone): his kept screen settings are put back on it, as at the start (hearth-screens
+    // restore). On unless "Put my screen settings back when the TV reconnects" is off (Settings › Display,
+    // screens.json reconnectRestore). Waits 3 s for the screen to settle; never more than once every 10 s.
+    Scope {
+        id: reconnect
+        property bool on: true
+        property var names: []
+        property double last: 0
+        FileView {
+            path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/screens.json"
+            watchChanges: true
+            onFileChanged: reload()
+            onLoaded: { try { reconnect.on = JSON.parse(text()).reconnectRestore !== false; } catch (e) { reconnect.on = true; } }
+        }
+        function seen() { const n = []; for (let i = 0; i < Quickshell.screens.length; i++) n.push(Quickshell.screens[i].name); return n; }
+        Component.onCompleted: names = seen()
+        Connections {
+            target: Quickshell
+            function onScreensChanged() {
+                const now = reconnect.seen();
+                const back = now.some(n => reconnect.names.indexOf(n) < 0);
+                reconnect.names = now;
+                if (back && reconnect.on && Date.now() - reconnect.last > 10000) settle.restart();
+            }
+        }
+        Timer { id: settle; interval: 3000; onTriggered: { reconnect.last = Date.now(); putBack.running = true; } }
+        Process { id: putBack; command: ["python3", Quickshell.shellDir + "/hearth-screens", "restore"] }
+    }
+
     Component.onCompleted: {
         SettingsNav.pad = pad; SettingsNav.help = help;
         console.info("Mantel: loaded in " + (Date.now() - loadStartedAt) + " ms (" + (Quickshell.env("HEARTH_WM") || "labwc") + ")");
