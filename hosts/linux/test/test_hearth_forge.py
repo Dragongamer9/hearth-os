@@ -1006,5 +1006,41 @@ class PipCommand(unittest.TestCase):
             self.assertEqual(r.returncode, 0, out[-600:])
 
 
+class OwnersFixes(unittest.TestCase):
+    """The owner's fixes from the Nvidia PC (Nov 28): Hunyuan3D 2's transformers held below 4.50, a changed install
+    list installs again, no "people" in the negative words when a character is asked for, out of memory said plainly."""
+
+    def test_hunyuan3d2_transformers_below_4_50(self):
+        self.assertIn('transformers>=4.48.0,<4.50', MODELS['runners']['hunyuan3d2']['pip'])
+
+    def test_changed_pip_list_isnt_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = helper(tmp)
+            cat = {'runners': {'r': {'commit': 'abc', 'pip': ['a', 'b<2']}}}
+            d = m.runner_dir('r')
+            py = m.runner_python('r')
+            os.makedirs(os.path.dirname(py), exist_ok=True)
+            pathlib.Path(py).write_text('')
+            m.write_json(os.path.join(d, 'ready.json'), {'commit': 'abc', 'pip': ['a', 'b<2']})
+            self.assertTrue(m.runner_ready('r', cat))
+            cat['runners']['r']['pip'] = ['a', 'b<3']
+            self.assertFalse(m.runner_ready('r', cat))
+            m.write_json(os.path.join(d, 'ready.json'), {'commit': 'abc'})
+            self.assertTrue(m.runner_ready('r', cat))
+
+    def test_negative_words(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = helper(tmp)
+            self.assertNotIn('people', m.negative_words({'words': 'a sci-fi soldier character'}))
+            self.assertIn('people', m.negative_words({'words': 'a wooden chair'}))
+
+    def test_out_of_memory_said_plainly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = helper(tmp)
+            m.gpu_users = lambda: ['python3 main.py --listen (9000 MB)']
+            self.assertIn('Also using it: python3 main.py', m.out_of_memory_words('torch.OutOfMemoryError: CUDA out of memory.'))
+            self.assertIsNone(m.out_of_memory_words('some other error'))
+
+
 if __name__ == '__main__':
     unittest.main()
