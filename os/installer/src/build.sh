@@ -23,6 +23,10 @@ test -n "$KVER"
 # Fedora's small base image has only the core kernel: graphics (amdgpu, i915, nouveau, virtual machines),
 # Wi-Fi, Bluetooth and controller drivers are in kernel-modules. Without them nothing shows on screen.
 dnf install -y "kernel-modules-${KVER}" "kernel-modules-extra-${KVER}" || dnf install -y kernel-modules kernel-modules-extra
+# The fallback can bring a newer kernel (when Fedora has dropped the modules for this one) and remove the old one:
+# use whichever kernel is there now.
+KVER=$(ls /usr/lib/modules | sort -V | tail -1)
+test -n "$KVER"
 ls "/usr/lib/modules/${KVER}/kernel/drivers/gpu/drm"
 # The Hearth splash (Hearth OS's own default, the flame on slate) while the USB starts. Earlier the installer screen
 # waited for the splash to close and never came: now the installer's own service tells it to go (plymouth quit,
