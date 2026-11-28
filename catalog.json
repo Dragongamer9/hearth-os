@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 65,
+  "serial": 66,
   "apps": [
     {
       "id": "command-center",
@@ -213,16 +213,17 @@
       "partId": "mantel",
       "part": {
         "id": "mantel",
-        "version": "1.18.3",
+        "version": "1.18.4",
         "os": "1.18",
         "path": "shell",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.3/mantel-1.18.3.tar.gz",
-        "sha256": "7eb5e05515aa3e2a8250f3456b23e5bccd5fd8d7de19bc79cee620c409ef720e",
-        "size": 10651852,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.18.4/mantel-1.18.4.tar.gz",
+        "sha256": "4150a1cef4b5a801d034aec349c914390c00e43c32695a83c50f3d07b66b154d",
+        "size": 10656176,
         "notes": [
-          "Files a move put aside: a notice after you sign in offers Bring back, Keep or Delete now; nothing is put back or deleted by itself",
-          "Bring back puts back only what's missing and never replaces anything",
-          "Fixes: the AI section is in Settings' System tab in the controller look"
+          "Your screen settings come back by themselves when the TV reconnects",
+          "Hearth Game Mode to Desktop Mode is quick again (the handheld overlay no longer holds it up)",
+          "Server mode: Claude works on a screen of its own, and a button shows it",
+          "Windows & desktops settings now apply on the desktop"
         ]
       },
       "group": "desktop"
