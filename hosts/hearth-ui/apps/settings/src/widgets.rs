@@ -432,6 +432,31 @@ mod tests {
 
 /// A row on a section's front page: its name, the line under it, and on the right its value and › (or a switch, a
 /// button or a chip in the value's place). No icon; a faint line under every row but the last.
+/// A Windows 11 row (settings-windows-11): its own rounded card, an icon (when given), the name and the line under it,
+/// and on the right its value and ›, a switch or a button; opening something when it has a message.
+pub fn wrow<'a, M: Clone + Send + 'static>(p: &Pal, g: Option<G>, title: &str, sub: &str, right: E<'a, M>, open: Option<M>) -> E<'a, M> {
+    if let Some(m) = &open {
+        nav::control(Kind::Open, vec![act(m.clone())], Vec::new(), Vec::new(), String::new(), String::new());
+    }
+    let r = nav::item(title, sub, false);
+    let mut words = Column::new().spacing(3.0).push(tm(title.to_string(), 15.0, p.text));
+    if !sub.is_empty() {
+        words = words.push(t(sub.to_string(), 13.0, p.muted));
+    }
+    let mut line = Row::new().spacing(16.0).align_y(iced::Center);
+    if let Some(g) = g {
+        line = line.push(icon_box(p, g));
+    }
+    let line = line.push(words.width(Length::Fill)).push(right);
+    // about 72 px high with its icon (16 + 40 + 16), the rows 4 px apart as Windows 11 draws them
+    let c = container(line).id(r.key).padding(Padding { top: 16.0, right: 22.0, bottom: 16.0, left: 22.0 }).width(Length::Fill).style(row_style(*p, p.panel, p.r(10.0), r.lit));
+    let el = ring(p, r.lit, p.r(10.0), c);
+    match open {
+        Some(m) => mouse_area(el).on_press(m).interaction(mouse::Interaction::Pointer).into(),
+        None => el,
+    }
+}
+
 pub fn vrow<'a, M: Clone + Send + 'static>(p: &Pal, title: &str, sub: &str, right: E<'a, M>, open: Option<M>, last: bool) -> E<'a, M> {
     if let Some(m) = &open {
         nav::control(Kind::Open, vec![act(m.clone())], Vec::new(), Vec::new(), String::new(), String::new());

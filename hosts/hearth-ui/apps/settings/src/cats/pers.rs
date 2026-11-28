@@ -25,7 +25,7 @@ use iced::{Element, Subscription, Task};
 use kwin::{KMsg, Kw};
 use serde_json::Value;
 
-pub const PAGES: &[&str] = &["appearance", "desktop-layout", "bar-dock", "fonts", "wallpaper-more", "my-looks", "look-more", "kwin-effects", "kwin-desktops", "kwin-tiling", "kwin-edges", "kwin-behaviour"];
+pub const PAGES: &[&str] = &["appearance", "desktop-layout", "bar-dock", "fonts", "wallpaper-more", "my-looks", "look-more", "kwin-effects", "kwin-desktops", "kwin-tiling", "kwin-edges", "kwin-behaviour", "windows"];
 
 /// What a file picker was opened for.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +76,8 @@ pub struct State {
     // Window frames & splash
     pub tint: Option<f32>,
     pub tint_due: bool,
+    /// Windows & desktops on labwc (hearth-system windows): what's in use.
+    pub win: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +157,9 @@ pub enum Msg {
     Splash(String),
     SplashNow,
     AppsFollow(bool),
+    // Windows & desktops (labwc)
+    Win(run::Output),
+    WinSet(Value),
 }
 
 impl From<hearth_ui::describe::DMsg> for Msg {
@@ -207,6 +212,7 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
             Task::none()
         }
         p if p.starts_with("kwin-") => st.kw.open(p).map(Msg::K),
+        "windows" => Task::perform(kit::run_in(kit::job("hearth-system", &["windows"]), String::new()), Msg::Win),
         _ => Task::none(),
     }
 }
@@ -245,6 +251,18 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             return st.kw.update(k).map(Msg::K);
         }
         Msg::Go(id) => sh.go(id),
+        Msg::Win(o) => match kit::answer(&o) {
+            Ok(v) if v.is_object() => st.win = Some(v),
+            _ => sh.result("Couldn't read the window settings", &o),
+        },
+        Msg::WinSet(v) => {
+            if let (Some(Value::Object(w)), Value::Object(ch)) = (st.win.as_mut(), &v) {
+                for (k, x) in ch {
+                    w.insert(k.clone(), x.clone());
+                }
+            }
+            return Task::perform(kit::run_in(kit::job("hearth-system", &["windows-set"]), v.to_string()), Msg::Win);
+        }
         Msg::Open(id) => st.pick = Some(id),
         Msg::Close => st.pick = None,
         _ => {
@@ -274,6 +292,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         "kwin-tiling" => kwin::tiling(&p, &st.kw).map(Msg::K),
         "kwin-edges" => kwin::edges(&p, &st.kw).map(Msg::K),
         "kwin-behaviour" => kwin::behaviour(&p, &st.kw).map(Msg::K),
+        "windows" => windows(&p, st),
         _ => return None,
     })
 }
@@ -316,3 +335,41 @@ pub fn bar_value(sh: &Shared) -> String {
     v.join(", ")
 }
 
+
+
+/// Windows & desktops on labwc (the owner, Nov 28: every button in Settings has to work; KWin's own pages can't on
+/// labwc): virtual desktops, focus, snapping, and VRR / tearing for games. Saved in ~/.config/nimbus/windows.json and
+/// put in labwc's settings at once (hearth-system windows-set, labwc --reconfigure).
+fn windows<'a>(p: &hearth_ui::Pal, st: &'a State) -> Element<'a, Msg> {
+    use crate::widgets::{head, note, seg, srow, switch};
+    use hearth_ui::ui::G;
+    use serde_json::json;
+    let Some(w) = st.win.as_ref() else { return note(p, "Reading the window settings…", false) };
+    let b = |k: &str| w.get(k).and_then(Value::as_bool).unwrap_or(false);
+    let n = w.get("desktops").and_then(Value::as_i64).unwrap_or(4);
+    let sync = w.get("adaptiveSync").and_then(Value::as_str).unwrap_or("no").to_string();
+    let mut c = iced::widget::Column::new().spacing(4.0);
+    c = c.push(head(p, "Virtual desktops"));
+    c = c.push(srow(p, G::Grid, "How many desktops", "The numbered buttons on the taskbar; Super+Ctrl+Left / Right moves between them", seg(p, (1..=4).map(|i| (i.to_string(), n == i, Some(Msg::WinSet(json!({"desktops": i}))))).collect())));
+    c = c.push(head(p, "Focus"));
+    let fm = b("followMouse");
+    c = c.push(srow(p, G::Mouse, "Focus follows the pointer", "The window under the pointer takes your typing, no click needed", switch(p, fm, Some(Msg::WinSet(json!({"followMouse": !fm}))))));
+    if fm {
+        let rf = b("raiseOnFocus");
+        c = c.push(srow(p, G::Grid, "Bring it to the front too", "The window under the pointer comes in front of the others", switch(p, rf, Some(Msg::WinSet(json!({"raiseOnFocus": !rf}))))));
+    }
+    c = c.push(head(p, "Snapping"));
+    let se = b("snapEdges");
+    c = c.push(srow(p, G::Grid, "Snap to edges and corners", "Drag a window to an edge for half the screen, into a corner for a quarter", switch(p, se, Some(Msg::WinSet(json!({"snapEdges": !se}))))));
+    let tm = b("topMaximize");
+    c = c.push(srow(p, G::Display, "Drag to the top to maximize", "", switch(p, tm, Some(Msg::WinSet(json!({"topMaximize": !tm}))))));
+    c = c.push(head(p, "Games"));
+    c = c.push(srow(p, G::Pad, "Variable refresh rate (VRR / FreeSync)", "The screen follows the game's frame rate: no tearing or stutter, on screens that can", seg(p, vec![
+        ("Off".into(), sync == "no", Some(Msg::WinSet(json!({"adaptiveSync": "no"})))),
+        ("Full-screen games".into(), sync == "fullscreen", Some(Msg::WinSet(json!({"adaptiveSync": "fullscreen"})))),
+        ("Always".into(), sync == "yes", Some(Msg::WinSet(json!({"adaptiveSync": "yes"})))),
+    ])));
+    let at = b("allowTearing");
+    c = c.push(srow(p, G::Pad, "Allow tearing in full-screen games", "Less delay in games that ask for it, with a line where frames meet", switch(p, at, Some(Msg::WinSet(json!({"allowTearing": !at}))))));
+    c.into()
+}

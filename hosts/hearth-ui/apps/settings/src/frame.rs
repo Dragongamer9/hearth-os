@@ -250,7 +250,14 @@ fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
     ]
     .spacing(2.0);
     // The search field isn't one of the page's places: Y (Ctrl+F) puts the typing there.
-    let search = text_input("Search settings", &a.query).id(nav::SEARCH).on_input(Msg::Query).size(14.0).padding(10.0).style(input_style(p));
+    // Windows 11's look again (settings-windows-11, the owner, Nov 28): "Find a setting", Y beside it, an accent line under it.
+    let field = text_input("Find a setting", &a.query).id(nav::SEARCH).on_input(Msg::Query).size(14.0).padding(10.0).style(input_style(p));
+    let ycap = container(tb("Y", 11.0, p.text)).center_x(Length::Fixed(24.0)).center_y(Length::Fixed(24.0)).style(ui::boxed(Color::TRANSPARENT, 12.0, Some((p.muted, 1.2))));
+    let search = column![
+        row![glyph(G::Search, p.muted, 16.0, 2.0), field, ycap].spacing(8.0).align_y(iced::Center).padding(Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 12.0 }),
+        container(Space::new()).width(Length::Fill).height(Length::Fixed(2.0)).style(ui::boxed(p.accent, 1.0, None)),
+    ];
+    let search = container(search).style(ui::boxed(Pal::mix(rail_bg, p.text, 0.06), p.r(10.0), None));
     let ring = nav::shown() && !nav::in_page();
     let mut cats = Column::new().spacing(2.0);
     for (i, (id, label, _)) in CATEGORIES.iter().enumerate() {
@@ -264,10 +271,8 @@ fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
                 .interaction(mouse::Interaction::Pointer),
         );
     }
-    // The redesign (settings-cleanup, Nov 23): Hearth's flame and "Settings" over the search, not your picture.
-    let _ = (avatar, who);
-    let flame = container(Space::new()).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).style(ui::boxed(p.accent, 9.0, None));
-    let brand: Element<'_, Msg> = row![flame, tb("Settings", 24.0, p.text)].spacing(14.0).align_y(iced::Center).into();
+    // Your picture and name over the search, as in Windows 11 (settings-windows-11; the Nov 23 cleanup had Hearth's flame).
+    let brand: Element<'_, Msg> = row![avatar, who].spacing(14.0).align_y(iced::Center).into();
     // its blocks (WINDOW), each a right-click away from Edit layout (that part picked); as it was when nothing is
     // while the window is being arranged, each part's own content sits under its block's bar (drawn over its top)
     let edit = |id: &'static str, el: Element<'a, Msg>| -> (&'static str, Element<'a, Msg>) { (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id)))) };
@@ -308,9 +313,9 @@ fn frame_a<'a>(a: &'a App) -> Element<'a, Msg> {
     );
 
     let titlebar = hearth_ui::describe::title_bar(&p, &a.describe, G::Gear, "Hearth Settings", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, rail_bg, Msg::Describe(hearth_ui::describe::DMsg::Open));
-    // No button hints along the bottom any more (the redesign has none; the controller look is gone, 1.18).
-    let _ = hints;
-    let page = column![titlebar, body];
+    // The controller's buttons along the bottom again (settings-windows-11: A Select, B Back, Y Find a setting, LB / RB
+    // between sections, ☰ Close).
+    let page = column![titlebar, body, hints(a)];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     ui::edges(with_dialogs(a, base), Msg::Resize)
 }
@@ -333,8 +338,9 @@ fn crumbs(a: &App) -> Element<'_, Msg> {
         if !ver.is_empty() && ver != "0.0" {
             bits.push(if under.is_empty() { format!("Hearth OS {ver}") } else { format!("Hearth OS {ver} on {under}") });
         }
-        bits.push("what needs you first, then what you use most".into());
-        return column![tb("Home", 34.0, p.accent), t(bits.join(" · "), 15.0, p.muted)].spacing(6.0).into();
+        // Windows 11's look (settings-windows-11 home.png): just "Home"; this PC's name and version are on its card.
+        let _ = bits;
+        return tb("Home", 34.0, p.text).into();
     }
     let cat = CATEGORIES[a.cat];
     let mut chain = registry::chain(a.page);
@@ -393,11 +399,11 @@ fn hint<'a>(p: &Pal, k: &'a str, label: &'a str, square: bool, msg: Option<Msg>)
 
 fn hints(a: &App) -> Element<'_, Msg> {
     let p = a.sh.p;
-    let mut r = Row::new().spacing(24.0).align_y(iced::Center).push(hint(&p, "A", "Select", false, None)).push(hint(&p, "B", "Back", false, None)).push(hint(&p, "Y", "Search", false, None));
+    let mut r = Row::new().spacing(24.0).align_y(iced::Center).push(hint(&p, "A", "Select", false, None)).push(hint(&p, "B", "Back", false, None)).push(hint(&p, "Y", "Find a setting", false, Some(Msg::Find(true))));
     if let Some(x) = x_label(a) {
         r = r.push(hint(&p, "X", x, false, Some(Msg::X)));
     }
-    r = r.push(Space::new().width(Length::Fill)).push(row![hint(&p, "LB", "", true, None), hint(&p, "RB", "Previous / next category", true, None)].spacing(6.0)).push(hint(&p, "≡", "Close", true, Some(Msg::Close)));
+    r = r.push(Space::new().width(Length::Fill)).push(row![hint(&p, "LB", "", true, None), hint(&p, "RB", "Previous / next section", true, None)].spacing(6.0)).push(hint(&p, "≡", "Close", true, Some(Msg::Close)));
     container(r).padding(Padding { top: 0.0, right: 26.0, bottom: 0.0, left: 26.0 }).center_y(Length::Fixed(if a.sh.big { 50.0 } else { 52.0 })).width(Length::Fill).style(ui::boxed(Pal::mix(p.bg, p.panel, 0.55), 0.0, None)).into()
 }
 
@@ -406,7 +412,8 @@ fn search_page(a: &App) -> Element<'_, Msg> {
     let q = a.query.to_lowercase();
     let mut c = Column::new().spacing(8.0);
     let mut n = 0;
-    for pg in PAGES.iter().filter(|x| (!x.desc.is_empty() || x.landing) && !x.live) {
+    let kw = crate::shared::kwin_desktop();
+    for pg in PAGES.iter().filter(|x| (!x.desc.is_empty() || x.landing) && !x.live && (kw || !crate::shared::kwin_page(x.id))) {
         let hay = format!("{} {} {}", pg.label, pg.desc, pg.words).to_lowercase();
         if !q.split_whitespace().all(|w| hay.contains(w)) {
             continue;
@@ -438,7 +445,8 @@ pub fn category(a: &App) -> Element<'_, Msg> {
         }
     }
     let mut unbuilt = Vec::new();
-    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && !x.live && x.parent.is_empty() && !x.desc.is_empty()) {
+    let kw = crate::shared::kwin_desktop();
+    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && !x.live && x.parent.is_empty() && !x.desc.is_empty() && (kw || !crate::shared::kwin_page(x.id))) {
         if registry::built(pg.id) {
             c = c.push(link_row(&p, page_glyph(pg.id), pg.label, pg.desc, Msg::Go(pg.id)));
         } else {

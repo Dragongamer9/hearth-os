@@ -244,4 +244,30 @@ XML
 fonts_setup
 note "LANG=${LANG:-unset}; system fontconfig: $(fc-match sans-serif 2>/dev/null | head -1 || echo 'fc-match missing'), $(fc-list 2>/dev/null | wc -l) fonts"
 
+# Leaving Hearth Game Mode for the desktop (the owner's Legion Go S, Nov 28: two minutes to the desktop): Quick Access
+# stays on gamescope's screen "waiting for Hearth to come back", and gamescope doesn't close while it's there. So once
+# Hearth has asked for another mode (nimbus-next, written as it starts to close), Quick Access closes too; Handheld
+# Daemon starts it again where it's needed. In Game Mode only (gamescope's DISPLAY); otherwise as before.
+NEXT_F="${XDG_RUNTIME_DIR:-/tmp}/nimbus-next"
+if pgrep -u "$(id -u)" -x gamescope >/dev/null 2>&1 || pgrep -u "$(id -u)" -f 'gamescope-wl' >/dev/null 2>&1; then
+  started=$(date +%s)
+  # <&0: a job started with & would otherwise get /dev/null, and HHD talks to Quick Access on its stdin
+  "$APP" --hhd-overlay "$@" <&0 &
+  app=$!
+  trap 'kill -TERM $app 2>/dev/null' TERM INT HUP
+  (
+    while kill -0 "$app" 2>/dev/null; do
+      if [ -s "$NEXT_F" ] && [ "$(stat -c %Y "$NEXT_F" 2>/dev/null || echo 0)" -ge "$started" ]; then
+        note "Hearth asked for $(head -c 20 "$NEXT_F" | tr -d '\n'): closing Quick Access so gamescope can close"
+        kill -TERM "$app" 2>/dev/null; sleep 2; kill -KILL "$app" 2>/dev/null
+        exit 0
+      fi
+      sleep 0.5
+    done
+  ) &
+  watch=$!
+  wait "$app"; rc=$?
+  kill "$watch" 2>/dev/null
+  exit $rc
+fi
 exec "$APP" --hhd-overlay "$@"

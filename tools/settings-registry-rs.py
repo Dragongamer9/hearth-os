@@ -24,6 +24,11 @@ lines += ['];', '', '#[rustfmt::skip]', 'pub const PAGES: &[Page] = &[']
 kde = os.path.join(ROOT, 'hosts/linux/desktop/shell/kde-settings.json')
 if os.path.exists(kde):
     data['p'] = data['p'] + [dict(p, hidden=p.get('hidden', False)) for p in json.load(open(kde, encoding='utf-8'))['pages']]
+# The Rust app's own pages that Mantel's registry hasn't got (labwc's Windows & desktops, Nov 28): before KWin's.
+RUST_ONLY = [{'id': 'windows', 'cat': 'pers', 'label': 'Windows & desktops', 'desc': 'Virtual desktops, focus, snapping, VRR and tearing for games',
+              'words': 'windows desktops virtual workspaces focus follows mouse raise snapping snap edges corners maximize vrr freesync adaptive sync tearing games labwc'}]
+at = next((i for i, p in enumerate(data['p']) if p['id'] == 'kwin-effects'), len(data['p']))
+data['p'] = data['p'][:at] + RUST_ONLY + data['p'][at:]
 seen = set()
 for p in data['p']:
     if p['id'] in seen:

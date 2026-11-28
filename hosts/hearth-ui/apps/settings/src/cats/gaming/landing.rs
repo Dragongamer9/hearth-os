@@ -254,7 +254,10 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let no_hhd = st.hhd.get("running").and_then(Value::as_bool) == Some(false);
     v.push(r(G::Power, "Handheld", "Power limit, fans, lights and back buttons (Handheld Daemon)").value(if no_hhd { "No handheld on this PC" } else { "" }).chev().on(M::Go("handheld")).view(&p));
     v.push(link_row(&p, G::Rocket, "Performance", "Game Mode's resolution, refresh rate, frame limit and HDR", M::Go("gameperf")));
+    // a KWin page: off KWin it could never work (the owner, Nov 28)
+    if crate::shared::kwin_desktop() {
     v.push(link_row(&p, G::Display, "Full-screen games & X11 apps", "Tearing in full-screen games, keys X11 apps can see, scaling X11 apps", M::Go("kwin-games")));
+    }
     let cfg = go(&st.hs, "settings");
     if !cfg.is_null() {
         let on = not_false(cfg, "lightMode");
