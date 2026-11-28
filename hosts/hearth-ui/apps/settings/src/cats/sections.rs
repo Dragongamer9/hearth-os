@@ -200,6 +200,7 @@ const SECS: &[Sec] = &[
                 r("my-looks", "My looks", "Save it all and put it back", V::K("my_looks")),
             ]),
             ("Windows", &[
+                r("windows", "Windows & desktops", "Desktops, focus, snapping, VRR", V::N),
                 r("kwin-effects", "Window effects", "Animations, blur, overview", V::K("effects")),
                 r("kwin-desktops", "Virtual desktops", "How many, names, switching", V::K("desktops")),
                 r("kwin-tiling", "Tiling", "Tile layouts, snapping", V::K("tiling")),

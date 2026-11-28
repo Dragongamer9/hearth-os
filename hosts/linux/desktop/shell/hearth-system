@@ -521,12 +521,119 @@ def labwc_config(src=None, dest=None):
     rc = rc_with_theme(rc)
     rc = rc_with_search_key(rc, parse_env(env))
     rc = rc_with_titlebar(rc, window_buttons_saved())
+    if os.path.exists(WINDOWS_JSON):
+        rc = rc_with_windows(rc, windows_saved())
     # ---- Accessibility: the magnifier's size and steps, window titles at your text size
     if access:
         rc = access.rc_with_access(rc)
     # ---- end Accessibility
     write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
+
+
+# ---- Windows & desktops on labwc (Settings › Personalization › Windows & desktops; the owner, Nov 28: every button in
+# Settings has to work, and KWin's pages can't on labwc). ~/.config/nimbus/windows.json, only what the person changed:
+# rc.xml keeps Hearth's own for everything else.
+WINDOWS_JSON = os.path.join(CONFIG, 'nimbus', 'windows.json')
+WINDOWS_KEYS = {
+    'desktops': ('int', 1, 9),          # how many virtual desktops (labwc <desktops number>)
+    'followMouse': ('bool',),            # focus follows the pointer (<focus><followMouse>)
+    'raiseOnFocus': ('bool',),           # the window under the pointer comes to the front too (<raiseOnFocus>)
+    'snapEdges': ('bool',),              # drag to an edge or corner for half or a quarter (<snapping><range>)
+    'topMaximize': ('bool',),            # drag to the top to maximize (<snapping><topMaximize>)
+    'adaptiveSync': (('no', 'yes', 'fullscreen'),),   # VRR / FreeSync (<core><adaptiveSync>)
+    'allowTearing': ('bool',),           # tearing in full-screen games that ask (<core><allowTearing>)
+}
+
+
+def windows_clean(raw):
+    out = {}
+    if not isinstance(raw, dict):
+        return out
+    for k, spec in WINDOWS_KEYS.items():
+        v = raw.get(k)
+        if spec[0] == 'int' and isinstance(v, int) and not isinstance(v, bool):
+            out[k] = max(spec[1], min(spec[2], v))
+        elif spec[0] == 'bool' and isinstance(v, bool):
+            out[k] = v
+        elif isinstance(spec[0], tuple) and v in spec[0]:
+            out[k] = v
+    return out
+
+
+def windows_saved():
+    try:
+        return windows_clean(saved_json(WINDOWS_JSON))
+    except ValueError:
+        return {}
+
+
+def _yn(v):
+    return 'yes' if v else 'no'
+
+
+def rc_with_windows(text, w):
+    """rc.xml text with the person's Windows & desktops settings (only those they changed)."""
+    if 'desktops' in w:
+        n = w['desktops']
+        names = ''.join('<name>Desktop %d</name>' % (i + 1) for i in range(n))
+        block = '<desktops number="%d">\n    <popupTime>700</popupTime>\n    <prefix>Desktop</prefix>\n    <names>%s</names>\n  </desktops>' % (n, names)
+        if re.search(r'<desktops\b', text):
+            text = re.sub(r'<desktops\b.*?</desktops>', lambda m: block, text, count=1, flags=re.S)
+        else:
+            text = text.replace('</labwc_config>', '  ' + block + '\n</labwc_config>', 1)
+    if 'followMouse' in w or 'raiseOnFocus' in w:
+        block = '<focus><followMouse>%s</followMouse><raiseOnFocus>%s</raiseOnFocus></focus>' % (_yn(w.get('followMouse', False)), _yn(w.get('raiseOnFocus', False)))
+        if re.search(r'<focus\b', text):
+            text = re.sub(r'<focus\b.*?</focus>', lambda m: block, text, count=1, flags=re.S)
+        else:
+            text = text.replace('</labwc_config>', '  ' + block + '\n</labwc_config>', 1)
+    if 'snapEdges' in w:
+        r = '12' if w['snapEdges'] else '0'
+        text = re.sub(r'<range inner="\d+" outer="\d+"\s*/>', '<range inner="%s" outer="%s" />' % (r, r), text, count=1)
+        if not w['snapEdges']:
+            text = re.sub(r'<cornerRange>\d+</cornerRange>', '<cornerRange>0</cornerRange>', text, count=1)
+    if 'topMaximize' in w:
+        text = re.sub(r'<topMaximize>\w+</topMaximize>', '<topMaximize>%s</topMaximize>' % _yn(w['topMaximize']), text, count=1)
+    core = []
+    if 'adaptiveSync' in w:
+        core.append(('adaptiveSync', w['adaptiveSync']))
+    if 'allowTearing' in w:
+        core.append(('allowTearing', _yn(w['allowTearing'])))
+    for tag, v in core:
+        if re.search(r'<%s>' % tag, text):
+            text = re.sub(r'<%s>[^<]*</%s>' % (tag, tag), '<%s>%s</%s>' % (tag, v, tag), text, count=1)
+        elif '<core>' in text:
+            text = text.replace('<core>', '<core>\n    <%s>%s</%s>' % (tag, v, tag), 1)
+    return text
+
+
+def windows_status():
+    w = windows_saved()
+    rc = read(os.path.join(LABWC_DIR, 'rc.xml'))
+    m = re.search(r'<desktops number="(\d+)"', rc)
+    base = {'desktops': int(m.group(1)) if m else 4, 'followMouse': False, 'raiseOnFocus': False, 'snapEdges': True,
+            'topMaximize': '<topMaximize>yes' in rc, 'adaptiveSync': 'no', 'allowTearing': False}
+    base.update(w)
+    return dict(base, labwc=os.environ.get('HEARTH_WM', 'labwc') != 'kwin')
+
+
+def windows_set(raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if not isinstance(req, dict):
+        raise Fail('expected {"desktops": 4, "followMouse": true, ...}')
+    merged = windows_saved()
+    merged.update(windows_clean(req))
+    write_atomic(WINDOWS_JSON, json.dumps(merged, indent=2) + '\n')
+    if os.path.isdir(runtime_dir()):
+        labwc_config()
+    reloaded = False
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):
+        reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    return dict(windows_status(), ok=True, reloaded=reloaded)
 
 
 # ---- Desktop layouts (hearth-layout, Settings › Personalization › Desktop layout): where the window buttons go
@@ -1637,6 +1744,10 @@ def main(argv):
         out = pointer_status()
     elif c == 'pointer-set' and not a:
         out = pointer_set(sys.stdin.read())
+    elif c == 'windows' and not a:
+        out = windows_status()
+    elif c == 'windows-set' and not a:
+        out = windows_set(sys.stdin.read())
     elif c == 'labwc-config' and not a:
         print(labwc_config())
         return
