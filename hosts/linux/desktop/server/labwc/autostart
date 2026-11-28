@@ -20,6 +20,20 @@ ALIVE="$RUN/hearth-server-dash-alive"
 [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" >/dev/null 2>&1
 [ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh" >/dev/null 2>&1 &
 
+# Claude's screen (the owner, Nov 28): a virtual monitor beside the real one, where every app window opens (rc.xml's
+# window rules), 1920 x 1080, far to the right so the pointer never wanders onto it. Shown on the dashboard with its
+# "Claude's screen" button. If anything here fails, Server mode is as before: only the dashboard.
+( sleep 2
+  command -v wtype >/dev/null 2>&1 && wtype -M logo -M ctrl -M alt -M shift -k F24 -m shift -m alt -m ctrl -m logo 2>/dev/null
+  sleep 1
+  command -v wlr-randr >/dev/null 2>&1 && wlr-randr --output HEARTH-CLAUDE --custom-mode 1920x1080 --pos 20000,0 >/dev/null 2>&1
+  # The Claude desktop app (Settings › Apps › Claude, hearth-claude: ~/.local/bin/claude-desktop), on Claude's screen,
+  # so this PC stays linked to your Claude sessions while it's a server. Only when it's installed and not running.
+  for c in "$HOME/.local/bin/claude-desktop" /usr/bin/claude-desktop; do
+    if [ -x "$c" ]; then pgrep -u "$(id -u)" -f 'claude-desktop' >/dev/null 2>&1 || setsid "$c" >/dev/null 2>&1 </dev/null & break; fi
+  done
+) >/dev/null 2>&1 &
+
 give_up() {
   { echo "$1"; echo; tail -n 12 "$DASH_LOG" 2>/dev/null; } >"$RUN/hearth-server-dash-failed"
   labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID" 2>/dev/null

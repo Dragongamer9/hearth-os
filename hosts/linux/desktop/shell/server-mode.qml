@@ -35,11 +35,96 @@ ShellRoot {
         }
     }
 
+    // Claude's own screen (the owner, Nov 28: "only thing that shows on main is server mode, and on the virtual
+    // monitor claude works"): a virtual monitor labwc adds as Server mode starts (desktop/server/labwc/autostart,
+    // HEARTH-CLAUDE). Every app window opens there; the dashboard stays on the real screen.
+    readonly property string claudeName: "HEARTH-CLAUDE"
+    function realScreen() { for (let i = 0; i < Quickshell.screens.length; i++) if (Quickshell.screens[i].name !== root.claudeName) return Quickshell.screens[i]; return Quickshell.screens.length ? Quickshell.screens[0] : null; }
+    function claudeScreen() { for (let i = 0; i < Quickshell.screens.length; i++) if (Quickshell.screens[i].name === root.claudeName) return Quickshell.screens[i]; return null; }
+    property bool claudeOpen: false
+
     ServerDash {
         id: dash
-        screen: Quickshell.screens.length ? Quickshell.screens[0] : null
+        screen: root.realScreen()
         settings: settingsApp
         visible: !settingsApp.shown
+    }
+
+    // "Claude's screen": a button in the corner of the real screen; pressed, a large window over the dashboard (not full
+    // screen: the dashboard shows around it) with what's on the virtual monitor, live. Close (or B / Esc) hides it again.
+    PanelWindow {
+        id: claudeBtn
+        screen: root.realScreen()
+        visible: !!root.claudeScreen() && !settingsApp.shown && !root.claudeOpen
+        anchors { top: true; right: true }
+        margins { top: 18; right: 18 }
+        implicitWidth: btnRow.implicitWidth + 28
+        implicitHeight: 40
+        color: "transparent"
+        exclusiveZone: 0
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.namespace: "hearth-server-claude-button"
+        Rectangle {
+            anchors.fill: parent
+            radius: 20
+            color: Qt.rgba(0.12, 0.09, 0.07, 0.92)
+            border.color: Theme.accent
+            border.width: 1
+            Row {
+                id: btnRow
+                anchors.centerIn: parent
+                spacing: 8
+                Rectangle { width: 8; height: 8; radius: 4; anchors.verticalCenter: parent.verticalCenter; color: Theme.accent }
+                Text { text: "Claude's screen"; color: Theme.text; font.pixelSize: 15; font.weight: Font.DemiBold }
+            }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.claudeOpen = true }
+        }
+    }
+    PanelWindow {
+        id: claudeView
+        screen: root.realScreen()
+        visible: root.claudeOpen && !!root.claudeScreen()
+        anchors { top: true; bottom: true; left: true; right: true }
+        exclusiveZone: -1
+        color: Qt.rgba(0, 0, 0, 0.45)
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "hearth-server-claude-view"
+        WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        MouseArea { anchors.fill: parent; onClicked: root.claudeOpen = false }
+        Rectangle {
+            id: frame
+            anchors.centerIn: parent
+            width: Math.round(parent.width * 0.78)
+            height: Math.round(parent.height * 0.82)
+            radius: 16
+            color: Theme.bg
+            border.color: Theme.accent
+            border.width: 2
+            focus: true
+            Keys.onEscapePressed: root.claudeOpen = false
+            MouseArea { anchors.fill: parent }   // clicks on the window don't close it
+            Row {
+                id: head
+                anchors { top: parent.top; left: parent.left; topMargin: 14; leftMargin: 20 }
+                spacing: 10
+                Rectangle { width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter; color: Theme.accent }
+                Text { text: "Claude's screen"; color: Theme.text; font.pixelSize: 19; font.weight: Font.DemiBold }
+                Text { text: "what's open on the virtual monitor, live"; color: Theme.muted; font.pixelSize: 14; anchors.verticalCenter: parent.verticalCenter }
+            }
+            Rectangle {
+                anchors { top: parent.top; right: parent.right; topMargin: 10; rightMargin: 14 }
+                width: closeTxt.implicitWidth + 28; height: 34; radius: 17
+                color: Qt.rgba(1, 1, 1, 0.08)
+                Text { id: closeTxt; anchors.centerIn: parent; text: "Close  (B)"; color: Theme.text; font.pixelSize: 14 }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.claudeOpen = false }
+            }
+            ScreencopyView {
+                anchors { top: head.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 16; topMargin: 12 }
+                captureSource: root.claudeOpen ? root.claudeScreen() : null
+                live: root.claudeOpen
+                paintCursor: true
+            }
+        }
     }
 
     // The controller: hearth-pad in keys mode the whole time (as picker.qml runs it). Without python3-evdev or
@@ -84,6 +169,8 @@ ShellRoot {
         function pick(n: int): void { dash.sel = n; }
         function back(): void { dash.backInfo = { back: true, played: 9660 }; dash.overlay = "back"; }
         function close(): void { dash.overlay = ""; dash.cancelSwitch(); }
+        // Claude's screen (the virtual monitor) shown over the dashboard, or hidden again
+        function claude(on: bool): void { root.claudeOpen = on; }
         function cancel(): void { dash.remoteCancel(); }
         // An opened page's buttons, for the screenshot test (its keys don't reach the dashboard there): "new" a new rule,
         // "window" Ithil's next time window

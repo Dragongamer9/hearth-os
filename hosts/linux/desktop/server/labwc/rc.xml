@@ -19,7 +19,18 @@
     <default>no</default>
     <repeatRate>25</repeatRate>
     <repeatDelay>600</repeatDelay>
+    <!-- Claude's screen (the owner, Nov 28): the autostart presses this once (wtype) to add the virtual monitor
+         HEARTH-CLAUDE; nobody types it (all four modifiers and F24). -->
+    <keybind key="W-C-A-S-F24"><action name="VirtualOutputAdd" output_name="HEARTH-CLAUDE"/></keybind>
   </keyboard>
+  <!-- Every app window opens on Claude's screen (the virtual monitor), so only the dashboard is on the real screen;
+       Hearth Settings, opened from the dashboard's menu, comes back to the real one (the screen to its left). The
+       dashboard and its parts are layer surfaces, not windows, so these never touch them. Without HEARTH-CLAUDE the
+       first rule does nothing. -->
+  <windowRules>
+    <windowRule identifier="*"><action name="MoveToOutput" output="HEARTH-CLAUDE"/></windowRule>
+    <windowRule identifier="org.quickshell"><action name="MoveToOutput" direction="left"/></windowRule>
+  </windowRules>
   <mouse>
     <default>no</default>
     <context name="Frame">
