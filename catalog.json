@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 60,
+  "serial": 61,
   "apps": [
     {
       "id": "command-center",
@@ -1464,6 +1464,36 @@
       "licence": "MIT",
       "tagline": "Speech to words, on your own PC",
       "about": "Recordings made into words with their times and voices, live captions for anything playing, export to .txt, .srt and .vtt, and Send to Voice Studio. Nothing leaves your network. Built on whisper.cpp (MIT). Get it from the Hearth Store, which keeps it up to date."
+    },
+    {
+      "id": "part-hearth-overlay",
+      "name": "Hearth Overlay",
+      "kind": "app",
+      "part": {
+        "id": "hearth-overlay",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-overlay",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-overlay-1.18.1/hearth-overlay-1.18.1.tar.gz",
+        "sha256": "71f4b0a189ea04af02eeb9628f550968a98e6d01561a667e795b202eb2901e2e",
+        "size": 7289585,
+        "notes": [
+          "New: frame rate, GPU, CPU and memory over your games, for all games or one, changes show live",
+          "Frame-rate limit, show/hide keys and Game Mode's overlay levels; built on MangoHud (MIT) and GOverlay (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-overlay",
+      "inImage": false,
+      "short": "Overlay",
+      "card": "The numbers over your games, live",
+      "icon": "HO",
+      "from": "#ffb36b",
+      "to": "#ff6a1f",
+      "partId": "hearth-overlay",
+      "tagline": "The numbers over your games, live",
+      "about": "Frame rate, GPU, CPU and memory over your games, for all games or one: where they sit, how they look, a frame-rate limit, the keys that show and hide them, and Game Mode's overlay levels. Changes show live in the game. Built on MangoHud (MIT) and GOverlay (GPL-3)."
     }
   ],
   "tests": [
