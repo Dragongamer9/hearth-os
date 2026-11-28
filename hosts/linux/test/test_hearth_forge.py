@@ -1034,6 +1034,40 @@ class OwnersFixes(unittest.TestCase):
             self.assertNotIn('people', m.negative_words({'words': 'a sci-fi soldier character'}))
             self.assertIn('people', m.negative_words({'words': 'a wooden chair'}))
 
+    def test_hunyuan3d2_loads_by_free_memory_and_falls_back(self):
+        import types
+        with tempfile.TemporaryDirectory() as tmp:
+            m = helper(tmp)
+
+            class OOM(Exception):
+                pass
+            tried = []
+            free = {'gb': 4.0}
+            torch = types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True, mem_get_info=lambda: (free['gb'] * 1e9, 12e9),
+                                                                      empty_cache=lambda: None, OutOfMemoryError=OOM),
+                                          float16='fp16', float32='fp32', device=lambda x: x, Generator=lambda: types.SimpleNamespace(manual_seed=lambda s: None))
+            sys.modules['accelerate'] = types.SimpleNamespace(cpu_offload_with_hook=lambda part, dev, prev_module_hook=None: (part, 'hook'))
+
+            class Pipe:
+                conditioner = model = vae = object()
+
+                @classmethod
+                def from_pretrained(cls, repo, subfolder, variant, device='cuda', dtype=None):
+                    p = cls()
+                    p.how = 'card' if device == 'cuda' else ('shared' if dtype == 'fp16' else 'cpu')
+                    tried.append(p.how)
+                    return p
+
+                def __call__(self, **kw):
+                    if self.how == 'shared':
+                        raise OOM('CUDA out of memory')
+                    return ['mesh-%s-%s' % (self.how, kw['octree_resolution'])]
+            mesh, how = m.hy3d2_shape(torch, Pipe, {'shape': 's'}, None, 20, 384, 1)
+            self.assertEqual((mesh, how, tried), ('mesh-cpu-256', 'cpu', ['shared', 'cpu']))
+            free['gb'] = 9.0
+            tried.clear()
+            self.assertEqual(m.hy3d2_shape(torch, Pipe, {'shape': 's'}, None, 20, 384, 1), ('mesh-card-384', 'card'))
+
     def test_out_of_memory_said_plainly(self):
         with tempfile.TemporaryDirectory() as tmp:
             m = helper(tmp)

@@ -1169,13 +1169,11 @@ def job_run(d, as_model=None, out='model.glb', textures=None):
         img = BackgroundRemover()(img.convert('RGB')) if img.getextrema()[3][0] == 255 else img
         img.save(os.path.join(d, 'photo-cut.png'))
         stage('making the shape', 10)
-        shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(run.get('shapeRepo', 'tencent/Hunyuan3D-2'), subfolder=run['shape'], variant='fp16')
-        if run.get('flashvdm'):
-            shape.enable_flashvdm()
-        g = torch.Generator().manual_seed(seed)
-        mesh = shape(image=img, num_inference_steps=int(run.get('steps') or steps), octree_resolution=res, guidance_scale=5.0, generator=g, output_type='trimesh')[0]
+        mesh, how = hy3d2_shape(torch, Hunyuan3DDiTFlowMatchingPipeline, run, img, int(run.get('steps') or steps), res, seed)
+        if how != 'card':
+            timing['note'] = {'shared': 'Made with the card and the PC\'s memory together (the card was short of free memory)',
+                              'cpu': 'Made on the processor (the card had no room): slower'}[how]
         mesh = DegenerateFaceRemover()(FloaterRemover()(mesh))
-        del shape
         torch.cuda.empty_cache()
         timing['shape'] = int(time.time() - t)
         if tex != 'none':
@@ -1230,6 +1228,51 @@ def job_run(d, as_model=None, out='model.glb', textures=None):
         write_json(os.path.join(d, 'result.json'), res)
     stage('done', 100)
     return res
+
+
+def hy3d2_shape(torch, Pipe, run, img, steps, res, seed):
+    """Hunyuan3D 2's shape, loaded by the card's free memory (the owner's fix on the Nvidia PC, Nov 28): all on the card
+    with 7.5 GB free or more; else "shared" (loaded on the processor in fp16, accelerate's cpu_offload_with_hook
+    chaining conditioner → model → vae onto the card one at a time, the pipeline told it's on cuda, octree ≤ 256); else
+    the processor in fp32. Out of the card's memory, it goes down the list. hy3dgen's own enable_model_cpu_offload() is
+    broken (its pipeline has no .components). Returns the mesh and how it was made: card, shared or cpu."""
+    import gc
+    repo, sub = run.get('shapeRepo', 'tencent/Hunyuan3D-2'), run['shape']
+    cuda = torch.cuda.is_available()
+    free = torch.cuda.mem_get_info()[0] / 1e9 if cuda else 0.0
+    tiers = (['card'] if free >= 7.5 else []) + (['shared'] if cuda else []) + ['cpu']
+    last = None
+    for how in tiers:
+        pipe = None
+        try:
+            if how == 'card':
+                pipe = Pipe.from_pretrained(repo, subfolder=sub, variant='fp16')
+                octree = res
+            elif how == 'shared':
+                from accelerate import cpu_offload_with_hook
+                pipe = Pipe.from_pretrained(repo, subfolder=sub, variant='fp16', device='cpu', dtype=torch.float16)
+                hook = None
+                for part in (pipe.conditioner, pipe.model, pipe.vae):
+                    _, hook = cpu_offload_with_hook(part, 'cuda', prev_module_hook=hook)
+                pipe.device = torch.device('cuda')
+                octree = min(res, 256)
+            else:
+                pipe = Pipe.from_pretrained(repo, subfolder=sub, variant='fp16', device='cpu', dtype=torch.float32)
+                octree = min(res, 256)
+            if run.get('flashvdm') and how != 'cpu':
+                pipe.enable_flashvdm()
+            g = torch.Generator().manual_seed(seed)
+            mesh = pipe(image=img, num_inference_steps=steps, octree_resolution=octree, guidance_scale=5.0, generator=g, output_type='trimesh')[0]
+            return mesh, how
+        except torch.cuda.OutOfMemoryError as e:
+            last = e
+            print('hearth-forge: out of the card\'s memory %s; trying the next way' % how, flush=True)
+        finally:
+            del pipe
+            gc.collect()
+            if cuda:
+                torch.cuda.empty_cache()
+    raise Fail('The graphics card ran out of memory every way (%s)' % str(last)[:120])
 
 
 def paint_mesh(mesh, img, tsize, vram, sub='hunyuan3d-paint-v2-0'):
