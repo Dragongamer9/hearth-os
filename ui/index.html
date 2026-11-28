@@ -1303,6 +1303,46 @@ body.menu-dock #search.over-dock .kbtop{border-radius:0 0 18px 18px}
 .setc .sgrid{display:contents}
 @media (min-width:1700px){.setc .sgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}}
 @media (max-width:900px){.sc-body{flex-direction:column;align-items:stretch}.sc-side{width:auto;position:static}.sc-head .sc-lbrb{display:none}}
+/* ---------- Fireside look (the installer's look, Nov 28, 2026: docs/mockups/game-mode-fireside, checklist
+   game-mode-fireside.md): Dragonfire's frame with the installer's ground, type and buttons; Home and the Library are
+   blocks (gm-blocks.js fshero, grid). */
+body.look-df.look-fs{--bg:#120d0a;--bg2:#17110d;--panel:#1d1511;--panel2:#261b15;--panel3:#33251c;--line:#3a2a20;
+  --text:#f6ece1;--dim:#a8988a;--faint:#6f6257;--accent:#ff8a3d;--accent2:#ffb35c;--accentInk:#2a1406;
+  background:radial-gradient(900px 620px at 72% 58%,rgba(120,62,26,.55),transparent 70%),radial-gradient(500px 400px at 10% 0%,rgba(80,40,18,.35),transparent 70%),#120d0a}
+body.look-fs [data-f].focus{box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--accent),0 10px 40px rgba(255,138,61,.3)}
+body.look-fs h1,body.look-fs h2,body.look-fs .fs-title,body.look-fs .fs-h{letter-spacing:-.035em}
+body.look-fs .play,body.look-fs .btn.pri{background:linear-gradient(180deg,#ffb35c,#ff8a3d);color:#2a1406;border-radius:999px;font-weight:700}
+body.look-fs .btn,body.look-fs .df-btn{border-radius:999px}
+body.look-fs #topnav .tab.on,body.look-fs .tnav .on{background:var(--accent);color:#2a1406;border-radius:999px}
+body.look-fs .tile{border-radius:18px}
+body.look-fs .sc-row,body.look-fs .df-card,body.look-fs .qd-qs>div{border-radius:18px}
+.gmb-fshero{position:relative;display:flex;align-items:center;overflow:visible}
+.fs-hin{position:relative;z-index:1;max-width:min(640px,60%)}
+.fs-k{color:var(--accent);font-weight:700;letter-spacing:.16em;font-size:13px;text-transform:uppercase}
+.fs-title{font-weight:800;font-size:clamp(44px,6vw,76px);line-height:.98;margin:12px 0 12px;color:var(--text)}
+.fs-meta{color:var(--dim);font-size:15px;margin-bottom:26px}
+.fs-acts{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.fs-acts .play{display:inline-flex;align-items:center;gap:10px;padding:0 30px;height:58px;font-size:19px}
+.fs-btn{display:inline-flex;align-items:center;padding:0 28px;height:58px;border-radius:999px;background:rgba(40,28,20,.85);color:var(--text);font-weight:700;font-size:18px}
+.fs-more{width:58px;padding:0;justify-content:center}
+.gmb-fshero:before{content:"";position:absolute;right:-4%;top:-30%;width:62%;height:150%;background:radial-gradient(closest-side,rgba(255,140,60,.38),rgba(120,50,20,.18) 55%,transparent);pointer-events:none}
+.fs-fire path{stroke:none}
+.fs-fire{position:absolute;right:12%;top:50%;transform:translateY(-50%);height:clamp(180px,42vh,360px);width:auto;filter:drop-shadow(0 0 80px rgba(255,138,61,.45));pointer-events:none}
+.gmb-grid{display:flex;flex-direction:column}
+.fs-lhead{display:flex;align-items:flex-end;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.fs-h{font-weight:800;font-size:56px;line-height:1}
+.fs-filters{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.fs-f{padding:10px 16px;border-radius:999px;border:1px solid var(--line);font-size:14px;font-weight:600;color:var(--dim);background:transparent}
+.fs-f.on{background:var(--text);color:#1a110c;border-color:transparent}
+.fs-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}
+.fs-cover{position:relative;display:flex;flex-direction:column;justify-content:flex-end;padding:0 16px 14px;aspect-ratio:3/3.7;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:var(--panel2);text-align:left}
+.fs-cover>.art,.fs-cover>.img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.fs-cover:after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(18,13,10,.85) 0%,transparent 55%)}
+.fs-ct{position:relative;z-index:1;font-weight:800;font-size:18px;letter-spacing:-.02em;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.5)}
+.fs-src{position:relative;z-index:1;margin-bottom:4px;font-size:12px;font-weight:600;color:rgba(255,240,225,.75)}
+.fs-ni{position:absolute;top:10px;left:12px;z-index:1;font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.45);text-transform:uppercase}
+body.look-fs .gmb-tilerow .gmb-t{font-weight:700;font-size:18px;color:var(--text);text-transform:none;letter-spacing:0}
+body.look-fs .gmb-tile{border-radius:18px}
 /* ---------- Dragonfire look (Settings › Appearance › Look): a darker ember theme and its own Home ----------
    The colours are set on body, so they win over the profile's accent and background (set on :root) while the look
    is on, and come straight back with Classic. */
@@ -2028,7 +2068,7 @@ try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}'));
 // Appearance and the button swaps are also kept in a file (uiprefs: ~/.config/nimbus/game-mode-ui.json), their one
 // source of truth on Hearth OS: WebKit's localStorage can lose its last changes in a power cut, or everything when its
 // folder is reset (docs/SETTINGS-PERSISTENCE.md). Older versions kept them only here: copied to the file once.
-const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY','nimbus.gmblocks'];
+const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY','nimbus.gmblocks','nimbus.gmblocks.fireside'];
 // Not saved to the file: say so (the file wins at the next start, so the change would have gone back by itself).
 function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(e=>{ if(LINUX && !ANDROID) toast("Couldn't save this setting: "+((e&&e.message)||'no answer')); }); }
 function uiPrefsLoad(){
@@ -2074,9 +2114,13 @@ const MK_NOTE = `<b>Experimental · Keyboard &amp; mouse</b> Made for a mouse an
 const isX = id => XLAYOUTS.some(l=>l.id===id) || MK_LAYOUTS.some(l=>l.id===id);
 // Settings › Appearance › Look: Classic (the layouts above) or Dragonfire (its own darker ember theme and Home).
 const LOOKS = [{id:'classic', name:'Classic', desc:'Hearth as you know it, with the Home layout and theme you pick below.'},
-  {id:'dragonfire', name:'Dragonfire', desc:'A darker ember theme: your last game big, Continue playing, your library and launchers, live performance rings and a bar of shortcuts.'}];
+  {id:'dragonfire', name:'Dragonfire', desc:'A darker ember theme: your last game big, Continue playing, your library and launchers, live performance rings and a bar of shortcuts.'},
+  {id:'fireside', name:'Fireside', desc:'The installer\'s look: warm and big, your last game up front, every game as a big cover. Home and the Library are made of blocks you can move (✎ Edit Game Mode).'}];
 const dfOn = () => LOOK.style==='dragonfire';
-const homeLayoutName = () => dfOn() ? 'Dragonfire' : (LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name;
+// Fireside (the installer's look, approved Nov 28, 2026: docs/mockups/game-mode-fireside): Dragonfire's frame (the
+// menu along the top) in the installer's colours and type, Home and the Library made of blocks (gm-blocks.js GMB_FS).
+const fsOn = () => LOOK.style==='fireside';
+const homeLayoutName = () => dfOn() ? 'Dragonfire' : fsOn() ? 'Fireside' : (LAYOUTS.concat(XLAYOUTS,MK_LAYOUTS).find(l=>l.id===LOOK.layout)||{}).name;
 // Settings › Updates is Updates & Recovery in the Dragonfire look on Hearth OS (checked at each draw: whether this
 // is the OS install is only known once the host has answered).
 const dfRecoveryPage = () => dfOn() && ((LINUX && HOSTINFO.system && !HOSTINFO.live) || !host);
@@ -2086,10 +2130,11 @@ function applyLook(){
   if(!LAYOUTS.some(l=>l.id===LOOK.layout) && !isX(LOOK.layout)) LOOK.layout='shelf';
   const b=document.body;
   // Experimental layouts use Spotlight's frame (the menu along the top) plus their own class.
-  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id), ...MK_LAYOUTS.map(l=>'X-'+l.id), 'look-df');
+  b.classList.remove(...LAYOUTS.map(l=>'L-'+l.id), ...XLAYOUTS.map(l=>'X-'+l.id), ...MK_LAYOUTS.map(l=>'X-'+l.id), 'look-df', 'look-fs');
   // The Dragonfire look has its own Home in Spotlight's frame (the menu along the top); the Home layout picked
   // for Classic is kept for when you go back to it.
   if(dfOn()) b.classList.add('L-spotlight','look-df');
+  else if(fsOn()) b.classList.add('L-spotlight','look-df','look-fs');
   else if(isX(LOOK.layout)){ b.classList.add('L-spotlight','X-'+LOOK.layout); } else b.classList.add('L-'+LOOK.layout);
   b.classList.toggle('reduce-motion', !!LOOK.reduceMotion);
   b.classList.toggle('hc', !!LOOK.highContrast);   // Accessibility: high contrast
@@ -4546,6 +4591,7 @@ function pageAbout(){
 function viewHome(){
   const V=visible().filter(g=>g.inst || isActive(g) || (g.cloud && (g.last || g.fav)));
   if(dfOn()) return homeDf(V);
+  if(fsOn() && typeof gmbView==='function') return gmbView('home');   // Fireside: Home made of blocks (gm-blocks.js GMB_FS)
   if(!V.length) return `<div class="empty" style="padding-top:18vh">
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${LIB.loading?'Loading your games…':'No games found yet'}</div>
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':ANDROID?'Install a game or an emulator on this device, choose your ROMs folder in Settings › Games, or add an app yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
@@ -9512,7 +9558,7 @@ function renderQam(){
 }
 function qamQuick(){
   const L=QR.list.map(q=>G(q.id)).filter(Boolean);
-  const own = LOOK.layout==='blocks' && typeof gmbQuick==='function' ? gmbQuick() : '';   // Game Mode made of blocks (gm-blocks.js)
+  const own = (LOOK.layout==='blocks' || fsOn()) && typeof gmbQuick==='function' ? gmbQuick() : '';   // Game Mode made of blocks (gm-blocks.js)
   if(!L.length) return own;
   if(own) return own+qamQuickResume(L);
   return qamQuickResume(L);
@@ -9842,7 +9888,7 @@ function qdCapture(g){
 function qdQuick(){
   const w=S.sys.wifi, a=S.sys.audio;
   // Game Mode made of blocks (gm-blocks.js): your Quick Access page's blocks first
-  let h=(LOOK.layout==='blocks' && typeof gmbQuick==='function' ? gmbQuick() : '')+`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
+  let h=((LOOK.layout==='blocks' || fsOn()) && typeof gmbQuick==='function' ? gmbQuick() : '')+`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
     <button class="ctl tg" data-f data-k="q-mute" data-act="mute">${a.muted?I.mute:I.vol}<span class="tgl">Mute</span><div class="sw ${a.muted?'on':''}"></div></button>
     ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
     ${qRadio('bt','bt','Bluetooth', S.sys.bt.on?'On':'Off')}

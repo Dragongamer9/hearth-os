@@ -13,7 +13,7 @@
 
 const GMB_PAGES = [['home', 'Home'], ['library', 'Library'], ['quick', 'Quick Access']];
 const GMB_NAMES = {hero: 'Hero tile', tilerow: 'Tile row', iconrow: 'Icon row', widget: 'Widget', friends: 'Friends', downloads: 'Downloads',
-  clock: 'Clock', text: 'Words', play: 'Play', list: 'List', qa: 'Quick Access'};
+  clock: 'Clock', text: 'Words', play: 'Play', list: 'List', qa: 'Quick Access', fshero: 'Jump back in', grid: 'Your games'};
 const GMB_QA = {perf: ['Performance', 'perf'], audio: ['Sound', 'quick'], display: ['Display', 'quick'], power: ['Power', 'quick'],
   wifi: ['Wi-Fi and Bluetooth', 'quick'], friends: ['Friends', 'friends'], resume: ['Quick Resume', 'quick'], music: ['Now playing', 'now']};
 const GMB_LOOKS = [{}, {colour: '#2a1f3d', corners: 16}, {colour: '#1f3a2e', corners: 8}, {colour: '#3a2a12', corners: 24}, {colour: '#12263a', corners: 4}, {colour: '#00000000', corners: 0}];
@@ -26,6 +26,17 @@ const GMB_DEFAULT = {
   quick: [B('perf', 'qa', 0, 0, 12, 2, {shows: 'perf'}), B('resume', 'qa', 12, 0, 12, 2, {shows: 'resume'}), B('audio', 'qa', 0, 2, 12, 2, {shows: 'audio'}),
     B('display', 'qa', 12, 2, 12, 2, {shows: 'display'}), B('friends', 'qa', 0, 4, 12, 2, {shows: 'friends'}), B('power', 'qa', 12, 4, 12, 2, {shows: 'power'})],
 };
+// The Fireside look's own pages (the installer's look, approved Nov 28, 2026: docs/mockups/game-mode-fireside): Home
+// is "Jump back in" (the last game big, Play, Game page) and the Recent shelf; the Library is every game as a big cover
+// with its filters; Quick Access as before. Kept apart from Classic's blocks (nimbus.gmblocks.fireside), so switching
+// looks never changes the other's.
+const GMB_FS = {
+  home: [B('hero', 'fshero', 0, 0, 24, 9), B('recent', 'tilerow', 0, 10, 24, 4, {shows: 'recent', title: 'Recent', count: 6})],
+  library: [B('grid', 'grid', 0, 0, 24, 14)],
+  quick: GMB_DEFAULT.quick,
+};
+const gmbFs = () => typeof fsOn === 'function' && fsOn();
+const gmbKey = () => gmbFs() ? 'nimbus.gmblocks.fireside' : 'nimbus.gmblocks';
 // The 15 Home layouts as starting points (the same idea in blocks).
 const GMB_FROM = {
   shelf: [B('hero', 'hero', 0, 0, 24, 6), B('recent', 'tilerow', 0, 7, 24, 3, {shows: 'recent'}), B('games', 'tilerow', 0, 10, 24, 3, {shows: 'games'})],
@@ -47,23 +58,25 @@ const GMB_FROM = {
     B('games', 'tilerow', 0, 10, 24, 4, {shows: 'games', title: 'Installed'})],
   'x-journal': [B('recent', 'list', 0, 0, 8, 14, {shows: 'recent'}), B('hero', 'hero', 9, 0, 15, 7), B('widget', 'widget', 9, 8, 7, 3), B('clock', 'clock', 17, 8, 7, 3)],
 };
-const GMB = {pages: null, edit: false, page: 'home', pick: 0, held: false, undo: [], sayOpen: false, say: '', busy: false, err: '', rowPick: 0};
+const GMB = {pages: null, key: '', edit: false, page: 'home', pick: 0, held: false, undo: [], sayOpen: false, say: '', busy: false, err: '', rowPick: 0, filter: 'all'};
 const gmbCopy = o => JSON.parse(JSON.stringify(o));
 
 function gmbLoad(){
   let o = null;
-  try{ o = JSON.parse(localStorage.getItem('nimbus.gmblocks') || 'null'); }catch(e){ o = null; }
+  const key = gmbKey(), def = gmbFs() ? GMB_FS : GMB_DEFAULT;
+  try{ o = JSON.parse(localStorage.getItem(key) || 'null'); }catch(e){ o = null; }
   const p = {};
-  for(const [k] of GMB_PAGES) p[k] = o && Array.isArray(o[k]) ? o[k] : gmbCopy(GMB_DEFAULT[k]);
-  GMB.pages = p;
+  for(const [k] of GMB_PAGES) p[k] = o && Array.isArray(o[k]) ? o[k] : gmbCopy(def[k]);
+  GMB.pages = p; GMB.key = key;
 }
 function gmbSave(){
   const v = JSON.stringify(GMB.pages);
-  try{ localStorage.setItem('nimbus.gmblocks', v); }catch(e){}
-  if(typeof uiPrefSave === 'function') uiPrefSave('nimbus.gmblocks', v);
+  try{ localStorage.setItem(GMB.key || gmbKey(), v); }catch(e){}
+  if(typeof uiPrefSave === 'function') uiPrefSave(GMB.key || gmbKey(), v);
 }
-function gmbBlocks(page){ if(!GMB.pages) gmbLoad(); return GMB.pages[page] || []; }
-function gmbLibrary(){ return LOOK.layout === 'blocks' && gmbBlocks('library').length > 0; }
+// The look was switched (Classic ⇄ Fireside): each has its own blocks.
+function gmbBlocks(page){ if(!GMB.pages || GMB.key !== gmbKey()) gmbLoad(); return GMB.pages[page] || []; }
+function gmbLibrary(){ return (LOOK.layout === 'blocks' || gmbFs()) && gmbBlocks('library').length > 0; }
 function gmbChange(f){ GMB.undo.push(JSON.stringify(GMB.pages)); if(GMB.undo.length > 60) GMB.undo.shift(); f(GMB.pages[GMB.page]); gmbSave(); }
 function gmbUndo(){ const u = GMB.undo.pop(); if(!u) return toast('Nothing to undo'); GMB.pages = JSON.parse(u); gmbSave(); GMB.pick = Math.min(GMB.pick, gmbBlocks(GMB.page).length - 1); gmbRedraw(); }
 
@@ -120,6 +133,34 @@ function gmbBlock(b, i, page){
     case 'list': {
       const L = (b.shows === 'recent' ? gmbGames('recent') : [...visible()].sort((a, c) => String(a.title).localeCompare(String(c.title)))).slice(0, 40);
       const inner = `<div class="gmb-t">${b.shows === 'recent' ? 'Recently played' : 'A–Z'}</div>${L.map((g, j) => ed ? `<div class="gmb-li">${esc(g.title)}</div>` : `<button class="gmb-li" data-f data-k="${key}-${j}" data-act="game" data-id="${esc(g.id)}">${esc(g.title)}</button>`).join('')}`;
+      return ed ? shell(inner) : `<div class="${cls} gmb-flat gmb-scroll" style="${pos}">${inner}</div>`;
+    }
+    case 'fshero': {
+      // Fireside's "Jump back in" (home.png): the last game's name big, how long and when, Play, Game page and ⋯,
+      // the Hearth fire beside it.
+      const g = gmbGames('recent')[0];
+      const fire = `<svg class="fs-fire" viewBox="0 0 100 120" aria-hidden="true"><defs><linearGradient id="fsg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb25e"/><stop offset="1" stop-color="#ff7a3a"/></linearGradient></defs><path d="M52 0C60 30 92 48 92 78c0 24-19 42-42 42S8 102 8 80c0-16 8-28 18-36 0 12 6 20 12 22-6-26 6-48 14-66z" fill="url(#fsg)"/><path d="M52 64c0 10 10 14 10 30 0 10-6 18-12 18s-12-8-12-16c0-8 4-12 8-16 0 6 2 8 4 8-2-10 2-18 2-24z" fill="#ffdc8a"/></svg>`;
+      const words = g ? `<div class="fs-k">${S.running === g.id ? 'Playing now' : 'Jump back in'}</div><div class="fs-title">${esc(g.title)}</div>
+        <div class="fs-meta">${esc(xMeta(g))}</div>` : `<div class="fs-k">Welcome</div><div class="fs-title">${LIB.loading ? 'Loading your games…' : 'Your games show here'}</div>`;
+      const acts = g && !ed ? `<div class="fs-acts">${xPlay(g, key + '-play')}<button class="fs-btn" data-f data-k="${key}-page" data-act="game" data-id="${esc(g.id)}">Game page</button>
+        <button class="fs-btn fs-more" data-f data-k="${key}-more" data-act="game" data-id="${esc(g.id)}" aria-label="More">⋯</button></div>`
+        : g ? `<div class="fs-acts"><span class="play">Play</span><span class="fs-btn">Game page</span><span class="fs-btn fs-more">⋯</span></div>` : '';
+      const inner = `<div class="fs-hin">${words}${acts}</div>${fire}`;
+      return ed ? shell(inner) : `<div class="${cls} gmb-flat" style="${pos}">${inner}</div>`;
+    }
+    case 'grid': {
+      // Fireside's Library (library.png): every game as a big cover, where it's from, Not installed; filters along the top.
+      const F = [['all', 'All'], ['installed', 'Installed'], ...Object.keys(SOURCES).filter(k => GAMES.some(x => x.src === k && !x.hidden)).map(k => [k, SOURCES[k]])];
+      const f = F.some(x => x[0] === GMB.filter) ? GMB.filter : 'all';
+      const all = gmbGames('recent').concat(visible().filter(g => !gmbGames('recent').includes(g)));
+      const L = all.filter(g => f === 'all' || (f === 'installed' ? g.inst : g.src === f)).slice(0, 60);
+      const chips = `<div class="fs-filters">${F.map(([k, l]) => ed ? `<span class="fs-f${k === f ? ' on' : ''}">${esc(l)}</span>`
+        : `<button class="fs-f${k === f ? ' on' : ''}" data-f data-k="${key}-f-${esc(k)}" data-act="gmbFilter" data-v="${esc(k)}">${esc(l)}</button>`).join('')}</div>`;
+      const n = visible().length, inst = visible().filter(g => g.inst).length;
+      const head = `<div class="fs-lhead"><div><div class="fs-k">${n} ${n === 1 ? 'game' : 'games'} · ${inst} installed</div><div class="fs-h">Library</div></div>${chips}</div>`;
+      const cov = L.map((g, j) => { const c = `${gmbArt(g)}${g.inst ? '' : '<span class="fs-ni">Not installed</span>'}<span class="fs-src">${esc(SOURCES[g.src] || '')}</span><span class="fs-ct">${esc(g.title)}</span>`;
+        return ed ? `<div class="fs-cover">${c}</div>` : `<button class="fs-cover" data-f data-k="${key}-${j}" data-act="game" data-id="${esc(g.id)}">${c}</button>`; }).join('');
+      const inner = `${head}<div class="fs-grid">${cov || '<div class="muted">No games yet</div>'}</div>`;
       return ed ? shell(inner) : `<div class="${cls} gmb-flat gmb-scroll" style="${pos}">${inner}</div>`;
     }
     case 'qa': { const q = GMB_QA[b.shows] || GMB_QA.perf; return shell(`<div class="gmb-t">Quick Access</div><div class="gmb-qa">${esc(q[0])}</div>`, 'gmbQa', `data-v="${esc(b.shows || 'perf')}"`); }
@@ -244,6 +285,7 @@ function gmbAct(a, d, el){
     case 'gmbMake': return gmbMake();
     case 'gmbRow': { const j = +d.j || 0; if(GMB.rowPick === j && d.id) return navigate('game', {game: d.id}); GMB.rowPick = j; return render(el && el.dataset.k, true); }
     case 'gmbQa': { const q = GMB_QA[d.v] || GMB_QA.perf; closeAll(); S.qtab = q[1]; return toggleLayer('qam'); }
+    case 'gmbFilter': GMB.filter = d.v || 'all'; return render(el && el.dataset.k, true);
   }
 }
 // The controller in the editor (index.html's input() asks first). True: handled here.
