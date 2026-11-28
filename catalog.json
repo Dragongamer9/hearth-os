@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 61,
+  "serial": 62,
   "apps": [
     {
       "id": "command-center",
@@ -1494,6 +1494,36 @@
       "partId": "hearth-overlay",
       "tagline": "The numbers over your games, live",
       "about": "Frame rate, GPU, CPU and memory over your games, for all games or one: where they sit, how they look, a frame-rate limit, the keys that show and hide them, and Game Mode's overlay levels. Changes show live in the game. Built on MangoHud (MIT) and GOverlay (GPL-3)."
+    },
+    {
+      "id": "part-hearth-bottles",
+      "name": "Hearth Bottles",
+      "kind": "app",
+      "part": {
+        "id": "hearth-bottles",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-bottles",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-bottles-1.18.1/hearth-bottles-1.18.1.tar.gz",
+        "sha256": "d5dec5a4c21eedb23b702720ecdd894bc1dc2c7f6ab62919990bb218c2e7d703",
+        "size": 7378109,
+        "notes": [
+          "New: run Windows apps, each in a bottle of its own, with snapshots to go back to",
+          "Extras like .NET and Visual C++, the community's installers; built on Bottles (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-bottles",
+      "inImage": false,
+      "short": "Bottles",
+      "card": "Windows apps, each in its own bottle",
+      "icon": "BO",
+      "from": "#7ff0d8",
+      "to": "#1f9f8f",
+      "partId": "hearth-bottles",
+      "tagline": "Windows apps, each in its own bottle",
+      "about": "Run Windows apps, each in a bottle of its own: its programs, extras like .NET and Visual C++, snapshots to go back to, what's running, the community's installers and the bottle's settings. Built on Bottles (GPL-3)."
     }
   ],
   "tests": [
