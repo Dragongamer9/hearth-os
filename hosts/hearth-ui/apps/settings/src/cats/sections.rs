@@ -599,7 +599,8 @@ fn vrow<'a>(p: &Pal, title: &str, sub: &str, right: Element<'a, Msg>, open: Opti
 
 fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool) -> Vec<Element<'a, Msg>> {
     let live = v.contains_key("live");
-    let shown: Vec<&R> = list.iter().filter(|x| (!x.kde || kde) && (x.go != "install" || live)).collect();
+    let kw = crate::shared::kwin_desktop();
+    let shown: Vec<&R> = list.iter().filter(|x| (!x.kde || kde) && (x.go != "install" || live) && (kw || !crate::shared::kwin_page(x.go))).collect();
     let n = shown.len();
     shown
         .into_iter()

@@ -468,12 +468,17 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S, page: &'static str) -> E<'a, M> {
         let dwt = s.pb("dwt") != Some(false);
         c = c.push(srow(&p, G::Grid, "Ignore the touchpad while typing", "", switch(&p, dwt, Some(M::Set(true, "dwt", Value::Bool(!dwt))))));
         c = c.push(said(&p, &s.say));
-        // KWin's touchpad gestures (built into KWin), so shown, not changed.
+        // KWin's touchpad gestures (built into KWin), so shown, not changed; only on KWin (the owner, Nov 28).
+        if live {
         c = c.push(head(&p, "Touchpad gestures"));
         let q = if live { p } else { dim(&p) };
         c = c.push(info_row(&q, G::Grid, "Four fingers up: overview · down: desktop grid", if live { "Turning the overview off in Window effects turns these off" } else { "Needs KWin (KDE Plasma)" }));
         c = c.push(info_row(&q, G::Display, "Three or four fingers sideways: next or previous desktop", if live { "Three fingers up or down move between rows of desktops" } else { "Needs KWin (KDE Plasma)" }));
+        }
+        // a KWin page: off KWin it could never work (the owner, Nov 28)
+        if crate::shared::kwin_desktop() {
         c = c.push(go_row(&p, G::Grid, "Drawing tablet & touchscreen", "Pen tablet's screen and area, pressure, pen buttons; touchscreen screen and calibration", M::Go("kwin-tablet")));
+        }
     } else {
         c = c.push(said(&p, &s.say));
     }

@@ -501,6 +501,8 @@ pub fn view(a: &App) -> El<'_> {
             .collect();
         c = c.push(srow(&p, G::Update, "Rotation", "Turn the picture for a screen that's on its side or upside down", choice(&p, opts)));
     }
+    // KWin's only (the owner, Nov 28: every button has to work; KWin is retired, Mantel runs on labwc): shown on KWin alone
+    if k {
     let x11_self = vb(sc, "x11Scale.self");
     let x11_sub = if !k { NEEDS_KWIN.to_string() } else if x11_self { "Apps draw themselves at your screen's scale: sharp, though a few older ones look small".into() } else { "KWin enlarges them: the right size everywhere, a little blurry on a scaled screen".into() };
     c = c.push(srow(&p, G::Grid, "Scaling X11 apps", x11_sub, if k {
@@ -511,7 +513,10 @@ pub fn view(a: &App) -> El<'_> {
     } else {
         seg(&p, vec![("Apps scale themselves".into(), x11_self, None), ("KWin scales them".into(), !x11_self, None)])
     }));
+    }
 
+    // KWin's only (the owner, Nov 28: every button has to work; KWin is retired, Mantel runs on labwc): shown on KWin alone
+    if k {
     // ---- HDR & colour on the desktop (KWin)
     c = c.push(head(&p, "HDR & colour on the desktop"));
     let desk_hdr = vb(o, "hdr.capable");
@@ -574,6 +579,7 @@ pub fn view(a: &App) -> El<'_> {
             ("Accurate colours".into(), v == "accuracy", Msg::SetNow(json!({"colorPower": "accuracy"}), "Colour accuracy: accurate colours".into())),
         ])));
     }
+    }
 
     // ---- Picture signal (TVs)
     let over_ok = k && vb(o, "overscan.capable");
@@ -599,6 +605,8 @@ pub fn view(a: &App) -> El<'_> {
         }
     }
 
+    // KWin's only (the owner, Nov 28: every button has to work; KWin is retired, Mantel runs on labwc): shown on KWin alone
+    if k {
     // ---- Games and smoothness
     c = c.push(head(&p, "Games and smoothness"));
     let vrr_ok = k && vb(o, "vrr.capable");
@@ -614,6 +622,7 @@ pub fn view(a: &App) -> El<'_> {
     let tear = vb(sc, "tearing.on");
     let tear_ok = k && vb(sc, "tearing.capable");
     c = c.push(srow(&p, G::Pad, "Allow tearing in full-screen games", if !k { NEEDS_KWIN } else { "Less delay in games that ask for it, with a line where frames meet; the desktop never tears" }, switch(&p, tear, if tear_ok { Some(Msg::Exec(Ex::new(screens(&["set", &json!({"tearing": !tear}).to_string()])).store("screens").ok(if tear { "No tearing in games" } else { "Tearing allowed in full-screen games" }))) } else { None })));
+    }
 
     // ---- Several screens
     if outs(st).len() > 1 {
@@ -624,7 +633,9 @@ pub fn view(a: &App) -> El<'_> {
             }
         }
         if vb(o, "enabled") {
+            if k {
             c = c.push(srow(&p, G::Display, "Make this the main screen", if !k { NEEDS_KWIN.to_string() } else if is_main { "This is the main screen: the panel, notifications and new windows are here".into() } else { "Moves the panel, notifications and new windows here".into() }, switch(&p, is_main, if k && !is_main { Some(Msg::SetNow(json!({"priority": 1}), format!("Main screen: {}", name_of(o)))) } else { None })));
+            }
         }
         let use_on = vb(o, "enabled");
         let use_msg = if !use_on || !others.is_empty() {
@@ -636,16 +647,25 @@ pub fn view(a: &App) -> El<'_> {
         };
         c = c.push(srow(&p, G::Display, "Use this screen", if use_on { if others.is_empty() { "On · it's the only screen that's on, so it stays on" } else { "On" } } else { "Off: windows and the panel move to the other screens" }, switch(&p, use_on, use_msg)));
         let bar = st.num.get("barrier").copied().unwrap_or(vf(sc, "barrier.px", 100.0) as f32);
+        if k {
         c = c.push(srow(&p, G::Grid, "Sticky edge between screens", if !k { NEEDS_KWIN.to_string() } else { format!("{} px · how far you push before the pointer goes across: 0 goes straight over", bar.round()) }, if k { slider_f32(bar, 0.0..=500.0, 10.0, |v| Msg::Num("barrier", v), Msg::NumDone("barrier")) } else { t1("", 13.0, p.muted).into() }));
+        }
         let corner = vb(sc, "barrier.corner");
+        if k {
         c = c.push(srow(&p, G::Grid, "Sticky corners", if !k { NEEDS_KWIN } else { "The pointer doesn't slip into the next screen at a corner" }, switch(&p, corner, if k { Some(option(json!({"barrier": {"corner": !corner}}), if corner { "Sticky corners off" } else { "Sticky corners on" })) } else { None })));
+        }
         let dm = vs(sc, "desktops.mode");
+        if k {
         c = c.push(srow(&p, G::Grid, "Virtual desktops", if !k { NEEDS_KWIN } else if dm == "main" { "Switching desktops changes only the main screen; the others stay as they are" } else { "Switching desktops changes every screen together" }, seg(&p, vec![
             ("Every screen".into(), dm != "main", if k { Some(option(json!({"desktopsMainOnly": false}), "Desktops on every screen")) } else { None }),
             ("Main screen only".into(), dm == "main", if k { Some(option(json!({"desktopsMainOnly": true}), "Desktops on the main screen only")) } else { None }),
             ("Each its own".into(), false, None),
         ])));
+        }
+        // Neither labwc nor KWin can mirror: a row that can never be used isn't shown (the owner, Nov 28).
+        if vb(sc, "mirror.capable") {
         c = c.push(value_row(&p, G::Grid, "Show the same thing on both screens (mirror)", vs(sc, "mirror.why"), "Not available", false));
+        }
     }
 
     // ---- Screen power saving (Intel laptops' Panel Self Refresh)

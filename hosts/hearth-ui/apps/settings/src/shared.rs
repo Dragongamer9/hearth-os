@@ -114,3 +114,16 @@ pub fn read_desktop() -> Map<String, Value> {
         _ => Map::new(),
     }
 }
+
+/// Whether this desktop is on KWin (KDE Plasma, or Mantel on KWin): KWin's own pages and rows (Window effects, Virtual
+/// desktops, Tiling, Screen edges, Window behaviour, Window rules, Display's HDR on the desktop…) are shown only then.
+/// KWin is retired and Mantel runs on labwc, so elsewhere they could never work (the owner, Nov 28: "every button in
+/// the settings have to work").
+pub fn kwin_desktop() -> bool {
+    std::env::var("HEARTH_WM").map(|v| v == "kwin").unwrap_or(false) || std::env::var("XDG_CURRENT_DESKTOP").map(|v| v.to_uppercase().contains("KDE")).unwrap_or(false)
+}
+
+/// A KWin-only page (its id starts with kwin-), hidden from lists and search off KWin.
+pub fn kwin_page(id: &str) -> bool {
+    id.starts_with("kwin-")
+}

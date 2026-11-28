@@ -412,7 +412,8 @@ fn search_page(a: &App) -> Element<'_, Msg> {
     let q = a.query.to_lowercase();
     let mut c = Column::new().spacing(8.0);
     let mut n = 0;
-    for pg in PAGES.iter().filter(|x| (!x.desc.is_empty() || x.landing) && !x.live) {
+    let kw = crate::shared::kwin_desktop();
+    for pg in PAGES.iter().filter(|x| (!x.desc.is_empty() || x.landing) && !x.live && (kw || !crate::shared::kwin_page(x.id))) {
         let hay = format!("{} {} {}", pg.label, pg.desc, pg.words).to_lowercase();
         if !q.split_whitespace().all(|w| hay.contains(w)) {
             continue;
@@ -444,7 +445,8 @@ pub fn category(a: &App) -> Element<'_, Msg> {
         }
     }
     let mut unbuilt = Vec::new();
-    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && !x.live && x.parent.is_empty() && !x.desc.is_empty()) {
+    let kw = crate::shared::kwin_desktop();
+    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && !x.live && x.parent.is_empty() && !x.desc.is_empty() && (kw || !crate::shared::kwin_page(x.id))) {
         if registry::built(pg.id) {
             c = c.push(link_row(&p, page_glyph(pg.id), pg.label, pg.desc, Msg::Go(pg.id)));
         } else {
