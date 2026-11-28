@@ -1,0 +1,15 @@
+# Hearth: the microSD card %I mounted under /run/media/<you>/<its name> and given to Steam (hearth-game-card). Wanted
+# by the card's udev rule only (70-hearth-game-card.rules): no [Install], so it is never part of the PC's start. It ends
+# (and the card is unmounted) when the card is taken out.
+[Unit]
+Description=Hearth: the microSD card %I for games
+BindsTo=dev-%i.device
+After=dev-%i.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-game-card mount %I
+ExecStop=/usr/bin/python3 /usr/libexec/nimbus/hearth-game-card unmount %I
+TimeoutStartSec=60
+TimeoutStopSec=30

@@ -1,0 +1,5 @@
+# The microSD card in a handheld's own reader (the owner's Legion Go S, Nov 28, 2026: its SteamOS card wasn't picked
+# up): mounted by itself as SteamOS does, and given to Steam (hearth-game-card, docs/GAME-CARD.md). Only partitions with
+# a filesystem on the built-in mmc reader; USB drives stay with the desktop's own mounting. Started by the card, never
+# by the PC's start: a missing or broken card changes nothing about starting.
+SUBSYSTEM=="block", KERNEL=="mmcblk[0-9]p[0-9]*", ACTION=="add", ENV{ID_FS_USAGE}=="filesystem", TAG+="systemd", ENV{SYSTEMD_WANTS}+="hearth-game-card@%k.service"

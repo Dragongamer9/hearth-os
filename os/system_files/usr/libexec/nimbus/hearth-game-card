@@ -1,0 +1,167 @@
+#!/usr/bin/python3
+"""hearth-game-card: the handheld's microSD card, mounted by itself and given to Steam, as SteamOS does (the owner's
+Legion Go S, Nov 28, 2026: its SteamOS card, ext4 "USD00", wasn't picked up and Steam didn't see it).
+
+  hearth-game-card mount mmcblk0p1     (root, from hearth-game-card@.service) mount it, then tell Steam
+  hearth-game-card unmount mmcblk0p1   (root) unmount it (the card was taken out, or the PC is shutting down)
+
+Where: /run/media/<the person signed in>/<the card's name> (its UUID when it has none), the place the desktop's own
+mounting uses too. ext4 and btrfs keep their own owners (a SteamOS card's files are uid 1000's, the first account's);
+exFAT, FAT and NTFS cards are mounted as the person. Steam is told with steam://addlibraryfolder (as SteamOS's
+sdcard-mount does) once it runs, for up to 10 minutes. Anything wrong is logged and nothing else changes: this never
+runs at the PC's start (only when the card is there) and never stops anything starting."""
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+
+FS_OK = {'ext4', 'ext3', 'ext2', 'btrfs', 'exfat', 'vfat', 'ntfs', 'ntfs3', 'f2fs'}
+NAME_RE = re.compile(r'mmcblk\d+p\d+')
+
+
+def log(msg):
+    print('hearth-game-card: %s' % msg, flush=True)
+
+
+def run(cmd, timeout=30, **kw):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)
+        return p.returncode, (p.stdout or '') + (p.stderr or '')
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+
+
+def blkid(dev):
+    code, out = run(['blkid', '-o', 'export', dev], 10)
+    info = {}
+    for line in out.splitlines():
+        if '=' in line:
+            k, v = line.split('=', 1)
+            info[k] = v
+    return info
+
+
+def person():
+    """The person signed in on the PC's own screen (seat0), else the first account (uid 1000)."""
+    code, out = run(['loginctl', 'list-sessions', '--no-legend', '-o', 'json'], 10)
+    try:
+        for s in json.loads(out or '[]'):
+            if s.get('seat') == 'seat0' and int(s.get('uid', 0)) >= 1000:
+                return pwd.getpwuid(int(s['uid']))
+    except (ValueError, KeyError, TypeError):
+        pass
+    try:
+        return pwd.getpwuid(1000)
+    except KeyError:
+        return None
+
+
+def safe(name):
+    name = re.sub(r'[^A-Za-z0-9._ -]', '_', name or '').strip(' .')
+    return name[:64] if re.search(r'[A-Za-z0-9]', name) else ''
+
+
+def mount_point(dev_name, info, user):
+    return os.path.join('/run/media', user.pw_name, safe(info.get('LABEL')) or safe(info.get('UUID')) or dev_name)
+
+
+def is_mounted(dev):
+    code, out = run(['findmnt', '-n', '-o', 'TARGET', '--source', dev], 10)
+    return out.strip().splitlines()[0] if code == 0 and out.strip() else ''
+
+
+def options(fs, user):
+    if fs in ('ext4', 'ext3', 'ext2', 'btrfs', 'f2fs'):
+        return 'noatime,nosuid,nodev'
+    own = 'uid=%d,gid=%d' % (user.pw_uid, user.pw_gid)
+    if fs in ('ntfs', 'ntfs3'):
+        return own + ',umask=022,nosuid,nodev'
+    return own + ',umask=022,noatime,nosuid,nodev'
+
+
+def tell_steam(user, path):
+    """steam://addlibraryfolder/<path> once Steam runs for the person (up to 10 minutes; from the background)."""
+    url = 'steam://addlibraryfolder/' + urllib.parse.quote(path)
+    env = {'HOME': user.pw_dir, 'USER': user.pw_name, 'XDG_RUNTIME_DIR': '/run/user/%d' % user.pw_uid, 'PATH': '/usr/bin:/bin'}
+    code, _ = run(['systemd-run', '--quiet', '--collect', '--uid=%d' % user.pw_uid, '--gid=%d' % user.pw_gid,
+                   '--setenv=HOME=%s' % env['HOME'], '--setenv=XDG_RUNTIME_DIR=%s' % env['XDG_RUNTIME_DIR'],
+                   '/bin/sh', '-c', 'i=0; while [ $i -lt 600 ]; do pgrep -u "$(id -u)" -x steam >/dev/null && { sleep 5; steam -ifrunning "$1"; exit 0; }; sleep 1; i=$((i+1)); done', 'sh', url], 15)
+    if code != 0:
+        log('couldn\'t ask Steam to add %s (it can be added in Steam › Settings › Storage)' % path)
+
+
+def mount(dev_name):
+    if not NAME_RE.fullmatch(dev_name):
+        log('not a card partition: %s' % dev_name)
+        return 0
+    dev = '/dev/' + dev_name
+    info = blkid(dev)
+    fs = info.get('TYPE', '')
+    if fs not in FS_OK:
+        log('%s has %s, not a filesystem for games: left alone' % (dev, fs or 'no filesystem'))
+        return 0
+    user = person()
+    if not user:
+        log('no account to mount it for: left alone')
+        return 0
+    already = is_mounted(dev)
+    if already:
+        log('%s is already mounted at %s' % (dev, already))
+        tell_steam(user, already)
+        return 0
+    where = mount_point(dev_name, info, user)
+    os.makedirs(os.path.dirname(where), mode=0o750, exist_ok=True)
+    try:
+        os.chown(os.path.dirname(where), 0, user.pw_gid)
+    except OSError:
+        pass
+    os.makedirs(where, exist_ok=True)
+    kind = 'ntfs3' if fs in ('ntfs', 'ntfs3') else fs
+    code, out = run(['mount', '-t', kind, '-o', options(fs, user), dev, where], 45)
+    if code != 0:
+        log('couldn\'t mount %s (%s): %s' % (dev, fs, out.strip()[-200:]))
+        try:
+            os.rmdir(where)
+        except OSError:
+            pass
+        return 0
+    log('%s (%s, "%s") mounted at %s' % (dev, fs, info.get('LABEL', ''), where))
+    tell_steam(user, where)
+    return 0
+
+
+def unmount(dev_name):
+    if not NAME_RE.fullmatch(dev_name):
+        return 0
+    dev = '/dev/' + dev_name
+    where = is_mounted(dev)
+    if not where:
+        return 0
+    code, out = run(['umount', dev], 25)
+    if code != 0:
+        code, out = run(['umount', '-l', dev], 10)
+    if where.startswith('/run/media/'):
+        try:
+            os.rmdir(where)
+        except OSError:
+            pass
+    log('%s unmounted from %s' % (dev, where))
+    return 0
+
+
+def main(argv):
+    if len(argv) != 3 or argv[1] not in ('mount', 'unmount'):
+        sys.exit(__doc__)
+    try:
+        return mount(argv[2]) if argv[1] == 'mount' else unmount(argv[2])
+    except Exception as e:  # noqa: BLE001 - never fails the card's service: logged, nothing else changes
+        log('%s %s: %s' % (argv[1], argv[2], e))
+        return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
