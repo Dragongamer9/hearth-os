@@ -11,9 +11,13 @@ for i in /sys/bus/usb/devices/*; do
 done
 [ -n "$dev" ] || { echo "No Legion Go S controller found: nothing changed."; exit 1; }
 echo "Controller: $dev"
-for n in 1 2 3; do echo "$dev:1.$n" > $D/xpad/unbind 2>/dev/null && echo "freed $dev:1.$n from xpad"; done
+# xpad takes them straight back when they're freed (the first try), so automatic binding is off for the few moments
+# this takes, and back on at the end whatever happens.
+trap 'echo 1 > /sys/bus/usb/drivers_autoprobe' EXIT
+echo 0 > /sys/bus/usb/drivers_autoprobe
+for n in 2 3; do echo "$dev:1.$n" > $D/xpad/unbind 2>/dev/null && echo "freed $dev:1.$n from xpad"; done
 for n in 2 3; do echo "$dev:1.$n" > $D/usbhid/bind && echo "gave $dev:1.$n to usbhid"; done
-echo "$dev:1.1" > $D/xpad/bind && echo "gave $dev:1.1 back to xpad"
+echo 1 > /sys/bus/usb/drivers_autoprobe
 sleep 8
 for n in 0 1 2 3 4 5 6; do echo "  1.$n -> $(basename "$(readlink -f "/sys/bus/usb/devices/$dev:1.$n/driver" 2>/dev/null)")"; done
 ls /sys/bus/hid/devices/ | grep -i 1a86
