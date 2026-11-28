@@ -978,5 +978,33 @@ class Public(unittest.TestCase):
         self.assertNotIn('NoDisplay=true', d)
 
 
+class PipCommand(unittest.TestCase):
+    """The owner, Nov 28: every model failed at "downloading PyTorch for CUDA 12.8" with "pip: no such option:
+    --progress-bar" (it stood before 'install'). The real command line is run by pip itself (--dry-run, offline)."""
+
+    def test_progress_bar_after_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m = helper(tmp)
+            c = m.pip_install_cmd('python3', 'c.txt', ['--find-links', 'x'])
+            self.assertLess(c.index('install'), c.index('--progress-bar'), ' '.join(c))
+            self.assertEqual(c[-2:], ['--find-links', 'x'])
+
+    def test_pip_accepts_the_command_line(self):
+        import subprocess
+        if subprocess.run([sys.executable, '-m', 'pip', '--version'], capture_output=True).returncode != 0:
+            self.skipTest('no pip here')
+        with tempfile.TemporaryDirectory() as tmp:
+            m = helper(tmp)
+            cons = os.path.join(tmp, 'constraints.txt')
+            pathlib.Path(cons).write_text('torch==2.7.1\n')
+            links = os.path.join(tmp, 'links')
+            os.mkdir(links)
+            c = m.pip_install_cmd(sys.executable, cons, ['--find-links', links])
+            r = subprocess.run(c + ['--dry-run', '--no-index', 'pip'], capture_output=True, text=True, timeout=300)
+            out = r.stdout + r.stderr
+            self.assertNotIn('no such option', out)
+            self.assertEqual(r.returncode, 0, out[-600:])
+
+
 if __name__ == '__main__':
     unittest.main()

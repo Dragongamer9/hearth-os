@@ -536,6 +536,13 @@ def ensure_uv(step):
     return uv
 
 
+def pip_install_cmd(py, cons, links=()):
+    """The pip install command line for a model's runtime. --progress-bar is an install option: it goes after
+    'install' (before it, pip stops with "no such option: --progress-bar")."""
+    return [py, '-m', 'pip', '--disable-pip-version-check', '--no-input', '--no-cache-dir', 'install', '--progress-bar', 'off',
+            '-c', cons] + list(links)
+
+
 def install_runner(rid, cat, step):
     """The model's own code at its pinned commit (checked) into ~/Hearth/Forge/runtimes/<runner>, a Python environment
     with the Python its maker names, PyTorch's CUDA 12.8 build, the maker's own pinned requirements, then the parts it
@@ -600,7 +607,7 @@ def install_runner(rid, cat, step):
 
     def pip(args, timeout, label, isolated=True):
         step(label)
-        base = [py, '-m', 'pip', '--disable-pip-version-check', '--no-input', '--no-cache-dir', '--progress-bar', 'off', 'install', '-c', cons] + links
+        base = pip_install_cmd(py, cons, links)
         code, out = cmd(base + ([] if isolated else ['--no-build-isolation']) + args, timeout, cwd=root, env=env)
         if code != 0:
             raise Fail('%s didn\'t work: %s' % (label[0].upper() + label[1:], out.strip()[-240:]))
