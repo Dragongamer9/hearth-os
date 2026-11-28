@@ -1341,6 +1341,60 @@ body.look-fs .sc-row,body.look-fs .df-card,body.look-fs .qd-qs>div{border-radius
 .fs-ct{position:relative;z-index:1;font-weight:800;font-size:18px;letter-spacing:-.02em;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.5)}
 .fs-src{position:relative;z-index:1;margin-bottom:4px;font-size:12px;font-weight:600;color:rgba(255,240,225,.75)}
 .fs-ni{position:absolute;top:10px;left:12px;z-index:1;font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.45);text-transform:uppercase}
+.fs-game{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,36%);gap:48px;align-items:start;padding-top:12px}
+.fs-gsub{color:var(--dim);font-size:16px;line-height:1.5;margin-bottom:26px;max-width:620px}
+.fs-facts{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden;max-width:640px}
+.fs-fact{display:flex;padding:15px 22px;border-top:1px solid var(--line);font-size:16px}
+.fs-fact:first-child{border-top:0}
+.fs-fact .n{width:170px;flex:none;color:var(--dim)}
+.fs-fact .v{font-weight:600}
+.fs-gcover{position:relative;aspect-ratio:47/60;border-radius:26px;overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.5);background:radial-gradient(260px 240px at 55% 45%,rgba(255,180,90,.7),transparent 70%),linear-gradient(160deg,#ff9a4a,#5b220d 70%,#22120a)}
+.fs-gcover>.art,.fs-gcover>.img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.fs-gcover:after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(18,13,10,.8),transparent 45%)}
+.fs-gcover .fs-ct{position:absolute;left:28px;bottom:26px;font-size:40px}
+.fs-foot{grid-column:1/-1;color:var(--faint);font-size:13px}
+.fs-btn svg,.fs-acts .play svg{width:20px;height:20px}
+body.look-fs #qam .qd-wrap{position:fixed;right:20px;top:20px;bottom:20px;width:min(430px,92vw);left:auto;transform:none;margin:0;border-radius:28px;background:rgba(22,15,11,.94);border:1px solid var(--line);box-shadow:-20px 0 60px rgba(0,0,0,.5);backdrop-filter:blur(20px);display:flex;flex-direction:column;overflow:hidden}
+body.look-fs #qam .qd-bar{border-radius:0;background:transparent;border:0;box-shadow:none;width:auto;margin:0;padding:14px 16px 0;position:static;transform:none}
+body.look-fs #qam .qd-panel{position:static;width:auto;max-height:none;flex:1;overflow:auto;border:0;background:transparent;box-shadow:none;margin:0;transform:none;padding:8px 28px 24px}
+body.look-fs #qam .qd-hints{right:470px}
+.fs-q .fs-qh{font-weight:800;font-size:40px;letter-spacing:-.035em;margin:8px 0 6px}
+.fs-chips{display:flex;gap:8px;margin:18px 0 20px}
+.fs-chip{flex:1;text-align:center;padding:12px 0;border-radius:16px;background:var(--panel2);border:1px solid var(--line);font-size:13px;color:var(--dim)}
+.fs-chip b{display:block;color:var(--text);font-size:17px;margin-bottom:2px}
+.fs-chip.on{background:var(--accent);color:#2a1406;border-color:transparent}.fs-chip.on b{color:#2a1406}
+.fs-q .ctl{background:transparent;border:0;padding:12px 16px;margin:0 -16px 6px;border-radius:18px}
+.fs-q .ctl .lab{font-size:15px;font-weight:600}
+.fs-qrows{margin-top:12px;border-top:1px solid var(--line)}
+.fs-qr{display:flex;width:100%;align-items:center;justify-content:space-between;padding:15px 8px;margin:0 -8px;border-bottom:1px solid var(--line);font-size:16px;font-weight:600;color:var(--text);background:none;text-align:left;border-radius:12px}
+.fs-qv{color:var(--dim);font-weight:500}
+body.look-fs .fs-set{display:grid;grid-template-columns:260px minmax(0,1fr);gap:40px;align-items:start}
+.fs-snav{display:flex;flex-direction:column;gap:4px;position:sticky;top:0}
+.fs-sn{display:flex;align-items:center;gap:12px;padding:13px 16px;border-radius:16px;font-size:16px;font-weight:600;color:var(--dim);background:none;text-align:left}
+.fs-sn svg{width:20px;height:20px}
+.fs-sn.on{background:var(--panel2);color:var(--text)}
+.fs-sn.on svg{color:var(--accent)}
+body.look-fs .fs-smain .sc-side{display:none}
+body.look-fs .fs-smain .sc-body{display:block}
+body.look-fs .fs-smain .sc-head h1{font-weight:800;font-size:56px;letter-spacing:-.035em;line-height:1;margin:8px 0 14px}
+body.look-fs .fs-smain .sc-back{display:none}
+body.look-fs .fs-smain .sc-main{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:6px 8px;max-width:820px}
+body.look-fs .fs-smain .sc-main>.row,body.look-fs .fs-smain .sc-main>.sc-row{border-radius:14px}
+.fs-sfoot{margin-top:18px;color:var(--faint);font-size:13px}
+body.look-fs #power.fs .modal{width:min(820px,92vw);padding:40px 44px;border-radius:28px;background:rgba(22,15,11,.96);border:1px solid var(--line)}
+.fs-ph{font-weight:800;font-size:56px;letter-spacing:-.035em;line-height:1;margin:10px 0 10px}
+.fs-psub{color:var(--dim);font-size:16px;margin-bottom:28px}
+.fs-pgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.fs-po{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:22px 20px;border-radius:22px;background:var(--panel2);border:1px solid var(--line);text-align:left;color:var(--text)}
+.fs-po b{font-size:19px}
+.fs-po small{color:var(--dim);font-size:13px}
+.fs-pi svg{width:30px;height:30px}
+body.look-fs .fs-po.focus{background:linear-gradient(180deg,var(--accent2),var(--accent));color:#2a1406;border-color:transparent}
+body.look-fs .fs-po.focus small{color:#5a2a10}
+.fs-pmore{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.fs-pm{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;border:1px solid var(--line);color:var(--dim);font-weight:600;font-size:14px;background:none}
+.fs-pm svg{width:16px;height:16px}
+@media (max-width:900px){.fs-pgrid{grid-template-columns:repeat(2,minmax(0,1fr))}body.look-fs .fs-set{grid-template-columns:1fr}}
 body.look-fs .gmb-tilerow .gmb-t{font-weight:700;font-size:18px;color:var(--text);text-transform:none;letter-spacing:0}
 body.look-fs .gmb-tile{border-radius:18px}
 /* ---------- Dragonfire look (Settings › Appearance › Look): a darker ember theme and its own Home ----------
@@ -5442,17 +5496,19 @@ function viewGame(){
     : g.installKind==='steam' && host ? `In your Steam library. Select Install and Steam downloads it in the background${ACC.steamLib?` to <code>${esc(ACC.steamLib)}</code>`:''}, without opening its window. Follow it under Downloads.`
     : g.installKind==='store' ? `You've played this on Xbox. Select Install to get it from the Microsoft Store (Game Pass games also install from the Xbox app).`
     : `In your ${SOURCES[g.src]} library. Select Install and ${SOURCES[g.src]} will ask where to put it.`;
-  return `<div class="gpage">
-    <div class="ghero"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}${logo}</div>
-    <div class="gbar">
-      ${isActive(g) && !g.inst
+  const playH = isActive(g) && !g.inst
         ? `<button class="play dling" data-f data-k="g-play" data-act="nav" data-view="downloads"><span>${dlInfo(g).label}</span><div class="bar"><i style="width:${dlInfo(g).pct??0}%"></i></div></button>`
         : playable(g)
         ? (running ? `<button class="play" data-f data-k="g-play" data-act="resume" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="exitgame" data-id="${esc(g.id)}">${I.stop}Exit game</button>`
             : isFrozen(g) ? `<button class="play" data-f data-k="g-play" data-act="quickres" data-id="${esc(g.id)}">${I.play}Resume</button><button class="play install" data-f data-k="g-stop" data-act="quickclose" data-id="${esc(g.id)}">${I.stop}Close game</button>`
             : `<button class="play" data-f data-k="g-play" data-act="play" data-id="${esc(g.id)}">${I.play}${g.cloud&&!g.inst?'Stream':'Play'}</button>${beaconMods(g).length?`<button class="play install" data-f data-k="g-playwith" data-act="playWith" data-id="${esc(g.id)}">${I.play}Play with…</button>`:''}`)
         : g.src==='beacon' ? `<button class="play install" data-f data-k="g-play" data-act="bcnSetup" data-id="${esc(g.id)}">${I.dl}Set up</button>`
-        : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`}
+        : `<button class="play install" data-f data-k="g-play" data-act="install" data-id="${esc(g.id)}">${I.dl}Install</button>`;
+  if(fsOn()) return viewGameFs(g, playH, about, pdb);   // Fireside: the board's game page (docs/mockups/game-mode-fireside/game.png)
+  return `<div class="gpage">
+    <div class="ghero"><div class="art" style="${artBg(g)}"></div>${artImg(g,['hero','wide'])}${logo}</div>
+    <div class="gbar">
+      ${playH}
       <button class="sq ${g.fav?'on':''}" data-f data-k="g-fav" data-act="fav" data-id="${esc(g.id)}" aria-label="Favorite">${I.star}</button>
       <button class="sq" data-f data-k="g-opt" data-act="gopts" data-id="${esc(g.id)}" aria-label="Options">${I.dots}</button>
       <div class="gstats">
@@ -5470,6 +5526,39 @@ function viewGame(){
         ${g.path?`<div class="muted" style="margin-top:8px;word-break:break-all">Location: <code>${esc(g.path)}</code></div>`:''}</div>
       ${g.src==='beacon'?beaconGameCard(g):''}${hmGameCard(g)}${side}${typeof hpGameCards==='function'?hpGameCards(g):''}
     </div>
+  </div>`;
+}
+
+
+// Fireside's game page (docs/mockups/game-mode-fireside/game.png): where it's from and whether it's installed over the
+// big name, what it is and when you last played, Play / Settings for this game / ⋯, the facts card, the big cover.
+function viewGameFs(g, playH, about, pdb){
+  if((!host || LINUX || hasFeat('gameSettings')) && !g.cloud && GSET.id!==g.id) loadGameSet(g.id);
+  const o = GSET.id===g.id && GSET.s ? (GSET.s.options||{}) : null;
+  const src = esc(g.system||SOURCES[g.src]||'');
+  const state = isActive(g) && !g.inst ? 'Installing' : g.inst ? 'Installed' : g.cloud ? 'Streams' : 'Not installed';
+  const last = g.last ? ` Last played ${ago(g.last).toLowerCase()}${g.hrs?', '+hrs(g.hrs):''}.` : '';
+  const runs = g.system ? 'RetroArch' : g.cloud ? 'Xbox Cloud Gaming'
+    : pdb ? `Proton · <span class="pdb" style="--c:${PDB_COLORS[pdb.tier]||'#7f8b99'}">${esc(pdb.label)}</span>` : src;
+  const perf = !o ? 'Your usual limits' : [o.fpsLimit?o.fpsLimit+' fps target':'', o.powerLabel?esc(o.powerLabel):o.tdp?o.tdp+' W':''].filter(Boolean).join(' · ') || 'Your usual limits';
+  let pad = '—';
+  if((LINUX || hasFeat('hearthInput')) && !g.cloud){ imLoadTables(); imLoad(g.id); const c=IM.games[g.id]; pad = !c ? 'Loading…' : c.layout==='off' ? "The game's own" : esc(imChoiceLabel(c)); }
+  const cloud = g.src==='steam' ? 'Steam Cloud' : o && o.cloudSaves!=null ? (o.cloudSaves?'On':'Off') : '—';
+  const size = g.size ? `${esc(g.size)}${g.inst&&ACC.root?' on this PC':''}` : '—';
+  const fact = (n,v) => `<div class="fs-fact"><div class="n">${n}</div><div class="v">${v}</div></div>`;
+  const canSet = (!host || LINUX || hasFeat('gameSettings')) && !g.cloud;
+  return `<div class="fs-game">
+    <div class="fs-gl">
+      <div class="fs-k">${src} · ${state}</div>
+      <div class="fs-title">${esc(g.title)}</div>
+      <div class="fs-gsub">${about}${last}</div>
+      <div class="fs-acts">${playH}
+        ${canSet?`<button class="fs-btn" data-f data-k="g-set" data-act="mkGameSet" data-id="${esc(g.id)}">${I.gear} Settings for this game</button>`:''}
+        <button class="fs-btn fs-more" data-f data-k="g-opt" data-act="gopts" data-id="${esc(g.id)}" aria-label="Options">${I.dots}</button></div>
+      <div class="fs-facts">${fact('Runs on',runs)}${fact('Performance',perf)}${fact('Controller',pad)}${fact('Cloud save',cloud)}${fact('Size',size)}</div>
+    </div>
+    <div class="fs-gcover"><div class="art" style="${artBg(g)}"></div>${artImg(g,['portrait','grid','hero','wide'])}<div class="fs-ct">${esc(g.title)}</div></div>
+    ${canSet?'<div class="fs-foot">Changes here are for this game only</div>':''}
   </div>`;
 }
 
@@ -8940,14 +9029,24 @@ function settingsBody(t){
   if(ANDROID) body = androidPage(t, body);
   return body;
 }
+// Fireside's Settings (docs/mockups/game-mode-fireside/settings.png): the list down the left, "Settings" over the
+// page's big name, its note, then its rows in one card.
+function fsSetWrap(inner, grp){
+  return `<div class="fs-set"><nav class="fs-snav" aria-label="Settings">${sgroupsShown().map(([k,ic,l])=>`<button class="fs-sn ${k===grp?'on':''}" data-f data-k="fsn-${k}" data-act="sgroup" data-g="${k}">${I[ic]||I.gear}<span>${l}</span></button>`).join('')}</nav>
+    <div class="fs-smain"><div class="fs-k">Settings</div>${inner}<div class="fs-sfoot">Saved on this PC · nothing changes by itself</div></div></div>`;
+}
 function viewSettings(){
+  const v=viewSettingsInner();
+  return fsOn() && S.settingsTab ? fsSetWrap(v, S.sfront ? S.sgroup : stabGroup(S.settingsTab)) : v;
+}
+function viewSettingsInner(){
   if(S.settingsTab==='audio' && !stabShown('audio')) S.settingsTab='display';   // Android: sound is on the Display page
   if(!stabShown(S.settingsTab)) S.settingsTab='profile';
   if(S.sfront) return viewSettingsFront();
   const t=S.settingsTab, grp=stabGroup(t), tabs=stabsIn(grp);
   SLAST[grp]=t;
   return `<div class="setc">
-    <header class="sc-head"><button class="ibtn sc-back" data-f data-k="sb-back" data-act="setBack" aria-label="Back to Settings">${DKI.back}</button><h1>${sgroupLabel(grp)}</h1>
+    <header class="sc-head"><button class="ibtn sc-back" data-f data-k="sb-back" data-act="setBack" aria-label="Back to Settings">${DKI.back}</button><h1>${fsOn() ? esc((tabs.find(x=>x[0]===t)||[,,sgroupLabel(grp)])[2]) : sgroupLabel(grp)}</h1>
       ${tabs.length>1?`<div class="sc-tabs stabs" role="tablist">${tabs.map(([k,,l])=>`<button class="chip ${t===k?'on':''}" role="tab" aria-selected="${t===k}" data-f data-k="st-${k}" data-act="stab" data-tab="${k}">${l}</button>`).join('')}</div><span class="sc-lbrb">LB ‹ › RB</span>`:''}</header>
     <div class="sc-body"><aside class="sc-side">${scSafe(()=>pageCard(t))}</aside><div class="rows srows sc-main">${settingsBody(t)}</div></div></div>`;
 }
@@ -9885,7 +9984,53 @@ function qdCapture(g){
 }
 
 // ---- Quick settings (volume, brightness, mute, Wi-Fi, Bluetooth, airplane mode, sounds; notifications under them)
+// Fireside's Quick settings (docs/mockups/game-mode-fireside/quick.png): "While you play", the three power modes with
+// their watts, Brightness, Volume and Frame rate limit sliders, then Performance overlay, Wi-Fi, Controller, Screenshot.
+const FS_PMODES = [['efficiency','Quiet'],['balanced','Balanced'],['performance','Max']];
+function fsWatts(mode){
+  const hs=HHDS.s, t=hs && hs.settings && hs.settings.tdp && hs.settings.tdp.unified && hs.settings.tdp.unified.children && hs.settings.tdp.unified.children.tdp;
+  const hk={efficiency:'quiet',balanced:'balanced',performance:'performance'}[mode];
+  const u=t && t.modes && t.modes[hk] && t.modes[hk].unit;
+  return u ? String(u).replace(/(\d)W$/,'$1 W') : '';
+}
+const FSQ = {at:0};
+function qdQuickFs(){
+  // The frame-rate limit and the overlay come with Performance's numbers: asked for once when this opens (again after 10 s).
+  if(Date.now()-FSQ.at > 10000){ FSQ.at=Date.now(); if(LINUX && !HHDS.s && !OVERLAY) loadHhd();
+    call('perf.stats',{}).then(r=>{ PERF.s=Object.assign({}, PERF.s||{}, r); if(S.layers.includes('qam') && S.qtab==='quick') renderQam(); }).catch(()=>{}); }
+  const p=PERF.s||{}, w=S.sys.wifi, a=S.sys.audio, pw=S.sys.power||{};
+  const modes = LINUX && pw.modes && pw.modes.length ? FS_PMODES.filter(([k])=>pw.modes.includes(k)) : FS_PMODES;
+  const cur = S.sys.powerMode;
+  let h = `<div class="fs-q"><div class="fs-k">Quick settings</div><div class="fs-qh">${S.running?'While you play':'Right now'}</div>`;
+  if(modes.length) h += `<div class="fs-chips">${modes.map(([k,l])=>`<button class="fs-chip ${cur===k?'on':''}" data-f data-k="fsq-pm-${k}" data-act="pmode" data-mode="${k}"><b>${l}</b>${fsWatts(k)||({efficiency:'Saves battery',balanced:'Even',performance:'Fastest'})[k]}</button>`).join('')}</div>`;
+  if(S.sys.display.supported) h += sliderCtl('bright','sun','Brightness');
+  h += sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax());
+  if(p.canFpsLimit){
+    const lim=p.fpsLimit||0, i=Math.max(0,FPS_CHOICES.indexOf(lim)), pct=i/(FPS_CHOICES.length-1)*100;
+    h += `<div class="ctl" data-f data-k="q-fps" data-slider="fps:limit" data-min="0" data-max="${FPS_CHOICES.length-1}" data-step="1" data-unit="">
+      <div class="lab">${I.display}Frame rate limit<span>${lim?lim+' fps':'Off'}</span></div>
+      <div class="slider"><i style="width:${pct}%"></i><b style="left:${pct}%"></b></div></div>`;
+  }
+  const row=(k,act,label,right,extra='')=>`<button class="fs-qr" data-f data-k="fsq-${k}" data-act="${act}"${extra}><span>${label}</span>${right}</button>`;
+  h += '<div class="fs-qrows">';
+  if(p.canOverlay) h += row('po','perfOverlay','Performance overlay',`<div class="sw ${p.perfOverlay?'on':''}"></div>`,` data-v="${p.perfOverlay?0:1}"`);
+  h += row('wifi','goset','Wi-Fi',`<span class="fs-qv">${esc(w.on ? (w.ssid||'Not connected') : 'Off')}</span>`,' data-tab="wifi"');
+  const pad=p.padBattery;
+  h += row('pad','goset','Controller',`<span class="fs-qv">${pad&&pad.pct!=null?esc((pad.name||'Controller')+' · '+pad.pct+'%'):'Connected'}</span>`,' data-tab="controls"');
+  if(LINUX || !host) h += row('shot','ovShot','Screenshot',`<span class="fs-qv">${S.running?'Take one now':'Over a game'}</span>`);
+  h += '</div></div>';
+  return h;
+}
+function fsFpsSlide(el, d){
+  const n=FPS_CHOICES.length-1, cur=Math.max(0,FPS_CHOICES.indexOf((PERF.s&&PERF.s.fpsLimit)||0)), i=Math.max(0,Math.min(n,cur+d)), v=FPS_CHOICES[i];
+  if(PERF.s) PERF.s.fpsLimit=v;
+  const pct=i/n*100; el.querySelector('.slider i').style.width=pct+'%'; el.querySelector('.slider b').style.left=pct+'%';
+  el.querySelector('.lab span').textContent=v?v+' fps':'Off';
+  debounce('fsfps',()=>call('perf.setFpsLimit',Object.assign({fps:v}, qamTop() && S.layers.includes('qam') && qdPgOn() ? {game:true} : {})).then(r=>{ if(PERF.s) PERF.s.fpsLimit=r.fpsLimit; }).catch(e=>toast(e.message)),250);
+  blip(500+i*40,.03);
+}
 function qdQuick(){
+  if(fsOn()) return qdQuickFs() + (typeof gmbQuick==='function' ? gmbQuick() : '') + qdQuickRest();   // Fireside: the board first, then your Quick Access blocks
   const w=S.sys.wifi, a=S.sys.audio;
   // Game Mode made of blocks (gm-blocks.js): your Quick Access page's blocks first
   let h=((LOOK.layout==='blocks' || fsOn()) && typeof gmbQuick==='function' ? gmbQuick() : '')+`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
@@ -9894,6 +10039,10 @@ function qdQuick(){
     ${qRadio('bt','bt','Bluetooth', S.sys.bt.on?'On':'Off')}
     ${qRadio('air','plane','Airplane mode', '')}
     ${tgCtl('sounds','note','Interface sounds')}</div>`;
+  return h + qdQuickRest();
+}
+function qdQuickRest(){
+  let h='';
   // The rest of the side panel's: the Wi-Fi / Bluetooth pages, the keyboard; with no game running, what its Now playing
   // had (Switch app, the controller mouse, Back to Hearth) and the games put aside.
   const more=[`<button class="qd-mini" data-f data-k="q-gw" data-act="goset" data-tab="wifi">${I.wifi}Wi-Fi</button>`, `<button class="qd-mini" data-f data-k="q-gb" data-act="goset" data-tab="bluetooth">${I.bt}Bluetooth</button>`,
@@ -9996,6 +10145,24 @@ function renderPower(){
   if(qrFeature() && host && (!QR.hibAt || Date.now()-QR.hibAt>60000)) loadHib();
   const games=qrFeature()?qrGames():0, keep=games&&qrKeeps(), keepR=games&&qrKeepsRestart();
   const tag=t=>`<small style="margin-left:auto;opacity:.6;font-size:12px">${t}</small>`;
+  $('#power').classList.toggle('fs', fsOn());
+  // Fireside (docs/mockups/game-mode-fireside/power.png): "Take a break?", four big choices, the rest under them.
+  if(fsOn()){
+    const o=(k,p,ic,l,sub,extra='')=>`<button class="fs-po" data-f data-k="${k}" data-act="pwr" data-p="${p}"${extra}><span class="fs-pi">${ic}</span><b>${l}</b><small>${sub}</small></button>`;
+    const more=[`<button class="fs-pm" data-f data-k="p-signout" data-act="pwr" data-p="signout">${I.user}Sign out</button>`];
+    if(LINUX&&hasFeat('steamMode')) more.push(`<button class="fs-pm" data-f data-k="p-steam" data-act="pwr" data-p="steam">${I.pad}Steam Game Mode</button>`);
+    if(keepR) more.push(`<button class="fs-pm" data-f data-k="p-restart-close" data-act="pwr" data-p="restart" data-sure="1">${I.restart}Restart and close games</button>`);
+    if(keep) more.push(`<button class="fs-pm" data-f data-k="p-shutdown-close" data-act="pwr" data-p="shutdown" data-sure="1">${I.power}Turn off and close games</button>`);
+    more.push(`<button class="fs-pm" data-f data-k="p-cancel" data-act="back">${I.x}Cancel</button>`);
+    $('#powerBox').innerHTML = `<div class="fs-k">Power</div><div class="fs-ph">Take a break?</div>
+      <div class="fs-psub">${S.running?'Your game is paused and saved where you are.':games?'Your games are kept where you left them.':'Pick what this PC does next.'}</div>
+      <div class="fs-pgrid">${o('p-sleep','sleep',I.moon,'Sleep','Back in a second')}
+        ${o('p-restart','restart',I.restart,'Restart',games?(keepR?'Keeps your games':'Closes your games'):'Starts again')}
+        ${o('p-shutdown','shutdown',I.power,'Turn off',games?(keep?'Keeps your games':'Closes your games'):'All the way off')}
+        ${o('p-desktop','desktop',I.desk,'Desktop Mode',LINUX?'Mantel':'Your desktop')}</div>
+      <div class="fs-pmore">${more.join('')}</div>`;
+    return;
+  }
   $('#powerBox').innerHTML = `<h3>Power</h3>
     <button class="mitem" data-f data-k="p-sleep" data-act="pwr" data-p="sleep">${I.moon}Sleep${games?tag('keeps your games'):''}</button>
     <button class="mitem" data-f data-k="p-restart" data-act="pwr" data-p="restart">${I.restart}Restart${games?tag(keepR?'keeps your games':'closes your games'):''}</button>
@@ -10376,6 +10543,7 @@ const SLIDE_AT={};
 function adjustSlider(el, d){
   const k=el.dataset.slider, min=+el.dataset.min, max=+el.dataset.max, st=+el.dataset.step;
   if(k.startsWith('im:')) return imSlide(el, d);   // Hearth Input's sliders (controller layouts)
+  if(k==='fps:limit') return fsFpsSlide(el, d);   // Fireside's Frame rate limit (qdQuickFs)
   if(k.startsWith('hhd:')) return hhdSlide(el, d);   // Handheld Daemon's settings
   if(k.startsWith('an:') && typeof anSlide==='function') return anSlide(el, d);   // Hearth for Android's device settings (android-settings.js)
   S.set[k]=Math.max(min,Math.min(max,S.set[k]+d*st)); SLIDE_AT[k]=performance.now();
@@ -11012,7 +11180,7 @@ async function exitGame(){
 // ---------- Game settings (game page › ⋯ › Game settings) ----------
 const GSET = {id:null, s:null, err:null};
 // Not read (the host said no, or didn't answer): the page says so with Try again, instead of "Loading…" for good.
-function loadGameSet(id){ GSET.id=id; GSET.s=null; GSET.err=null; call('game.options.get',{id}).then(r=>{ if(GSET.id===id){ GSET.s=r; if(S.view==='gameset' && !S.layers.length) render(null,true); } }).catch(e=>{ if(GSET.id===id){ GSET.err=e.message; if(S.view==='gameset' && !S.layers.length) render(null,true); } toast(e.message); }); }
+function loadGameSet(id){ GSET.id=id; GSET.s=null; GSET.err=null; call('game.options.get',{id}).then(r=>{ if(GSET.id===id){ GSET.s=r; if((S.view==='gameset' || (S.view==='game' && fsOn())) && !S.layers.length) render(null,true); } }).catch(e=>{ if(GSET.id===id){ GSET.err=e.message; if(S.view==='gameset' && !S.layers.length) render(null,true); } toast(e.message); }); }
 function saveGameSet(patch, k){
   return call('game.options.set',{id:GSET.id, options:patch}).then(r=>{ GSET.s=r; render(k,true); }).catch(e=>toast(e.message));
 }

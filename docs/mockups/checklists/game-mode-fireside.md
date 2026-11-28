@@ -30,22 +30,38 @@ Release: next
 - [x] Not installed marked on the cover — ui/gm-blocks.js: "Not installed"
 
 ## 3. A game's page
-- [ ] Source and Installed over the big name, the description with last played
-- [ ] Play, Settings for this game and ⋯
-- [ ] The facts card: Runs on, Performance, Controller, Cloud save, Size
-- [ ] The big cover on the right
+- [x] Source and Installed over the big name — ui/index.html: "<div class=\"fs-k\">${src} · ${state}</div>"
+- [x] The description with when you last played and for how long — ui/index.html: "Last played ${ago(g.last).toLowerCase()}"
+- [x] Play, Settings for this game and ⋯ — ui/index.html: "Settings for this game</button>"
+- [x] The facts card: Runs on, Performance, Controller, Cloud save, Size — ui/index.html: "${fact('Runs on',runs)}${fact('Performance',perf)}${fact('Controller',pad)}${fact('Cloud save',cloud)}${fact('Size',size)}"
+- [x] The big cover on the right with the name on it — ui/index.html: "<div class=\"fs-gcover\">"
+- [x] "Changes here are for this game only" — ui/index.html: "Changes here are for this game only"
 
 ## 4. Store
-- [ ] The Store page in the Fireside look
+- [ ] "New in the Hearth Store": the newest app big, with Get and See more
+- [ ] Updates: how many are ready, each app with its new version, whether it needs a restart, and Update
+- [ ] Apps for you: a grid of Store apps with Get
+- [ ] Update all (X)
 
 ## 5. Quick settings
-- [ ] A panel on the right over the game: "While you play"
-- [ ] Power chips Quiet, Balanced, Max with their watts
-- [ ] Brightness, Volume and Frame rate limit sliders
-- [ ] Performance overlay, Wi-Fi, Controller and Screenshot rows
+- [x] A panel on the right over the game — ui/index.html: "body.look-fs #qam .qd-wrap{position:fixed;right:20px"
+- [x] "Quick settings" over "While you play" — ui/index.html: "S.running?'While you play':'Right now'"
+- [x] Power chips Quiet, Balanced, Max with their watts — ui/index.html: "const FS_PMODES = [['efficiency','Quiet'],['balanced','Balanced'],['performance','Max']];"
+- [x] Brightness and Volume sliders — ui/index.html: "if(S.sys.display.supported) h += sliderCtl('bright','sun','Brightness');"
+- [x] Frame rate limit slider — ui/index.html: "if(k==='fps:limit') return fsFpsSlide(el, d);"
+- [x] Performance overlay, Wi-Fi, Controller and Screenshot rows — ui/index.html: "row('shot','ovShot','Screenshot'"
 
 ## 6. Settings
-- [ ] Hearth Game Mode's Settings in the Fireside look
+- [x] The list down the left — ui/index.html: "<nav class=\"fs-snav\" aria-label=\"Settings\">"
+- [x] "Settings" over the page's big name — ui/index.html: "<div class=\"fs-smain\"><div class=\"fs-k\">Settings</div>"
+- [x] The rows in one card with their values and › — ui/index.html: "body.look-fs .fs-smain .sc-main{background:var(--panel)"
+- [x] "Saved on this PC · nothing changes by itself" — ui/index.html: "Saved on this PC · nothing changes by itself"
+- [ ] Display: "Put my screen settings back when the TV reconnects" in Hearth Game Mode
+- [ ] Display: HDR in Hearth Game Mode
+- [ ] Display: Night light in Hearth Game Mode
 
 ## 7. Power menu
-- [ ] The power menu in the Fireside look
+- [x] "Power" over "Take a break?" — ui/index.html: "<div class=\"fs-ph\">Take a break?</div>"
+- [x] "Your game is paused and saved where you are." — ui/index.html: "Your game is paused and saved where you are."
+- [x] Sleep (Back in a second), Restart, Turn off, Desktop Mode (Mantel) as big choices — ui/index.html: "${o('p-desktop','desktop',I.desk,'Desktop Mode',LINUX?'Mantel':'Your desktop')}"
+- [x] The picked one glows orange — ui/index.html: "body.look-fs .fs-po.focus{background:linear-gradient(180deg,var(--accent2),var(--accent))"
