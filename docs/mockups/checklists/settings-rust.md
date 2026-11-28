@@ -11,7 +11,7 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 - [x] Search settings, finding pages by name and words — hosts/hearth-ui/apps/settings/src/frame.rs: "text_input(\"Search settings\", &a.query).id(nav::SEARCH)"
 - [x] the 13 categories with the picked one marked (14 since the approved Settings cleanup added AI, Nov 23) — hosts/hearth-ui/apps/settings/src/registry.rs: "assert_eq!(CATEGORIES.len(), 14);"
 - [x] the page's path as its title (System › Display) — hosts/hearth-ui/apps/settings/src/frame.rs: "fn crumbs(a: &App)"
-- [x] button hints: A Select, B Back, Y Search, LB/RB categories, Close — hosts/hearth-ui/apps/settings/src/frame.rs: "\"Previous / next category\""
+- [x] button hints: A Select, B Back, Y Search, LB/RB categories, Close (replaced by the Windows 11 look, settings-windows-11.md, the owner, Nov 28) — hosts/hearth-ui/apps/settings/src/frame.rs: "\"Previous / next section\""
 - [x] follows the Global Theme picked in KDE's System Settings, Hearth's looks or any other — hosts/hearth-ui/src/theme.rs: "fn from_plasma() -> Option<Pal>"
 
 ## Switching between the looks (settings-new.md: A with the keyboard and mouse, B with a controller)
@@ -52,11 +52,11 @@ down a"` (presses as if from the controller), pictured by .github/scripts/hearth
 ## Home (settings-A1)
 Home itself was replaced on Nov 23, 2026 by the approved Settings cleanup Home (settings-cleanup.md, "01. Home"); each
 part below names where it is now.
-- [x] the PC card: picture, name, Hearth OS version · mode · graphics card · processor, Rename and About this PC (now Home's This PC card: Name with Rename, Hearth OS and Graphics opening About) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "vrow(&p, \"Name\", &host, btn(&p, \"Rename\""
-- [x] four quick tiles: Wi-Fi, Bluetooth, Updates, Hearth Link with their state (now Home's Quick switches, "N things need you" and the Hearth Link tile) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "stile(&p, \"Hearth Link\""
+- [x] the PC card: picture, name, Hearth OS version · mode · graphics card · processor, Rename and About this PC (now Home's This PC card: Name with Rename, Hearth OS and Graphics opening About) (replaced by the Windows 11 look, settings-windows-11.md, the owner, Nov 28) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "btn(&p, \"Rename\", Kind::Primary"
+- [x] four quick tiles: Wi-Fi, Bluetooth, Updates, Hearth Link with their state (now Home's Quick switches, "N things need you" and the Hearth Link tile) (replaced by the Windows 11 look, settings-windows-11.md, the owner, Nov 28) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "tile(&p, G::Bt, \"Bluetooth\""
 - [x] Recommended settings: Night light (switch), Start in (Game Mode / Desktop Mode; with Game Mode off on this PC, Desktop Mode and "Game Mode: off", Nov 19) (now Night light in Home's Quick card, Start in on the Quick page) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "seg(&p, start_in_items(&a.sh, st))"
-- [x] Recommended settings: Light mode while you play, Do not disturb (now Do not disturb in Home's Quick card, Light mode on the Quick page) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "vrow(&p, \"Do not disturb\", \"\", switch(&p, st.dnd"
-- [x] Storage: each drive with its bar and used of total, Manage (now Home's Storage tile, opening System › Storage with each drive's bar) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "stile(&p, \"Storage\""
+- [x] Recommended settings: Light mode while you play, Do not disturb (now Do not disturb in Home's Quick card, Light mode on the Quick page) (replaced by the Windows 11 look, settings-windows-11.md, the owner, Nov 28) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "\"Light mode while you play\", \"Big home server jobs wait until your game ends\""
+- [x] Storage: each drive with its bar and used of total, Manage (now Home's Storage tile, opening System › Storage with each drive's bar) (replaced by the Windows 11 look, settings-windows-11.md, the owner, Nov 28) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "tile(&p, G::Update, \"Updates\""
 - [x] Changed lately: the last changes (what → to, who, when), each with Undo — hosts/hearth-ui/apps/settings/src/cats/home.rs: "btn(&p, \"Undo\""
 - [x] All changes (the full list page, each with Undo and what it was) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "What was changed in Settings, newest first. Undo puts the old value back."
 - [x] Quick (See more): the big tiles of settings-B1 (Light mode while you play wide, Wi-Fi, Bluetooth, Brightness and Volume with sliders, Start in wide, Updates, Power, Night light, Do not disturb) and Pin to Quick — hosts/hearth-ui/apps/settings/src/cats/home.rs: "Pin to Quick: pick what's on this page"

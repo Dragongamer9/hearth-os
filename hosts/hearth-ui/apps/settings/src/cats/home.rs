@@ -66,6 +66,8 @@ pub struct State {
     /// "N things need you": Later hides it until Settings opens again.
     pub later: bool,
     pub sent: String,
+    /// Start in's list is open (Windows 11's drop-down, settings-windows-11 home.png).
+    pub start_open: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +78,7 @@ pub enum Msg {
     Light(bool),
     Dnd(bool),
     StartIn(&'static str),
+    StartMenu,
     Rename,
     RenameText(String),
     RenameSave,
@@ -279,7 +282,9 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             st.dnd = on;
             return Task::perform(run::spawn(dnd_cmd(st.plasma_dnd, on)), |o| Msg::Did("Couldn't change Do not disturb", o));
         }
+        Msg::StartMenu => st.start_open = !st.start_open,
         Msg::StartIn(mode) => {
+            st.start_open = false;
             st.start = mode.to_string();
             let cmd = sh.conf_cmd(&data::session_conf(), "NIMBUS_START_MODE", mode);
             return Task::perform(run::spawn(cmd), |o| Msg::Did("Couldn't save Start in", o));
@@ -396,10 +401,12 @@ fn night_line(sh: &Shared) -> String {
 }
 
 fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
+    // Windows 11's Home again (settings-windows-11 home.png, the owner, Nov 28): this PC with Rename and About this
+    // PC, Wi-Fi / Updates / Bluetooth, and Recommended settings (Night light, Light mode while you play, Start in).
     let sh = &a.sh;
     let st = &a.home;
     let p = sh.p;
-    let mut out = Column::new().spacing(18.0);
+    let mut out = Column::new().spacing(12.0);
     // N things need you (yellow dot): what hearth-settings-values found waiting; hidden when nothing is, or after Later.
     let needs: Vec<String> = st.vals.get("needs").and_then(Value::as_array).map(|x| x.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
     if !needs.is_empty() && !st.later {
@@ -412,76 +419,58 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
             vec![btn(&p, "Later", Kind::Normal, false, Some(Msg::Later)), btn(&p, "Open the Store", Kind::Primary, false, Some(Msg::Store))],
         ));
     }
-    // Four tiles.
     let small = |a: String, b: String| [a, b].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
-    let tiles = row![
-        container(stile(&p, "Storage", v(st, "storage_free"), small(v(st, "storage_total"), v(st, "games_size")), Some(Msg::Go("storage")))).width(Length::FillPortion(1)),
-        container(stile(&p, "Your AI", v(st, "ai_state"), v(st, "ai_model"), Some(Msg::Go("sec-ai")))).width(Length::FillPortion(1)),
-        container(stile(&p, "Home server", v(st, "server_count"), v(st, "server_names"), Some(Msg::Go("sec-hs")))).width(Length::FillPortion(1)),
-        container(stile(&p, "Hearth Link", v(st, "link_count"), v(st, "link_names"), Some(Msg::Go("sec-link")))).width(Length::FillPortion(1)),
-    ]
-    .spacing(18.0);
 
-    // Quick: the switches and sliders right here.
-    let wifi_on = v(st, "wifi_on") == "on";
-    let bt_on = v(st, "bt_on") == "on";
-    let night = sh.d_bool("nightLight", false);
-    let mut quick: Vec<Element<Msg>> = Vec::new();
-    if st.vals.contains_key("wifi_on") {
-        quick.push(vrow(&p, "Wi-Fi", &v(st, "wifi_name"), switch(&p, wifi_on, Some(Msg::Sw("wifi_on", "wifi", !wifi_on))), None, false));
-    }
-    if st.vals.contains_key("bt_on") {
-        quick.push(vrow(&p, "Bluetooth", &if bt_on { v(st, "bt_connected") } else { String::new() }, switch(&p, bt_on, Some(Msg::Sw("bt_on", "bt", !bt_on))), None, false));
-    }
-    quick.push(vrow(&p, "Night light", &night_line(sh), switch(&p, night, Some(Msg::Night(!night))), None, false));
-    quick.push(vrow(&p, "Do not disturb", "", switch(&p, st.dnd, Some(Msg::Dnd(!st.dnd))), None, false));
-    if let Some(s) = &st.sound {
-        let vol = s.vol.min(1.0);
-        let sl: Element<Msg> = container(iced::widget::slider(0.0..=1.0f32, vol, Msg::Vol).step(0.01f32).on_release(Msg::VolSet)).width(Length::Fixed(190.0)).into();
-        quick.push(vrow(&p, "Volume", "", sl, None, st.bright.is_none()));
-    }
-    if let Some(b) = st.bright {
-        let sl: Element<Msg> = container(iced::widget::slider(1..=100u32, b, Msg::Bright).on_release(Msg::BrightSet)).width(Length::Fixed(190.0)).into();
-        quick.push(vrow(&p, "Brightness", "", sl, None, true));
-    }
-
-    // You use these most: the five pages opened most here, each with its value.
-    let mut most: Vec<Element<Msg>> = Vec::new();
-    let ids: Vec<String> = st.vals.get("most_used").and_then(Value::as_array).map(|x| x.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
-    let shown: Vec<(&'static str, &'static str, String)> = ids
-        .iter()
-        .filter_map(|id| crate::registry::page(id).map(|pg| (pg.id, crate::cats::sections::row_of(pg.id, &st.vals).unwrap_or((pg.label, String::new())))))
-        .map(|(id, (label, val))| (id, label, val))
-        .take(5)
-        .collect();
-    let n = shown.len();
-    for (i, (id, label, val)) in shown.into_iter().enumerate() {
-        most.push(vrow(&p, label, &val, value_chev(&p, ""), Some(Msg::Go(id)), i + 1 == n));
-    }
-    if most.is_empty() {
-        most.push(container(t("The pages you open most show here, with their values.", sz(13.0), p.muted)).padding(6.0).into());
-    }
-
-    // This PC.
+    // This PC: its picture, its name, Hearth OS · graphics · processor, Rename and About this PC.
     let host = if sh.info.host.is_empty() { v(st, "host") } else { sh.info.host.clone() };
-    let mut pc: Vec<Element<Msg>> = Vec::new();
-    match &st.rename {
-        Some(n) => pc.push(container(rename_box(&p, n, Msg::RenameText, Msg::RenameSave, Msg::RenameCancel)).padding(6.0).into()),
-        None => pc.push(vrow(&p, "Name", &host, btn(&p, "Rename", Kind::Normal, false, Some(Msg::Rename)), None, false)),
-    }
-    let os = small(v(st, "hearth_short"), v(st, "base"));
-    pc.push(vrow(&p, "Hearth OS", &os, value_chev(&p, ""), Some(Msg::Go("about")), false));
-    if !v(st, "graphics").is_empty() {
-        pc.push(vrow(&p, "Graphics", &v(st, "graphics"), value_chev(&p, ""), Some(Msg::Go("about")), false));
-    }
-    if !v(st, "memory_use").is_empty() {
-        pc.push(vrow(&p, "Memory", &v(st, "memory_use"), value_chev(&p, ""), Some(Msg::Go("memory")), false));
-    }
-    let send_line = if st.sent.is_empty() { "to Dragongamer9 in one press".to_string() } else { st.sent.clone() };
-    pc.push(vrow(&p, "Send logs", &send_line, btn(&p, "Send", Kind::Normal, false, if st.sent == "Sending…" { None } else { Some(Msg::SendLogs) }), None, true));
+    let pic = container(Space::new())
+        .width(Length::Fixed(150.0))
+        .height(Length::Fixed(92.0))
+        .style(move |_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Gradient(iced::gradient::Linear::new(iced::Radians(2.4)).add_stop(0.0, Color::from_rgb8(0x6a, 0x3a, 0x20)).add_stop(1.0, Color::from_rgb8(0x1d, 0x2a, 0x3a)).into())),
+            border: iced::Border { color: Color::from_rgb8(0x11, 0x11, 0x11), width: 3.0, radius: 8.0.into() },
+            ..Default::default()
+        });
+    let line = small(v(st, "hearth_short"), small(v(st, "graphics"), data::short_cpu(&sh.info.cpu)));
+    let who: Element<Msg> = match &st.rename {
+        Some(n) => rename_box(&p, n, Msg::RenameText, Msg::RenameSave, Msg::RenameCancel),
+        None => column![
+            ui::tb(host, 22.0, p.text),
+            t(line, 13.5, p.muted),
+            row![btn(&p, "Rename", Kind::Primary, false, Some(Msg::Rename)), btn(&p, "About this PC", Kind::Normal, false, Some(Msg::Go("about")))].spacing(8.0),
+        ]
+        .spacing(6.0)
+        .into(),
+    };
+    let hero = card(&p, row![pic, who].spacing(22.0).align_y(iced::Center));
 
-    // Home's blocks (hearth_ui::blocks): the banner, the four tiles, Quick, You use these most, This PC; laid out as
-    // the approved mockup draws them unless the person arranged them.
+    // Wi-Fi, Updates, Bluetooth.
+    let bt_line = match &st.bt {
+        Some(b) if !b.has => "None on this PC".to_string(),
+        Some(b) if !b.on => "Off".to_string(),
+        Some(_) => small("On".into(), v(st, "bt_connected")),
+        None => "…".into(),
+    };
+    let upd_line = if needs.is_empty() { "Up to date".to_string() } else { format!("{} waiting", needs.len()) };
+    let tiles = row![
+        container(tile(&p, G::Wifi, "Wi-Fi", wifi_text(st), Msg::Go("wifi"))).width(Length::FillPortion(1)),
+        container(tile(&p, G::Update, "Updates", upd_line, Msg::Go("updates"))).width(Length::FillPortion(1)),
+        container(tile(&p, G::Bt, "Bluetooth", bt_line, Msg::Go("bluetooth"))).width(Length::FillPortion(1)),
+    ]
+    .spacing(12.0);
+
+    // Recommended settings.
+    let night = sh.d_bool("nightLight", false);
+    let mut rec: Vec<Element<Msg>> = vec![head(&p, "Recommended settings")];
+    rec.push(srow(&p, G::Moon, "Night light", "Warmer colours from sunset to sunrise", switch(&p, night, Some(Msg::Night(!night)))));
+    if let Some(on) = light_mode(st) {
+        rec.push(srow(&p, G::Pad, "Light mode while you play", "Big home server jobs wait until your game ends", switch(&p, on, Some(Msg::Light(!on)))));
+    }
+    let items = start_in_items(sh, st);
+    let cur = items.iter().find(|x| x.1).map(|x| x.0.clone()).unwrap_or_else(|| "Game Mode".into());
+    let opts: Vec<(String, bool, Msg)> = items.into_iter().filter_map(|(l, on, m)| m.map(|m| (l.clone(), on, m)).or_else(|| on.then(|| (l, true, Msg::StartMenu)))).collect();
+    rec.push(crate::cats::net::kit::dropdown(&p, G::Power, "Start in", "What this PC opens when it turns on", cur, st.start_open, Msg::StartMenu, opts));
+
     let banner: Element<Msg> = out.into();
     hearth_ui::arrange::parts_in(
         &a.describe,
@@ -489,19 +478,11 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         "home",
         Some(680.0),
         // each a right-click away from Edit layout (that part picked)
-        vec![("needs", banner), ("tiles", tiles.into()), ("quick", scard(&p, "Quick", quick)), ("most", scard(&p, "You use these most", most)), ("pc", scard(&p, "This PC", pc))]
+        vec![("needs", banner), ("pc", hero), ("tiles", tiles.into()), ("recommended", Column::with_children(rec).spacing(4.0).into())]
             .into_iter()
             .map(|(id, el)| (id, hearth_ui::arrange::right_edit(el, Msg::Describe(hearth_ui::describe::DMsg::Pick(id)))))
             .collect(),
-        |ps| {
-            let cards = row![
-                container(ps.take("quick")).width(Length::FillPortion(1)),
-                container(ps.take("most")).width(Length::FillPortion(1)),
-                container(ps.take("pc")).width(Length::FillPortion(1)),
-            ]
-            .spacing(18.0);
-            column![ps.take("needs"), ps.take("tiles"), cards].spacing(18.0).into()
-        },
+        |ps| column![ps.take("needs"), ps.take("pc"), ps.take("tiles"), Space::new().height(Length::Fixed(6.0)), ps.take("recommended")].spacing(12.0).into(),
         Msg::Describe,
     )
 }

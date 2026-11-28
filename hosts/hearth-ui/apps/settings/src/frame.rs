@@ -338,8 +338,9 @@ fn crumbs(a: &App) -> Element<'_, Msg> {
         if !ver.is_empty() && ver != "0.0" {
             bits.push(if under.is_empty() { format!("Hearth OS {ver}") } else { format!("Hearth OS {ver} on {under}") });
         }
-        bits.push("what needs you first, then what you use most".into());
-        return column![tb("Home", 34.0, p.accent), t(bits.join(" · "), 15.0, p.muted)].spacing(6.0).into();
+        // Windows 11's look (settings-windows-11 home.png): just "Home"; this PC's name and version are on its card.
+        let _ = bits;
+        return tb("Home", 34.0, p.text).into();
     }
     let cat = CATEGORIES[a.cat];
     let mut chain = registry::chain(a.page);

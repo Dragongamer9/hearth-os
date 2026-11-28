@@ -587,6 +587,16 @@ pub fn title<'a, M: 'a>(p: &Pal, page: &str) -> Option<Element<'a, M>> {
     Some(tb(sec.0, 34.0, p.text).into())
 }
 
+/// A front-page row in Windows 11's look: its own card with the page's icon (settings-windows-11 system.png).
+fn grow<'a>(p: &Pal, go: &str, title: &str, sub: &str, right: Element<'a, Msg>, open: Option<Msg>, _last: bool) -> Element<'a, Msg> {
+    wrow(p, Some(crate::frame::page_glyph(go)), title, sub, right, open)
+}
+
+/// The other rows (Wi-Fi's networks, online accounts...): the same cards, without an icon.
+fn vrow<'a>(p: &Pal, title: &str, sub: &str, right: Element<'a, Msg>, open: Option<Msg>, _last: bool) -> Element<'a, Msg> {
+    wrow(p, None, title, sub, right, open)
+}
+
 fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool) -> Vec<Element<'a, Msg>> {
     let live = v.contains_key("live");
     let shown: Vec<&R> = list.iter().filter(|x| (!x.kde || kde) && (x.go != "install" || live)).collect();
@@ -604,16 +614,16 @@ fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool
             }
             let line = line_v.as_deref().unwrap_or(x.line);
             match x.v {
-                V::K(key) => vrow(p, x.label, line, value_chev(p, &s(v, key)), Some(Msg::Go(x.go)), last),
-                V::N => vrow(p, x.label, line, value_chev(p, ""), Some(Msg::Go(x.go)), last),
+                V::K(key) => grow(p, x.go, x.label, line, value_chev(p, &s(v, key)), Some(Msg::Go(x.go)), last),
+                V::N => grow(p, x.go, x.label, line, value_chev(p, ""), Some(Msg::Go(x.go)), last),
                 V::C(key) => {
                     let c = s(v, key);
-                    vrow(p, x.label, line, if c.is_empty() { value_chev(p, "") } else { sec_chip(p, &c, true) }, Some(Msg::Go(x.go)), last)
+                    grow(p, x.go, x.label, line, if c.is_empty() { value_chev(p, "") } else { sec_chip(p, &c, true) }, Some(Msg::Go(x.go)), last)
                 }
                 V::S(val, key) => {
                     let o = on(v, val);
                     let sw = switch(p, o, Some(Msg::Switch(val, key, !o)));
-                    vrow(p, x.label, line, sw, None, last)
+                    grow(p, x.go, x.label, line, sw, None, last)
                 }
                 V::B(label, a) => {
                     let m = match a {
@@ -622,7 +632,7 @@ fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool
                         Act::Later => Msg::Banner(99),
                     };
                     let b = btn(p, label, BtnKind::Normal, false, Some(m));
-                    vrow(p, x.label, line, b, None, last)
+                    grow(p, x.go, x.label, line, b, None, last)
                 }
             }
         })
@@ -839,14 +849,15 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         lists.push(l);
         heads.push(head);
     }
-    let lists = even(lists, sec.cols);
+    // Windows 11's look (settings-windows-11 system.png): one column of rows, no cards side by side.
+    let lists = even(lists, 1);
     let mut items: Vec<(String, Element<'a, Msg>)> = Vec::new();
     if has_top {
         items.push((String::new(), c.into()));
     }
     let n_cards = heads.len();
     for (l, h) in lists.into_iter().zip(heads) {
-        items.push((h.to_string(), scard(&p, h, l)));
+        items.push((h.to_string(), Column::with_children(l).spacing(4.0).into()));
     }
     let mut has_kde = false;
     if let Some((go, list)) = sec.kde {
@@ -866,7 +877,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
             }
         }
         let cards: Vec<Element<'a, Msg>> = it.by_ref().take(n_cards).collect();
-        c = c.push(grid(cards, cols));
+        let _ = cols;
+        c = c.push(Column::with_children(cards).spacing(4.0));
         if has_kde {
             if let Some(k) = it.next() {
                 c = c.push(k);
