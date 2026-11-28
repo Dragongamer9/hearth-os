@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 63,
+  "serial": 64,
   "apps": [
     {
       "id": "command-center",
@@ -1554,6 +1554,38 @@
       "partId": "hearth-3d",
       "tagline": "Model in 3D, with Blender as the engine",
       "about": "Model, animate and render your 3D scenes: a viewport, the scene's tree, each object's place, turn, size and changes on top, and a timeline with the animation's keys. Send to Godot or Hearth CAD in one press. Built on Blender (GPL-2+)."
+    },
+    {
+      "id": "part-hearth-remap-app",
+      "name": "Hearth Remap",
+      "kind": "app",
+      "part": {
+        "id": "hearth-remap-app",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-remap-app",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-remap-app-1.18.1/hearth-remap-app-1.18.1.tar.gz",
+        "sha256": "c6ef82553c8e28a208dc859e10571027779a921bd999bc732e74c90471e6dc97",
+        "size": 7368513,
+        "notes": [
+          "New: remap keys, mouse and controller buttons for each game and app",
+          "Macros you record or write, on by themselves when the game is in front; built on Input Remapper (GPL-3)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-remap-app",
+      "inImage": false,
+      "short": "Remap",
+      "card": "Any key, mouse or controller button, your way",
+      "icon": "RM",
+      "from": "#9ad7ff",
+      "to": "#3c7fd8",
+      "partId": "hearth-remap-app",
+      "builtOn": "Input Remapper",
+      "licence": "GPL-3",
+      "tagline": "Any key, mouse or controller button, your way",
+      "about": "Remap keys, mouse and controller buttons for each game and app, with macros you record or write, turned on by themselves when the game is in front. Built on Input Remapper (GPL-3). Get it from the Hearth Store, which keeps it up to date."
     }
   ],
   "tests": [
