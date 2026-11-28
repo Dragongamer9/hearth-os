@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 66,
+  "serial": 67,
   "apps": [
     {
       "id": "command-center",
@@ -1409,16 +1409,17 @@
       "kind": "app",
       "part": {
         "id": "hearth-forge-app",
-        "version": "1.18.1",
+        "version": "1.18.2",
         "os": "1.18",
         "path": "hearth-forge-app",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-forge-app-1.18.1/hearth-forge-app-1.18.1.tar.gz",
-        "sha256": "246b38d3d2cdc7fa0c61ef2da154b90eea1beb521ee0809de33aac5deea29dfe",
-        "size": 7570684,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-forge-app-1.18.2/hearth-forge-app-1.18.2.tar.gz",
+        "sha256": "ee0805e4f72c02ee413982f6bc25e31674b22745879661b4fec5369dae21aef6",
+        "size": 7578802,
         "notes": [
-          "New: real 3D models from a photo or a few words on your own Nvidia PC, with 22 open models (Hunyuan3D, TRELLIS, TripoSR and more), or Tripo3D with your own key",
-          "Ready them for a game or for printing, send them to Hearth 3D, Godot, O3DE or Hearth CAD",
-          "Made of blocks: Edit layout and Customize everything"
+          "Big models fit on a 12 GB card: Forge shares the work with the PC when the card is short on memory",
+          "Out of memory is told in plain words, and Forge frees the card between steps",
+          "Fixed the Python parts not installing (pip)",
+          "Hunyuan3D 2 gets the parts it needs"
         ]
       },
       "group": "apps",
