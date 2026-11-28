@@ -11,7 +11,7 @@
  "runners": {
   "hunyuan3d2": {
    "name": "Hunyuan3D 2 (hy3dgen)", "git": "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git", "commit": "f8db63096c8282cb27354314d896feba5ba6ff8a", "python": "3.10",
-   "pip": ["diffusers", "einops", "opencv-python-headless", "numpy", "transformers>=4.48.0", "omegaconf", "trimesh", "pymeshlab", "pygltflib", "xatlas", "accelerate", "rembg", "onnxruntime", "ninja", "pybind11", "fast-simplification", "huggingface_hub"],
+   "pip": ["diffusers", "einops", "opencv-python-headless", "numpy", "transformers>=4.48.0,<4.50", "omegaconf", "trimesh", "pymeshlab", "pygltflib", "xatlas", "accelerate", "rembg", "onnxruntime", "ninja", "pybind11", "fast-simplification", "huggingface_hub"],
    "build": ["hy3dgen/texgen/custom_rasterizer", "hy3dgen/texgen/differentiable_renderer"], "optionalBuild": true,
    "licence": "Tencent Hunyuan community licence"
   },

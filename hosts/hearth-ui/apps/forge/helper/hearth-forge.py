@@ -454,8 +454,14 @@ def runner_src(rid, r=None):
 
 
 def runner_ready(rid, cat=None):
+    """Its runtime is installed for this commit and this install list: a changed pip list (transformers <4.50 for
+    Hunyuan3D 2, Nov 28) installs again into the same venv. A ready.json from before the list was kept counts as the
+    list it was made with."""
     r = ((cat or catalog())['runners'].get(rid)) or {}
-    return read_json(os.path.join(runner_dir(rid), 'ready.json'), {}).get('commit') == r.get('commit') and os.path.isfile(runner_python(rid))
+    ready = read_json(os.path.join(runner_dir(rid), 'ready.json'), {})
+    if ready.get('commit') != r.get('commit') or not os.path.isfile(runner_python(rid)):
+        return False
+    return 'pip' not in ready or list(ready.get('pip') or []) == list(r.get('pip') or [])
 
 
 def req_name(line):
@@ -685,7 +691,7 @@ def install_runner(rid, cat, step):
     # rembg's own cut-out model (it checks its MD5 itself), now rather than at the first make, where a model uses it
     env2 = dict(os.environ, U2NET_HOME=os.path.join(MODELS, 'u2net'))
     cmd([py, '-c', 'import rembg; rembg.new_session()'], 900, env=env2)
-    write_json(os.path.join(d, 'ready.json'), {'commit': r['commit'], 'built': built, 'missing': missing, 'dropped': dropped[:80], 'python': r.get('python', 'system'),
+    write_json(os.path.join(d, 'ready.json'), {'commit': r['commit'], 'pip': list(r.get('pip') or []), 'built': built, 'missing': missing, 'dropped': dropped[:80], 'python': r.get('python', 'system'),
                                                 'nvcc': ccv, 'arch': env.get('TORCH_CUDA_ARCH_LIST', ''), 'torch': str(info.get('torch', ''))[:40],
                                                 'cuda': info.get('cuda') is True, 'at': int(time.time())})
 
@@ -881,12 +887,20 @@ def run_one(d):
             write_json(os.path.join(d, 'progress.json'), {'stage': 'changing the picture with your words', 'progress': 2})
             picture_from_words(ask, d, start=os.path.join(d, 'photo.png'))
         open(os.path.join(d, 'log.txt'), 'w').close()
+        # the picture model and the 3D model don't fit together on a 12 GB card (the owner's, Nov 28)
+        comfy_free()
         if m.get('coarse'):
             first_shape(d, ask, m, cat)
+            comfy_free()
         code = spawn(d, m['runner'], ['run', d], cat)
         glb, splat = os.path.join(d, 'model.glb'), os.path.join(d, 'splat.ply')
         if code != 0 or not (os.path.isfile(glb) or os.path.isfile(splat)):
-            raise Fail('It stopped: ' + log_tail(d))
+            try:
+                with open(os.path.join(d, 'log.txt'), errors='replace') as f:
+                    oom = out_of_memory_words(f.read()[-4000:])
+            except OSError:
+                oom = None
+            raise Fail(oom or ('It stopped: ' + log_tail(d)))
         res = read_json(os.path.join(d, 'result.json'), {})
         timing = read_json(os.path.join(d, 'progress.json'), {}).get('timing') or {}
         if not os.path.isfile(glb):
@@ -901,6 +915,7 @@ def run_one(d):
                 t = time.time()
                 write_json(os.path.join(d, 'progress.json'), {'stage': 'painting its textures (Hunyuan3D 2.0)', 'progress': 60, 'timing': timing})
                 shutil.copyfile(glb, os.path.join(d, 'model-shape.glb'))
+                comfy_free()
                 if spawn(d, m['paint'], ['paint', d], cat) == 0 and os.path.isfile(glb):
                     timing['textures'] = int(time.time() - t)
                 else:
@@ -917,6 +932,61 @@ def run_one(d):
         os.unlink(os.path.join(d, 'progress.json'))
     except OSError:
         pass
+
+
+PERSON_WORDS = re.compile(r'\b(character|person|people|man|woman|boy|girl|human|agent|soldier|knight|figure|figurine|guard|warrior|hero|zombie)s?\b', re.I)
+
+
+def negative_words(ask):
+    """What the picture shouldn't have: no people, unless the words ask for a character, person, agent, soldier or figure."""
+    words = '%s %s' % (ask.get('words', ''), ask.get('change', ''))
+    return 'cropped, several objects, text, blurry' + ('' if PERSON_WORDS.search(words) else ', people')
+
+
+def comfy_free():
+    """Asks Hearth Imagine's ComfyUI to let go of its models and the card's memory (POST /free): on a 12 GB card the
+    picture model and the 3D model don't fit together. Nothing happens when ComfyUI isn't running."""
+    try:
+        req = urllib.request.Request(COMFY + '/free', data=json.dumps({'unload_models': True, 'free_memory': True}).encode(), method='POST',
+                                     headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+        time.sleep(1)
+    except Exception:  # noqa: BLE001 - ComfyUI off or older: nothing to free
+        pass
+
+
+def gpu_users():
+    """The other programs using the graphics card (nvidia-smi's compute apps, named from /proc), for a model that ran
+    out of the card's memory."""
+    try:
+        out = subprocess.run(['nvidia-smi', '--query-compute-apps=pid,used_memory', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    me = os.getpid()
+    users = []
+    for line in out.splitlines():
+        bits = [x.strip() for x in line.split(',')]
+        if len(bits) < 2 or not bits[0].isdigit() or int(bits[0]) == me:
+            continue
+        try:
+            with open('/proc/%s/cmdline' % bits[0], 'rb') as f:
+                argv = [a.decode(errors='replace') for a in f.read().split(b'\0') if a]
+        except OSError:
+            argv = []
+        name = ' '.join(os.path.basename(a) if i == 0 else a for i, a in enumerate(argv[:3])) or 'pid %s' % bits[0]
+        users.append('%s (%s MB)' % (name[:80], bits[1]))
+    return users
+
+
+def out_of_memory_words(text):
+    """A CUDA out-of-memory error said plainly, with what else holds the card; None for any other error."""
+    if 'out of memory' not in text.lower():
+        return None
+    others = gpu_users()
+    if others:
+        return 'The graphics card ran out of memory. Also using it: %s. Close those (or pick a smaller detail) and make it again' % '; '.join(others[:5])
+    return 'The graphics card ran out of memory: pick a smaller detail or a lighter model and make it again'
 
 
 def picture_from_words(ask, d, start=None):
@@ -937,7 +1007,7 @@ def picture_from_words(ask, d, start=None):
     words = '%s, %s, a single object, centred, whole, plain light grey background, product photo, sharp, real materials' % (ask.get('words', ''), ask.get('change', ''))
     g = {'1': {'class_type': 'CheckpointLoaderSimple', 'inputs': {'ckpt_name': ckpts[0]}},
          '2': {'class_type': 'CLIPTextEncode', 'inputs': {'text': words.strip(', '), 'clip': ['1', 1]}},
-         '3': {'class_type': 'CLIPTextEncode', 'inputs': {'text': 'cropped, several objects, text, blurry, people', 'clip': ['1', 1]}},
+         '3': {'class_type': 'CLIPTextEncode', 'inputs': {'text': negative_words(ask), 'clip': ['1', 1]}},
          '5': {'class_type': 'KSampler', 'inputs': {'seed': int(ask.get('seed') or 1), 'steps': 28, 'cfg': 6.5, 'sampler_name': 'dpmpp_2m', 'scheduler': 'karras',
                                                     'denoise': 1.0, 'model': ['1', 0], 'positive': ['2', 0], 'negative': ['3', 0], 'latent_image': ['4', 0]}},
          '6': {'class_type': 'VAEDecode', 'inputs': {'samples': ['5', 0], 'vae': ['1', 2]}},
