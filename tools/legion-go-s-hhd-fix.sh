@@ -16,6 +16,10 @@ if [ "${1:-}" = undo ]; then
 fi
 grep -qi 'Legion Go S' /sys/class/dmi/id/product_version /sys/class/dmi/id/product_name 2>/dev/null \
   || grep -q 'N: Name=.*Legion Go S' /proc/bus/input/devices || { echo "This isn't a Legion Go S: nothing changed."; exit 1; }
+# Only when every part HHD needs is there (USB interfaces 2: touchpad, 3: settings, 6: controller): on a Go S that shows
+# fewer (the owner's, Nov 28: 0, 4, 5, 6), taking over hid the gamepad and every control stopped. Then nothing changes.
+have() { for d in /sys/bus/hid/devices/*:1A86:E31[01].*; do [ "$(cat "$d/../bInterfaceNumber" 2>/dev/null)" = "$1" ] && return 0; done; return 1; }
+for i in 02 03 06; do have "$i" || { echo "This Go S's controller doesn't show part $i that Handheld Daemon needs: nothing changed (send logs)."; exit 1; }; done
 SRC=$(/usr/lib/hhd/bin/python3 -c 'import hhd, os; print(os.path.dirname(hhd.__file__))')
 TMP=$(mktemp -d "$DIR.new.XXXX" 2>/dev/null || { mkdir -p /var/lib/hearth; mktemp -d "$DIR.new.XXXX"; })
 cp -a "$SRC" "$TMP/hhd"
