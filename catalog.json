@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 62,
+  "serial": 63,
   "apps": [
     {
       "id": "command-center",
@@ -1524,6 +1524,36 @@
       "partId": "hearth-bottles",
       "tagline": "Windows apps, each in its own bottle",
       "about": "Run Windows apps, each in a bottle of its own: its programs, extras like .NET and Visual C++, snapshots to go back to, what's running, the community's installers and the bottle's settings. Built on Bottles (GPL-3)."
+    },
+    {
+      "id": "part-hearth-3d",
+      "name": "Hearth 3D",
+      "kind": "app",
+      "part": {
+        "id": "hearth-3d",
+        "version": "1.18.1",
+        "os": "1.18",
+        "path": "hearth-3d",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-hearth-3d-1.18.1/hearth-3d-1.18.1.tar.gz",
+        "sha256": "c47b4fe0fc8c796b72e7cdc3dd10d9e7d6a1f623340303ad9fed05589d23b34d",
+        "size": 7349530,
+        "notes": [
+          "New: model, animate and render your 3D scenes with Blender as the engine",
+          "Send to Godot or Hearth CAD in one press; built on Blender (GPL-2+)",
+          "Made of blocks: Edit layout and Customize everything"
+        ]
+      },
+      "group": "apps",
+      "open": "hearth-3d",
+      "inImage": false,
+      "short": "3D",
+      "card": "Model in 3D, with Blender as the engine",
+      "icon": "3D",
+      "from": "#ffb36b",
+      "to": "#ff6a1f",
+      "partId": "hearth-3d",
+      "tagline": "Model in 3D, with Blender as the engine",
+      "about": "Model, animate and render your 3D scenes: a viewport, the scene's tree, each object's place, turn, size and changes on top, and a timeline with the animation's keys. Send to Godot or Hearth CAD in one press. Built on Blender (GPL-2+)."
     }
   ],
   "tests": [
