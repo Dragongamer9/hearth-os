@@ -201,6 +201,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     let sv = s(st);
     let av = av(st);
     let on_kwin = kit::b_of(&av, "kwin");
+    // KWin's own (zoom tracking, the pointer while zoomed, invert one window): shown only where KWin runs (the owner,
+    // Nov 28: every button in Settings has to work; Mantel runs on labwc).
     let live = kw.live();
     let note = if live { String::new() } else { ". Needs KWin (KDE Plasma's window manager)".to_string() };
     let ver = kw.ver();
@@ -220,13 +222,19 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     let (lo, hi) = (1.25f32, 8.0f32);
     c = c.push(irow(&p, Ic::G(G::Search), "Zoom when Super+Esc turns it on", "", slide(&p, (mz - lo) / (hi - lo), 0.0..=1.0, 0.25 / (hi - lo), format!("{}×", trim_num(mz)), move |v| ch(json!({"magnifierZoom": ((lo + v * (hi - lo)) * 4.0).round() / 4.0}), false))));
     let mt = kw.n("kwinrc", "Effect-zoom", "MouseTracking", 0.0) as i64;
-    c = c.push(irow_if(&p, live, Ic::Mouse, "The zoomed view follows the pointer", format!("How the view moves when the pointer nears its edge{note}"), seg(&p, [("Smoothly", 0i64), ("Pointer in the middle", 1), ("Pushed at the edge", 2), ("Stays put", 3)].iter().map(|(l, v)| (l.to_string(), mt == *v, if live { Some(k("kwinrc", "Effect-zoom", "MouseTracking", json!(v))) } else { None })).collect())));
+    if live {
+        c = c.push(irow_if(&p, live, Ic::Mouse, "The zoomed view follows the pointer", format!("How the view moves when the pointer nears its edge{note}"), seg(&p, [("Smoothly", 0i64), ("Pointer in the middle", 1), ("Pushed at the edge", 2), ("Stays put", 3)].iter().map(|(l, v)| (l.to_string(), mt == *v, if live { Some(k("kwinrc", "Effect-zoom", "MouseTracking", json!(v))) } else { None })).collect())));
+    }
     for (key, title, sub) in [("EnableFocusTracking", "Follow the keyboard focus", "The view moves to the window or button you move to with the keyboard"), ("EnableTextCaretTracking", "Follow the text cursor", "The view keeps up with what you type")] {
         let on = kw.b("kwinrc", "Effect-zoom", key, false);
-        c = c.push(irow_if(&p, live, Ic::Kbd, title, format!("{sub}{note}"), switch(&p, on, if live { Some(k("kwinrc", "Effect-zoom", key, json!(!on))) } else { None })));
+        if live {
+            c = c.push(irow_if(&p, live, Ic::Kbd, title, format!("{sub}{note}"), switch(&p, on, if live { Some(k("kwinrc", "Effect-zoom", key, json!(!on))) } else { None })));
+        }
     }
     let mp = kw.n("kwinrc", "Effect-zoom", "MousePointer", 0.0) as i64;
-    c = c.push(irow_if(&p, live, Ic::Mouse, "The pointer while zoomed", note.trim_start_matches(". ").to_string(), seg(&p, [("Zoomed too", 0i64), ("Normal size", 1), ("Hidden", 2)].iter().map(|(l, v)| (l.to_string(), mp == *v, if live { Some(k("kwinrc", "Effect-zoom", "MousePointer", json!(v))) } else { None })).collect())));
+    if live {
+        c = c.push(irow_if(&p, live, Ic::Mouse, "The pointer while zoomed", note.trim_start_matches(". ").to_string(), seg(&p, [("Zoomed too", 0i64), ("Normal size", 1), ("Hidden", 2)].iter().map(|(l, v)| (l.to_string(), mp == *v, if live { Some(k("kwinrc", "Effect-zoom", "MousePointer", json!(v))) } else { None })).collect())));
+    }
     let step = kit::n_of(&sv, "magnifierStep", 0.5);
     c = c.push(irow(&p, Ic::G(G::Search), "Each Super+= or Super+- step", "", seg(&p, [("Small", 0.25f64), ("Medium", 0.5), ("Big", 1.0)].iter().map(|(l, v)| (l.to_string(), (step - v).abs() < 0.01, Some(ch(json!({"magnifierStep": v}), false)))).collect())));
 
@@ -247,7 +255,9 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
         c = c.push(irow(&p, Ic::G(G::Palette), "How strong", "", slide(&p, fs, 0.0..=1.0, 0.05, format!("{}%", (fs * 100.0).round()), |v| ch(json!({"filterStrength": ((v * 20.0).round() / 20.0).max(0.1)}), false))));
     }
     let iw = kit::b_of(&sv, "invertWindow");
-    c = c.push(irow_if(&p, live, Ic::G(G::Palette), "Invert one window", format!("Super+Ctrl+U inverts the colours of the window you're in; press it again to turn them back{note}"), switch(&p, iw, if live { Some(ch(json!({"invertWindow": !iw}), true)) } else { None })));
+    if live {
+        c = c.push(irow_if(&p, live, Ic::G(G::Palette), "Invert one window", format!("Super+Ctrl+U inverts the colours of the window you're in; press it again to turn them back{note}"), switch(&p, iw, if live { Some(ch(json!({"invertWindow": !iw}), true)) } else { None })));
+    }
     c = c.push(small(&p, if on_kwin { "Super+Ctrl+I also inverts the colours (KWin's own shortcut)." } else { "In Desktop Mode colours are inverted with the screen's colour ramp, so Night light has to be off for it." }));
 
     // ------------------------------------------------ screen reader
